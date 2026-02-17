@@ -1,0 +1,12 @@
+Failed to compile.
+
+./src/lib/prisma.ts:1:30
+Type error: Could not find a declaration file for module '@prisma/client'. 'd:/NextJs/doctor/node_modules/@prisma/client/default.js' implicitly has an 'any' type.
+  There are types at 'd:/NextJs/doctor/node_modules/@prisma/client/index.d.ts', but this result could not be resolved when respecting package.json "exports". The '@prisma/client' library may need to update its package.json or typings.
+
+[0m[31m[1m>[22m[39m[90m 1 |[39m [36mimport[39m { [33mPrismaClient[39m } [36mfrom[39m [32m"@prisma/client"[39m[33m;[39m
+ [90m   |[39m                              [31m[1m^[22m[39m
+ [90m 2 |[39m [36mimport[39m { [33mPrismaMariaDb[39m } [36mfrom[39m [32m"@prisma/adapter-mariadb"[39m[33m;[39m
+ [90m 3 |[39m
+ [90m 4 |[39m [36mconst[39m globalForPrisma [33m=[39m globalThis [36mas[39m unknown [36mas[39m {[0m
+Next.js build worker exited with code: 1 and signal: null

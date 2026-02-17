@@ -1,16 +1,15 @@
-import FeaturedCourses from "@/components/FeaturedCourses";
 import Main from "@/components/Main";
+import Navbar from "@/components/Navbar";
 
 export default function Home() {
   return (
-   <>
-   
-     <main className="min-h-screen bg-black/96 antialiased bg-grid-white/[0.02]">
-      <Main />
-      <FeaturedCourses />
-      
-      
-    </main>
-   </>
+    <>
+      <div className="relative w-full flex items-center justify-center">
+        <Navbar />
+      </div>
+      <main className="min-h-screen antialiased">
+        <Main />
+      </main>
+    </>
   );
 }
