@@ -34,13 +34,25 @@ export default function DoctorDashboard() {
 
     const fetchData = useCallback(async () => {
         try {
-            const res = await fetch("/api/appointments?doctorId=1");
+            // Fetch Doctor Profile
+            const doctorRes = await fetch("/api/doctors/me");
+            let doctorId = 1; // Default fallback
+
+            if (doctorRes.ok) {
+                const doctorData = await doctorRes.json();
+                setUser({ name: doctorData.doctor.doctor_name });
+                doctorId = doctorData.doctor.doctor_id;
+            }
+
+            const res = await fetch(`/api/appointments?doctorId=${doctorId}`);
             if (res.ok) {
                 const data: RecentAppointment[] = await res.json();
+                // Sort by date desc (newest first)
+                const sortedData = data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-                const total = data.length;
-                const pending = data.filter(a => a.status === 'PENDING').length;
-                const today = data.filter(a => {
+                const total = sortedData.length;
+                const pending = sortedData.filter(a => a.status === 'PENDING').length;
+                const today = sortedData.filter(a => {
                     if (!a.slot?.slot_date) return false;
                     const d = new Date(a.slot.slot_date);
                     const now = new Date();
@@ -52,7 +64,7 @@ export default function DoctorDashboard() {
                     pendingAppointments: pending,
                     todayAppointments: today
                 });
-                setRecentAppointments(data.slice(0, 5));
+                setRecentAppointments(sortedData.slice(0, 5));
             }
         } catch (e) {
             console.error(e);
@@ -115,12 +127,22 @@ export default function DoctorDashboard() {
     ];
 
     return (
-        <div className="p-8 max-w-7xl mx-auto space-y-8">
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
-                <h1 className="text-3xl font-bold gradient-text">
+        <div className="relative min-h-screen w-full p-8 max-w-7xl mx-auto space-y-8">
+            {/* Background Gradients */}
+            <div className="fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
+                <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] animate-pulse" />
+                <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-[100px]" />
+            </div>
+
+            <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+            >
+                <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
                     Welcome Back, Dr. {user.name}
                 </h1>
-                <p className="text-gray-500 mt-2">Here&apos;s your practice overview for today.</p>
+                <p className="text-gray-500 mt-2 text-lg">Here&apos;s your practice overview for today.</p>
             </motion.div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -129,7 +151,7 @@ export default function DoctorDashboard() {
                         key={card.label}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.1 }}
+                        transition={{ delay: i * 0.1, duration: 0.4 }}
                     >
                         <StatCard
                             title={card.label}
@@ -141,18 +163,30 @@ export default function DoctorDashboard() {
                 ))}
             </div>
 
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-                <GlassCard className="p-0 overflow-hidden border-0 bg-transparent shadow-none">
-                    <div className="flex items-center justify-between mb-4 px-2">
-                        <h2 className="text-xl font-semibold text-gray-900">Recent Appointments</h2>
-                        <button className="text-sm text-indigo-600 hover:text-indigo-700 transition-colors" onClick={() => router.push('/dashboard/doctor/appointments')}>
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.35, duration: 0.5 }}
+            >
+                <GlassCard className="p-0 overflow-hidden border border-white/20 shadow-xl bg-white/40 backdrop-blur-md">
+                    <div className="flex items-center justify-between p-6 border-b border-gray-100/50">
+                        <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                            <Activity className="w-5 h-5 text-indigo-500" />
+                            Recent Appointments
+                        </h2>
+                        <button
+                            className="px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-all hover:shadow-md"
+                            onClick={() => router.push('/dashboard/doctor/appointments')}
+                        >
                             View All
                         </button>
                     </div>
-                    <PremiumTable
-                        columns={columns}
-                        data={recentAppointments}
-                    />
+                    <div className="p-2">
+                        <PremiumTable
+                            columns={columns}
+                            data={recentAppointments}
+                        />
+                    </div>
                 </GlassCard>
             </motion.div>
         </div>

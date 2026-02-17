@@ -37,8 +37,8 @@ export function PremiumTable<T>({ columns, data, onRowClick, className }: Premiu
                                 key={rowIndex}
                                 onClick={() => onRowClick && onRowClick(item)}
                                 className={cn(
-                                    "transition-colors hover:bg-gray-50 cursor-default",
-                                    onRowClick && "cursor-pointer"
+                                    "transition-colors duration-200 hover:bg-indigo-50/50 cursor-default border-l-2 border-transparent hover:border-indigo-500",
+                                    onRowClick && "cursor-pointer active:bg-indigo-100/50"
                                 )}
                             >
                                 {columns.map((col, colIndex) => (

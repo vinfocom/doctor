@@ -30,18 +30,19 @@ export default function DoctorSchedulePage() {
     const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
     const [clinics, setClinics] = useState<Clinic[]>([]);
     const [loading, setLoading] = useState(true);
-    const [guiLoading, setGuiLoading] = useState(false); // For modal actions
+    const [guiLoading, setGuiLoading] = useState(false);
 
     const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
 
-    // Modal State
     const [showAddModal, setShowAddModal] = useState(false);
     const [scheduleForm, setScheduleForm] = useState({
         clinic_id: "",
         days: [] as string[],
         start_time: "09:00",
         end_time: "17:00",
-        slot_duration: 30
+        slot_duration: 30,
+        durationValue: 1,
+        durationUnit: "Years"
     });
 
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -72,7 +73,6 @@ export default function DoctorSchedulePage() {
             const res = await fetch(`/api/schedule?doctorId=${user.doctor_id}`);
             if (res.ok) {
                 const data = await res.json();
-                // Process time strings
                 const processed = (data.schedules || []).map((s: any) => ({
                     ...s,
                     start_time: String(s.start_time).includes("T") ? String(s.start_time).split("T")[1].slice(0, 5) : String(s.start_time).slice(0, 5),
@@ -94,7 +94,9 @@ export default function DoctorSchedulePage() {
             days: [String(schedule.day_of_week)],
             start_time: schedule.start_time,
             end_time: schedule.end_time,
-            slot_duration: 30 // Default or fetch if available
+            slot_duration: 30,
+            durationValue: 1,
+            durationUnit: "Years"
         });
         setShowAddModal(true);
         setMessage(null);
@@ -102,7 +104,6 @@ export default function DoctorSchedulePage() {
 
     const handleDeleteSchedule = async (id: number) => {
         if (!confirm("Are you sure you want to delete this schedule?")) return;
-
         try {
             const res = await fetch(`/api/schedule?scheduleId=${id}`, { method: "DELETE" });
             if (res.ok) {
@@ -121,8 +122,6 @@ export default function DoctorSchedulePage() {
             setMessage({ type: "error", text: "Please fill all fields" });
             return;
         }
-
-        // Validation
         if (scheduleForm.start_time >= scheduleForm.end_time) {
             setMessage({ type: "error", text: "Start time must be before end time" });
             return;
@@ -132,92 +131,44 @@ export default function DoctorSchedulePage() {
         setMessage(null);
 
         try {
-            const payload = {
-                clinicId: Number(scheduleForm.clinic_id),
-                doctorId: user.doctor_id,
-                schedules: scheduleForm.days.map(day => ({
-                    schedule_id: editingScheduleId, // Include if editing (only valid if single day select, but works for replace logic if we changed handleEdit)
-                    // Note: If editing, we usually edit one item. 
-                    // If we support multi-select in edit, it implies creating new ones or updating multiple.
-                    // For now, let's assume 'Add' supports multi, 'Edit' supports single usually, but our form is generic.
-                    // If editing, we probably should disable day selection or handle it carefully.
-                    // For simplicity: If editing, we update the CURRENT schedule ID with the NEW values.
-                    // If user selects MULTIPLE days during EDIT, we might be creating new ones? 
-                    // Let's stick to: Edit = Update 1 item. Add = Create multiple.
-                    day_of_week: Number(day),
-                    start_time: scheduleForm.start_time,
-                    end_time: scheduleForm.end_time,
-                    slot_duration: Number(scheduleForm.slot_duration)
-                }))
-            };
+            const durationValue = Number(scheduleForm.durationValue) || 1;
+            const effectiveToDate = new Date();
+            if (scheduleForm.durationUnit === "Years") {
+                effectiveToDate.setFullYear(effectiveToDate.getFullYear() + durationValue);
+            } else if (scheduleForm.durationUnit === "Months") {
+                effectiveToDate.setMonth(effectiveToDate.getMonth() + durationValue);
+            } else if (scheduleForm.durationUnit === "Days") {
+                effectiveToDate.setDate(effectiveToDate.getDate() + durationValue);
+            }
+            const effectiveTo = effectiveToDate.toISOString().split('T')[0];
 
-            // Refinement: If editing, and user selected multiple days, it's ambiguous.
-            // Requirement from prompt: "make it avialble like in clinic part" -> implies multi-select.
-            // If I edit Monday and add Tuesday, do I update Monday and Create Tuesday?
-            // backend PATCH logic iterates. If I pass schedule_id, it updates. If not, creates.
-            // BUT, if I edit ID 1 (Mon), and select Mon + Tue in UI. 
-            // Payload should be: [{id: 1, day: Mon...}, {day: Tue...}].
-            // My default UI state when editing is [Mon]. 
-            // If I click Tue, `scheduleForm.days` becomes [Mon, Tue].
-            // If I map this, I need to know which day corresponds to the ID.
-            // This is complex. 
-            // Simplified Logic: 
-            // 1. If Adding: Map all days to new objects (no ID).
-            // 2. If Editing: 
-            //    - If I change the day from Mon to Tue -> Update ID 1 to Tue.
-            //    - If I select multiple days -> Update ID 1 to Day A, Create Day B? 
-            //    - Current `payload` logic above applies `editingScheduleId` to ALL items in map. This is WRONG if > 1 day.
-
-            // FIX:
             let schedulesPayload = [];
             if (editingScheduleId) {
-                // We are editing ONE specific schedule.
-                // We update that schedule with the FIRST day in the list (or the one matching).
-                // If user selected multiple days during edit, we ideally treat others as NEW.
-                // But to be safe and simple: limit Edit to single day OR 
-                // simply say: Update the current one. If you want more, add them.
-                // Re-reading promt: "in schedule form also make avialibty of multiple selection of the days"
-                // Let's allow multi-selection. If editing, we UPDATE the current ID with the params, and if extra days are selected, we CREATE them.
-
-                // Which day corresponds to the edit? 
-                // Let's assume the user wants to CLONE this schedule to other days.
-                // So, update the current ID with the form data (taking the first day? or just the ID?)
-                // Actually, if I edit Mon to Tue, I update.
-
-                // Let's simplify: 
-                // If editingScheduleId is present, we update THAT schedule with the form data (Time, Clinic). 
-                // AND we also check the Day. 
-                // If multiple days selected, we can't map one ID to multiple days.
-                // Strategy: 
-                // If Editing: 
-                //   Update the existing record with the FIRST selected day.
-                //   If > 1 day selected, CREATE new records for the others.
-
                 const [firstDay, ...restDays] = scheduleForm.days;
-
                 schedulesPayload.push({
                     schedule_id: editingScheduleId,
                     day_of_week: Number(firstDay),
                     start_time: scheduleForm.start_time,
                     end_time: scheduleForm.end_time,
-                    slot_duration: Number(scheduleForm.slot_duration)
+                    slot_duration: Number(scheduleForm.slot_duration),
+                    effective_to: effectiveTo
                 });
-
                 restDays.forEach(d => {
                     schedulesPayload.push({
                         day_of_week: Number(d),
                         start_time: scheduleForm.start_time,
                         end_time: scheduleForm.end_time,
-                        slot_duration: Number(scheduleForm.slot_duration)
+                        slot_duration: Number(scheduleForm.slot_duration),
+                        effective_to: effectiveTo
                     });
                 });
             } else {
-                // Adding new
                 schedulesPayload = scheduleForm.days.map(day => ({
                     day_of_week: Number(day),
                     start_time: scheduleForm.start_time,
                     end_time: scheduleForm.end_time,
-                    slot_duration: Number(scheduleForm.slot_duration)
+                    slot_duration: Number(scheduleForm.slot_duration),
+                    effective_to: effectiveTo
                 }));
             }
 
@@ -248,7 +199,6 @@ export default function DoctorSchedulePage() {
         }
     };
 
-    // Group schedules by Clinic
     const groupedSchedules = schedules.reduce((acc, curr) => {
         const clinicName = curr.clinic_name || "Unknown";
         if (!acc[clinicName]) acc[clinicName] = [];
@@ -276,7 +226,7 @@ export default function DoctorSchedulePage() {
                 </div>
                 <PremiumButton onClick={() => {
                     setEditingScheduleId(null);
-                    setScheduleForm({ clinic_id: clinics[0]?.clinic_id ? String(clinics[0].clinic_id) : "", days: [], start_time: "09:00", end_time: "17:00", slot_duration: 30 });
+                    setScheduleForm({ clinic_id: clinics[0]?.clinic_id ? String(clinics[0].clinic_id) : "", days: [], start_time: "09:00", end_time: "17:00", slot_duration: 30, durationValue: 1, durationUnit: "Years" });
                     setShowAddModal(true);
                 }} icon={Plus}>
                     Add Schedule
@@ -307,40 +257,51 @@ export default function DoctorSchedulePage() {
                                 {clinicName}
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {items.sort((a, b) => a.day_of_week - b.day_of_week).map((item) => (
-                                    <GlassCard key={item.schedule_id} className="flex flex-col gap-3 group relative">
-                                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                                            <button
-                                                onClick={() => handleEditSchedule(item)}
-                                                className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                                title="Edit Schedule"
-                                            >
-                                                <Clock className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDeleteSchedule(Number(item.schedule_id))}
-                                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                title="Delete Schedule"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                        <div className="flex justify-between items-start">
-                                            <span className="font-bold text-lg text-gray-900">{DAYS[item.day_of_week]}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-gray-600">
-                                            <Clock className="w-4 h-4" />
-                                            <span>{item.start_time} - {item.end_time}</span>
-                                        </div>
-                                    </GlassCard>
-                                ))}
+                                <AnimatePresence mode="popLayout">
+                                    {items.sort((a, b) => a.day_of_week - b.day_of_week).map((item) => (
+                                        <motion.div
+                                            key={item.schedule_id}
+                                            layout
+                                            initial={{ opacity: 0, scale: 0.9 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.9 }}
+                                            transition={{ duration: 0.2 }}
+                                        >
+                                            <GlassCard className="flex flex-col gap-3 group relative h-full hover:shadow-lg transition-shadow duration-300 border border-white/40 bg-white/60">
+                                                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                                                    <button
+                                                        onClick={() => handleEditSchedule(item)}
+                                                        className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                        title="Edit Schedule"
+                                                    >
+                                                        <Clock className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteSchedule(Number(item.schedule_id))}
+                                                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                        title="Delete Schedule"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                                <div className="flex justify-between items-start">
+                                                    <span className="font-bold text-lg text-gray-900">{DAYS[item.day_of_week]}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-gray-600">
+                                                    <Clock className="w-4 h-4" />
+                                                    <span>{item.start_time} - {item.end_time}</span>
+                                                </div>
+                                            </GlassCard>
+                                        </motion.div>
+                                    ))}
+                                </AnimatePresence>
                             </div>
                         </div>
                     ))}
                 </div>
             )}
 
-            {/* Add/Edit Schedule Modal */}
+            {/* Add/Edit Schedule Modal — lives outside the ternary so it renders even when no schedules exist */}
             <AnimatePresence>
                 {showAddModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -354,7 +315,7 @@ export default function DoctorSchedulePage() {
                                         className="input-field"
                                         value={scheduleForm.clinic_id}
                                         onChange={(e) => setScheduleForm({ ...scheduleForm, clinic_id: e.target.value })}
-                                        disabled={!!editingScheduleId} // Maybe lock clinic when editing
+                                        disabled={!!editingScheduleId}
                                     >
                                         <option value="">Select a Clinic</option>
                                         {clinics.map(c => <option key={c.clinic_id} value={c.clinic_id}>{c.clinic_name}</option>)}
@@ -370,8 +331,8 @@ export default function DoctorSchedulePage() {
                                                 type="button"
                                                 onClick={() => handleDayToggle(String(i))}
                                                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${scheduleForm.days.includes(String(i))
-                                                        ? "bg-indigo-600 text-white border-indigo-600"
-                                                        : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
+                                                    ? "bg-indigo-600 text-white border-indigo-600"
+                                                    : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
                                                     }`}
                                             >
                                                 {d.slice(0, 3)}
@@ -399,6 +360,32 @@ export default function DoctorSchedulePage() {
                                             value={scheduleForm.end_time}
                                             onChange={(e) => setScheduleForm({ ...scheduleForm, end_time: e.target.value })}
                                         />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Validity Period</label>
+                                    <div className="flex gap-4">
+                                        <div className="w-1/3">
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                className="input-field"
+                                                value={scheduleForm.durationValue}
+                                                onChange={(e) => setScheduleForm({ ...scheduleForm, durationValue: parseInt(e.target.value) || 1 })}
+                                            />
+                                        </div>
+                                        <div className="w-2/3">
+                                            <select
+                                                className="input-field"
+                                                value={scheduleForm.durationUnit}
+                                                onChange={(e) => setScheduleForm({ ...scheduleForm, durationUnit: e.target.value })}
+                                            >
+                                                <option value="Days">Days</option>
+                                                <option value="Months">Months</option>
+                                                <option value="Years">Years</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

@@ -7,9 +7,12 @@ interface Appointment {
     appointment_id: number;
     created_at: string;
     status: string;
-    patient: { full_name: string; phone: string } | null;
+    symptoms?: string;
+    patient: { full_name: string; phone: string; symptoms?: string } | null;
     slot: { slot_date: string; slot_time: string } | null;
 }
+
+import AppointmentModal from "./AppointmentModal";
 
 export default function DoctorAppointmentsPage() {
     const router = useRouter();
@@ -35,6 +38,8 @@ export default function DoctorAppointmentsPage() {
         if (res.ok) setAppointments(appointments.map((a) => a.appointment_id === appointmentId ? { ...a, status } : a));
     };
 
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
@@ -50,10 +55,31 @@ export default function DoctorAppointmentsPage() {
 
     return (
         <div className="w-full">
-            <motion.div className="mb-10" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
-                <h1 className="text-3xl font-bold text-gray-900">My Appointments</h1>
-                <p className="text-gray-500 mt-1 text-sm">Manage your patient appointments</p>
-            </motion.div>
+            <div className="flex justify-between items-center mb-10">
+                <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
+                    <h1 className="text-3xl font-bold text-gray-900">My Appointments</h1>
+                    <p className="text-gray-500 mt-1 text-sm">Manage your patient appointments</p>
+                </motion.div>
+                <motion.button
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setIsModalOpen(true)}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg shadow-lg shadow-indigo-200 font-medium flex items-center gap-2 hover:bg-indigo-700 transition-colors"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                    </svg>
+                    Add Appointment
+                </motion.button>
+            </div>
+
+            <AppointmentModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                onSuccess={() => { fetchData(); }}
+            />
 
             <motion.div className="glass-card p-7" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                 {appointments.length === 0 ? (
@@ -64,7 +90,7 @@ export default function DoctorAppointmentsPage() {
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="data-table">
-                            <thead><tr><th>Patient</th><th>Phone</th><th>Date & Time</th><th>Status</th><th>Actions</th></tr></thead>
+                            <thead><tr><th>Patient</th><th>Phone</th><th>Symptoms</th><th>Date & Time</th><th>Status</th><th>Actions</th></tr></thead>
                             <tbody>
                                 {appointments.map((apt, i) => (
                                     <motion.tr key={apt.appointment_id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + i * 0.05 }}>
@@ -77,6 +103,9 @@ export default function DoctorAppointmentsPage() {
                                             </div>
                                         </td>
                                         <td className="text-gray-500">{apt.patient?.phone || "N/A"}</td>
+                                        <td className="text-gray-500 max-w-[150px] truncate" title={apt.symptoms || apt.patient?.symptoms || ""}>
+                                            {apt.symptoms || apt.patient?.symptoms || "-"}
+                                        </td>
                                         <td className="text-gray-500">
                                             {apt.slot?.slot_date
                                                 ? new Date(apt.slot.slot_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -93,9 +122,6 @@ export default function DoctorAppointmentsPage() {
                                                         <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "CONFIRMED")} className="text-xs text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Confirm</motion.button>
                                                         <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "CANCELLED")} className="text-xs text-red-500 hover:bg-red-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Cancel</motion.button>
                                                     </>
-                                                )}
-                                                {apt.status === "CONFIRMED" && (
-                                                    <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "COMPLETED")} className="text-xs text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Complete</motion.button>
                                                 )}
                                                 {apt.status === "CONFIRMED" && (
                                                     <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "COMPLETED")} className="text-xs text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Complete</motion.button>
