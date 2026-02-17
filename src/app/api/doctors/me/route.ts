@@ -29,6 +29,11 @@ export async function GET(req: Request) {
                             select: { email: true } // maybe?
                         }
                     }
+                },
+                clinics: {
+                    include: {
+                        schedules: true
+                    }
                 }
             }
         });

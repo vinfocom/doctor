@@ -56,6 +56,7 @@ export async function POST(request: Request) {
             });
         }
 
+
         const appointment = await prisma.appointment.create({
             data: {
                 patient_id: patient.patient_id,
@@ -74,6 +75,29 @@ export async function POST(request: Request) {
         console.error('Error creating appointment:', error);
         return NextResponse.json(
             { error: 'Failed to create appointment' },
+            { status: 500 }
+        );
+    }
+}
+
+export async function DELETE(request: Request) {
+    try {
+        const { searchParams } = new URL(request.url);
+        const appointmentId = searchParams.get("appointmentId");
+
+        if (!appointmentId) {
+            return NextResponse.json({ error: "Appointment ID required" }, { status: 400 });
+        }
+
+        await prisma.appointment.delete({
+            where: { appointment_id: Number(appointmentId) }
+        });
+
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting appointment:', error);
+        return NextResponse.json(
+            { error: 'Failed to delete appointment' },
             { status: 500 }
         );
     }

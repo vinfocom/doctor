@@ -48,9 +48,10 @@ export default function DashboardSidebar({ role, userName }: SidebarProps) {
         ],
         DOCTOR: [
             { href: "/dashboard/doctor", label: "Overview", icon: <LayoutDashboard size={20} /> },
-            { href: "/dashboard/doctor/appointments", label: "My Appointments", icon: <Calendar size={20} /> },
+           
             { href: "/dashboard/doctor/clinics", label: "My Clinics", icon: <Building2 size={20} /> },
             { href: "/dashboard/doctor/schedule", label: "Schedule", icon: <Clock size={20} /> },
+             { href: "/dashboard/doctor/appointments", label: "My Appointments", icon: <Calendar size={20} /> },
             { href: "/dashboard/doctor/profile", label: "Profile", icon: <UserPlus size={20} /> },
         ],
     };

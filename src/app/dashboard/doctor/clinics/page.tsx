@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Trash2, MapPin, Phone, Building2 } from "lucide-react";
+import { Plus, Trash2, MapPin, Phone, Building2, Pencil } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { PremiumButton } from "@/components/ui/PremiumButton";
 
@@ -18,11 +18,31 @@ export default function ClinicsPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [showForm, setShowForm] = useState(false);
+
     const [formData, setFormData] = useState({
         clinic_name: "",
         location: "",
-        phone: ""
+        phone: "",
+        status: "ACTIVE",
+        schedule: [] as { day_of_week: number; start_time: string; end_time: string; slot_duration: number }[]
     });
+    const [scheduleForm, setScheduleForm] = useState({
+        days: [] as number[],
+        start_time: "09:00",
+        end_time: "17:00",
+        slot_duration: 30
+    });
+
+    const daysOfWeek = [
+        { id: 1, label: "Mon" },
+        { id: 2, label: "Tue" },
+        { id: 3, label: "Wed" },
+        { id: 4, label: "Thu" },
+        { id: 5, label: "Fri" },
+        { id: 6, label: "Sat" },
+        { id: 0, label: "Sun" },
+    ];
+
     const [editingClinicId, setEditingClinicId] = useState<number | null>(null);
 
     useEffect(() => {
@@ -46,18 +66,68 @@ export default function ClinicsPage() {
         }
     };
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
-    const handleEditClinic = (clinic: Clinic) => {
+    const handleDayToggle = (dayId: number) => {
+        setScheduleForm(prev => {
+            const days = prev.days.includes(dayId)
+                ? prev.days.filter(d => d !== dayId)
+                : [...prev.days, dayId];
+            return { ...prev, days };
+        });
+    };
+
+    const handleScheduleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setScheduleForm(prev => ({
+            ...prev,
+            [name]: name === 'slot_duration' ? Number(value) : value
+        }));
+    };
+
+    const handleEditClinic = async (clinic: Clinic) => {
         setEditingClinicId(clinic.clinic_id);
         setFormData({
             clinic_name: clinic.clinic_name,
             location: clinic.location,
-            phone: clinic.phone || ""
+            phone: clinic.phone || "",
+            status: clinic.status || "ACTIVE",
+            schedule: []
         });
+
+        try {
+            const res = await fetch(`/api/schedule?clinicId=${clinic.clinic_id}`);
+            if (res.ok) {
+                const data = await res.json();
+                const schedules = data.schedules || [];
+
+                if (schedules.length > 0) {
+                    const first = schedules[0];
+                    const days = schedules.map((s: any) => s.day_of_week);
+
+                    const parseTime = (time: string | null | undefined) => {
+                        if (!time) return "09:00";
+                        const timeStr = String(time);
+                        return timeStr.includes("T") ? timeStr.split("T")[1].slice(0, 5) : timeStr.slice(0, 5);
+                    };
+
+                    setScheduleForm({
+                        days: days,
+                        start_time: parseTime(first.start_time),
+                        end_time: parseTime(first.end_time),
+                        slot_duration: Number(first.slot_duration) || 30
+                    });
+                } else {
+                    setScheduleForm({ days: [], start_time: "09:00", end_time: "17:00", slot_duration: 30 });
+                }
+            }
+        } catch (e) {
+            console.error("Failed to fetch clinic schedule", e);
+        }
+
         setShowForm(true);
         setError("");
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -67,24 +137,35 @@ export default function ClinicsPage() {
         e.preventDefault();
         setError("");
 
+        const payload = {
+            ...formData,
+            schedule: scheduleForm.days.map(day => ({
+                day_of_week: day,
+                start_time: scheduleForm.start_time,
+                end_time: scheduleForm.end_time,
+                slot_duration: scheduleForm.slot_duration
+            }))
+        };
+
         try {
             let res;
             if (editingClinicId) {
                 res = await fetch(`/api/clinics/${editingClinicId}`, {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(formData),
+                    body: JSON.stringify(payload),
                 });
             } else {
                 res = await fetch("/api/clinics", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(formData),
+                    body: JSON.stringify(payload),
                 });
             }
 
             if (res.ok) {
-                setFormData({ clinic_name: "", location: "", phone: "" });
+                setFormData({ clinic_name: "", location: "", phone: "", status: "ACTIVE", schedule: [] });
+                setScheduleForm({ days: [], start_time: "09:00", end_time: "17:00", slot_duration: 30 });
                 setShowForm(false);
                 setEditingClinicId(null);
                 fetchClinics();
@@ -133,7 +214,8 @@ export default function ClinicsPage() {
                 </div>
                 <PremiumButton onClick={() => {
                     setEditingClinicId(null);
-                    setFormData({ clinic_name: "", location: "", phone: "" });
+                    setFormData({ clinic_name: "", location: "", phone: "", status: "ACTIVE", schedule: [] });
+                    setScheduleForm({ days: [], start_time: "09:00", end_time: "17:00", slot_duration: 30 });
                     setShowForm(!showForm);
                 }} icon={Plus}>
                     {showForm && !editingClinicId ? "Close Form" : "Add New Clinic"}
@@ -178,23 +260,103 @@ export default function ClinicsPage() {
                                 />
                             </div>
                         </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-600">Location</label>
-                            <input
-                                type="text"
-                                name="location"
-                                value={formData.location}
-                                onChange={handleInputChange}
-                                required
-                                className="input-field"
-                                placeholder="Full address of the clinic"
-                            />
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-600">Location</label>
+                                <input
+                                    type="text"
+                                    name="location"
+                                    value={formData.location}
+                                    onChange={handleInputChange}
+                                    required
+                                    className="input-field"
+                                    placeholder="Full address of the clinic"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-600">Status</label>
+                                <select
+                                    name="status"
+                                    value={formData.status}
+                                    onChange={handleInputChange}
+                                    className="input-field"
+                                >
+                                    <option value="ACTIVE">Active</option>
+                                    <option value="INACTIVE">Inactive</option>
+                                </select>
+                            </div>
                         </div>
+
+                        {/* Schedule Section - Shows for both new and edit */}
+                        <div className="space-y-4 border-t border-gray-100 pt-6">
+                            <h3 className="text-lg font-medium text-gray-900">
+                                {editingClinicId ? "Update Schedule" : "Initial Schedule"}
+                            </h3>
+                            <p className="text-sm text-gray-500">Set your availability for this clinic.</p>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-600">Available Days</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {daysOfWeek.map(day => (
+                                        <button
+                                            key={day.id}
+                                            type="button"
+                                            onClick={() => handleDayToggle(day.id)}
+                                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${scheduleForm.days.includes(day.id)
+                                                ? "bg-indigo-600 text-white border-indigo-600"
+                                                : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
+                                                }`}
+                                        >
+                                            {day.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-gray-600">Start Time</label>
+                                    <input
+                                        type="time"
+                                        name="start_time"
+                                        value={scheduleForm.start_time}
+                                        onChange={handleScheduleChange}
+                                        className="input-field"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-gray-600">End Time</label>
+                                    <input
+                                        type="time"
+                                        name="end_time"
+                                        value={scheduleForm.end_time}
+                                        onChange={handleScheduleChange}
+                                        className="input-field"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-gray-600">Slot Duration (mins)</label>
+                                    <input
+                                        type="number"
+                                        name="slot_duration"
+                                        value={scheduleForm.slot_duration}
+                                        onChange={handleScheduleChange}
+                                        min="5"
+                                        step="5"
+                                        className="input-field"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Buttons */}
                         <div className="flex justify-end gap-3 pt-4">
                             <PremiumButton type="button" variant="ghost" onClick={() => {
                                 setShowForm(false);
                                 setEditingClinicId(null);
-                                setFormData({ clinic_name: "", location: "", phone: "" });
+                                setFormData({ clinic_name: "", location: "", phone: "", status: "ACTIVE", schedule: [] });
+                                setScheduleForm({ days: [], start_time: "09:00", end_time: "17:00", slot_duration: 30 });
                             }}>
                                 Cancel
                             </PremiumButton>
@@ -213,12 +375,14 @@ export default function ClinicsPage() {
                             <button
                                 onClick={() => handleEditClinic(clinic)}
                                 className="p-2 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors"
+                                title="Edit clinic"
                             >
-                                <Building2 className="w-4 h-4" /> {/* Reusing icon for edit momentarily until we import Edit icon, or just using text implies edit */}
+                                <Pencil className="w-4 h-4" />
                             </button>
                             <button
                                 onClick={() => handleDelete(clinic.clinic_id)}
                                 className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Delete clinic"
                             >
                                 <Trash2 className="w-4 h-4" />
                             </button>
@@ -232,7 +396,11 @@ export default function ClinicsPage() {
                                 <h3 className="text-lg font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">
                                     {clinic.clinic_name}
                                 </h3>
-                                <span className="inline-flex items-center px-2 py-1 mt-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                <span className={`inline-flex items-center px-2 py-1 mt-1 rounded-md text-xs font-medium border ${
+                                    clinic.status === "ACTIVE" 
+                                        ? "bg-emerald-50 text-emerald-600 border-emerald-200"
+                                        : "bg-gray-50 text-gray-600 border-gray-200"
+                                }`}>
                                     {clinic.status}
                                 </span>
                             </div>

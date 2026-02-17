@@ -36,11 +36,12 @@ export default function DoctorSchedulePage() {
 
     // Modal State
     const [showAddModal, setShowAddModal] = useState(false);
-    const [newSchedule, setNewSchedule] = useState({
+    const [scheduleForm, setScheduleForm] = useState({
         clinic_id: "",
-        day_of_week: "1",
+        days: [] as string[],
         start_time: "09:00",
-        end_time: "17:00"
+        end_time: "17:00",
+        slot_duration: 30
     });
 
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -88,21 +89,41 @@ export default function DoctorSchedulePage() {
 
     const handleEditSchedule = (schedule: ScheduleItem) => {
         setEditingScheduleId(schedule.schedule_id || null);
-        setNewSchedule({
+        setScheduleForm({
             clinic_id: String(schedule.clinic_id),
-            day_of_week: String(schedule.day_of_week),
+            days: [String(schedule.day_of_week)],
             start_time: schedule.start_time,
-            end_time: schedule.end_time
+            end_time: schedule.end_time,
+            slot_duration: 30 // Default or fetch if available
         });
         setShowAddModal(true);
         setMessage(null);
     };
 
+    const handleDeleteSchedule = async (id: number) => {
+        if (!confirm("Are you sure you want to delete this schedule?")) return;
+
+        try {
+            const res = await fetch(`/api/schedule?scheduleId=${id}`, { method: "DELETE" });
+            if (res.ok) {
+                fetchSchedules();
+            } else {
+                alert("Failed to delete schedule");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error deleting schedule");
+        }
+    };
+
     const handleSaveSchedule = async () => {
-        if (!user?.doctor_id || !newSchedule.clinic_id) return;
+        if (!user?.doctor_id || !scheduleForm.clinic_id || scheduleForm.days.length === 0) {
+            setMessage({ type: "error", text: "Please fill all fields" });
+            return;
+        }
 
         // Validation
-        if (newSchedule.start_time >= newSchedule.end_time) {
+        if (scheduleForm.start_time >= scheduleForm.end_time) {
             setMessage({ type: "error", text: "Start time must be before end time" });
             return;
         }
@@ -112,20 +133,102 @@ export default function DoctorSchedulePage() {
 
         try {
             const payload = {
-                clinicId: Number(newSchedule.clinic_id),
+                clinicId: Number(scheduleForm.clinic_id),
                 doctorId: user.doctor_id,
-                schedules: [{
-                    schedule_id: editingScheduleId, // Include ID if editing
-                    day_of_week: Number(newSchedule.day_of_week),
-                    start_time: newSchedule.start_time,
-                    end_time: newSchedule.end_time,
-                }]
+                schedules: scheduleForm.days.map(day => ({
+                    schedule_id: editingScheduleId, // Include if editing (only valid if single day select, but works for replace logic if we changed handleEdit)
+                    // Note: If editing, we usually edit one item. 
+                    // If we support multi-select in edit, it implies creating new ones or updating multiple.
+                    // For now, let's assume 'Add' supports multi, 'Edit' supports single usually, but our form is generic.
+                    // If editing, we probably should disable day selection or handle it carefully.
+                    // For simplicity: If editing, we update the CURRENT schedule ID with the NEW values.
+                    // If user selects MULTIPLE days during EDIT, we might be creating new ones? 
+                    // Let's stick to: Edit = Update 1 item. Add = Create multiple.
+                    day_of_week: Number(day),
+                    start_time: scheduleForm.start_time,
+                    end_time: scheduleForm.end_time,
+                    slot_duration: Number(scheduleForm.slot_duration)
+                }))
             };
+
+            // Refinement: If editing, and user selected multiple days, it's ambiguous.
+            // Requirement from prompt: "make it avialble like in clinic part" -> implies multi-select.
+            // If I edit Monday and add Tuesday, do I update Monday and Create Tuesday?
+            // backend PATCH logic iterates. If I pass schedule_id, it updates. If not, creates.
+            // BUT, if I edit ID 1 (Mon), and select Mon + Tue in UI. 
+            // Payload should be: [{id: 1, day: Mon...}, {day: Tue...}].
+            // My default UI state when editing is [Mon]. 
+            // If I click Tue, `scheduleForm.days` becomes [Mon, Tue].
+            // If I map this, I need to know which day corresponds to the ID.
+            // This is complex. 
+            // Simplified Logic: 
+            // 1. If Adding: Map all days to new objects (no ID).
+            // 2. If Editing: 
+            //    - If I change the day from Mon to Tue -> Update ID 1 to Tue.
+            //    - If I select multiple days -> Update ID 1 to Day A, Create Day B? 
+            //    - Current `payload` logic above applies `editingScheduleId` to ALL items in map. This is WRONG if > 1 day.
+
+            // FIX:
+            let schedulesPayload = [];
+            if (editingScheduleId) {
+                // We are editing ONE specific schedule.
+                // We update that schedule with the FIRST day in the list (or the one matching).
+                // If user selected multiple days during edit, we ideally treat others as NEW.
+                // But to be safe and simple: limit Edit to single day OR 
+                // simply say: Update the current one. If you want more, add them.
+                // Re-reading promt: "in schedule form also make avialibty of multiple selection of the days"
+                // Let's allow multi-selection. If editing, we UPDATE the current ID with the params, and if extra days are selected, we CREATE them.
+
+                // Which day corresponds to the edit? 
+                // Let's assume the user wants to CLONE this schedule to other days.
+                // So, update the current ID with the form data (taking the first day? or just the ID?)
+                // Actually, if I edit Mon to Tue, I update.
+
+                // Let's simplify: 
+                // If editingScheduleId is present, we update THAT schedule with the form data (Time, Clinic). 
+                // AND we also check the Day. 
+                // If multiple days selected, we can't map one ID to multiple days.
+                // Strategy: 
+                // If Editing: 
+                //   Update the existing record with the FIRST selected day.
+                //   If > 1 day selected, CREATE new records for the others.
+
+                const [firstDay, ...restDays] = scheduleForm.days;
+
+                schedulesPayload.push({
+                    schedule_id: editingScheduleId,
+                    day_of_week: Number(firstDay),
+                    start_time: scheduleForm.start_time,
+                    end_time: scheduleForm.end_time,
+                    slot_duration: Number(scheduleForm.slot_duration)
+                });
+
+                restDays.forEach(d => {
+                    schedulesPayload.push({
+                        day_of_week: Number(d),
+                        start_time: scheduleForm.start_time,
+                        end_time: scheduleForm.end_time,
+                        slot_duration: Number(scheduleForm.slot_duration)
+                    });
+                });
+            } else {
+                // Adding new
+                schedulesPayload = scheduleForm.days.map(day => ({
+                    day_of_week: Number(day),
+                    start_time: scheduleForm.start_time,
+                    end_time: scheduleForm.end_time,
+                    slot_duration: Number(scheduleForm.slot_duration)
+                }));
+            }
 
             const res = await fetch("/api/schedule", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({
+                    clinicId: Number(scheduleForm.clinic_id),
+                    doctorId: user.doctor_id,
+                    schedules: schedulesPayload
+                })
             });
 
             const data = await res.json();
@@ -135,10 +238,6 @@ export default function DoctorSchedulePage() {
                 setShowAddModal(false);
                 fetchSchedules();
                 setEditingScheduleId(null);
-                if (!editingScheduleId) {
-                    // Reset form only if adding new, or maybe always reset? 
-                    // Let's reset but keep clinic for convenience if adding multiple
-                }
             } else {
                 setMessage({ type: "error", text: data.error || "Failed to save schedule" });
             }
@@ -157,6 +256,15 @@ export default function DoctorSchedulePage() {
         return acc;
     }, {} as Record<string, ScheduleItem[]>);
 
+    const handleDayToggle = (dayIndex: string) => {
+        setScheduleForm(prev => {
+            const days = prev.days.includes(dayIndex)
+                ? prev.days.filter(d => d !== dayIndex)
+                : [...prev.days, dayIndex];
+            return { ...prev, days };
+        });
+    };
+
     if (loading) return <div className="p-10 text-center">Loading...</div>;
 
     return (
@@ -168,7 +276,7 @@ export default function DoctorSchedulePage() {
                 </div>
                 <PremiumButton onClick={() => {
                     setEditingScheduleId(null);
-                    setNewSchedule({ ...newSchedule, start_time: "09:00", end_time: "17:00" }); // Reset times but keep clinic/day maybe? Or full reset.
+                    setScheduleForm({ clinic_id: clinics[0]?.clinic_id ? String(clinics[0].clinic_id) : "", days: [], start_time: "09:00", end_time: "17:00", slot_duration: 30 });
                     setShowAddModal(true);
                 }} icon={Plus}>
                     Add Schedule
@@ -200,19 +308,25 @@ export default function DoctorSchedulePage() {
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {items.sort((a, b) => a.day_of_week - b.day_of_week).map((item) => (
-                                    <GlassCard key={item.schedule_id} className="flex flex-col gap-3 group">
+                                    <GlassCard key={item.schedule_id} className="flex flex-col gap-3 group relative">
+                                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                                            <button
+                                                onClick={() => handleEditSchedule(item)}
+                                                className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                title="Edit Schedule"
+                                            >
+                                                <Clock className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteSchedule(Number(item.schedule_id))}
+                                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                title="Delete Schedule"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                         <div className="flex justify-between items-start">
                                             <span className="font-bold text-lg text-gray-900">{DAYS[item.day_of_week]}</span>
-                                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button
-                                                    onClick={() => handleEditSchedule(item)}
-                                                    className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                                    title="Edit Schedule"
-                                                >
-                                                    <Clock className="w-4 h-4" />
-                                                </button>
-                                                {/* Future: Delete button */}
-                                            </div>
                                         </div>
                                         <div className="flex items-center gap-2 text-gray-600">
                                             <Clock className="w-4 h-4" />
@@ -238,8 +352,9 @@ export default function DoctorSchedulePage() {
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Clinic</label>
                                     <select
                                         className="input-field"
-                                        value={newSchedule.clinic_id}
-                                        onChange={(e) => setNewSchedule({ ...newSchedule, clinic_id: e.target.value })}
+                                        value={scheduleForm.clinic_id}
+                                        onChange={(e) => setScheduleForm({ ...scheduleForm, clinic_id: e.target.value })}
+                                        disabled={!!editingScheduleId} // Maybe lock clinic when editing
                                     >
                                         <option value="">Select a Clinic</option>
                                         {clinics.map(c => <option key={c.clinic_id} value={c.clinic_id}>{c.clinic_name}</option>)}
@@ -247,14 +362,23 @@ export default function DoctorSchedulePage() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Day of Week</label>
-                                    <select
-                                        className="input-field"
-                                        value={newSchedule.day_of_week}
-                                        onChange={(e) => setNewSchedule({ ...newSchedule, day_of_week: e.target.value })}
-                                    >
-                                        {DAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
-                                    </select>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Days</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {DAYS.map((d, i) => (
+                                            <button
+                                                key={i}
+                                                type="button"
+                                                onClick={() => handleDayToggle(String(i))}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${scheduleForm.days.includes(String(i))
+                                                        ? "bg-indigo-600 text-white border-indigo-600"
+                                                        : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
+                                                    }`}
+                                            >
+                                                {d.slice(0, 3)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {scheduleForm.days.length === 0 && <p className="text-xs text-red-500 mt-1">Select at least one day</p>}
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
@@ -263,8 +387,8 @@ export default function DoctorSchedulePage() {
                                         <input
                                             type="time"
                                             className="input-field"
-                                            value={newSchedule.start_time}
-                                            onChange={(e) => setNewSchedule({ ...newSchedule, start_time: e.target.value })}
+                                            value={scheduleForm.start_time}
+                                            onChange={(e) => setScheduleForm({ ...scheduleForm, start_time: e.target.value })}
                                         />
                                     </div>
                                     <div>
@@ -272,8 +396,8 @@ export default function DoctorSchedulePage() {
                                         <input
                                             type="time"
                                             className="input-field"
-                                            value={newSchedule.end_time}
-                                            onChange={(e) => setNewSchedule({ ...newSchedule, end_time: e.target.value })}
+                                            value={scheduleForm.end_time}
+                                            onChange={(e) => setScheduleForm({ ...scheduleForm, end_time: e.target.value })}
                                         />
                                     </div>
                                 </div>

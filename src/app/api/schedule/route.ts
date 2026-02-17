@@ -167,3 +167,23 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
+
+export async function DELETE(req: Request) {
+    try {
+        const { searchParams } = new URL(req.url);
+        const scheduleId = searchParams.get("scheduleId");
+
+        if (!scheduleId) {
+            return NextResponse.json({ error: "Schedule ID required" }, { status: 400 });
+        }
+
+        await prisma.doctor_clinic_schedule.delete({
+            where: { schedule_id: Number(scheduleId) }
+        });
+
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error("Error deleting schedule:", error);
+        return NextResponse.json({ error: "Failed to delete schedule" }, { status: 500 });
+    }
+}

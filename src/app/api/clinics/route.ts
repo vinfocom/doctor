@@ -68,6 +68,7 @@ export async function GET(req: Request) {
     }
 }
 
+
 export async function POST(request: Request) {
     const cookieStore = await cookies();
     const token = cookieStore.get("token")?.value;
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
 
     try {
         const body = await request.json();
-        const { clinic_name, phone, location } = body;
+        const { clinic_name, phone, location, status, schedule } = body; // Destructure schedule
         let admin_id = body.admin_id;
         let doctor_id: number | null = null;
 
@@ -104,7 +105,6 @@ export async function POST(request: Request) {
             if (!admin) return NextResponse.json({ error: "Admin profile not found" }, { status: 404 });
             admin_id = admin.admin_id;
         } else if (user.role === "SUPER_ADMIN") {
-            // If admin_id is passed, use it. If not, map to Super Admin's own admin profile if exists
             if (!admin_id) {
                 const admin = await prisma.admins.findUnique({
                     where: { user_id: user.userId },
@@ -118,18 +118,41 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Admin ID required" }, { status: 400 });
         }
 
-        const clinic = await prisma.clinics.create({
-            data: {
-                clinic_name,
-                phone,
-                location,
-                admin_id: Number(admin_id),
-                doctor_id: doctor_id, // Link to doctor if created by doctor
-                status: 'ACTIVE'
-            },
+        // Use transaction to create clinic and schedules
+        const result = await prisma.$transaction(async (tx) => {
+            const clinic = await tx.clinics.create({
+                data: {
+                    clinic_name,
+                    phone,
+                    location,
+                    admin_id: Number(admin_id),
+                    doctor_id: doctor_id,
+                    status: status || 'ACTIVE'
+                },
+            });
+
+            if (schedule && Array.isArray(schedule) && schedule.length > 0 && doctor_id) {
+                const scheduleData = schedule.map((s: any) => ({
+                    doctor_id: doctor_id,
+                    clinic_id: clinic.clinic_id,
+                    admin_id: Number(admin_id),
+                    day_of_week: s.day_of_week,
+                    start_time: new Date(`1970-01-01T${s.start_time}:00`), // Assuming HH:mm format
+                    end_time: new Date(`1970-01-01T${s.end_time}:00`),
+                    slot_duration: Number(s.slot_duration),
+                    effective_from: new Date(), // Immediate effect
+                    effective_to: new Date(new Date().setFullYear(new Date().getFullYear() + 1)) // Valid for 1 year
+                }));
+
+                await tx.doctor_clinic_schedule.createMany({
+                    data: scheduleData
+                });
+            }
+
+            return clinic;
         });
 
-        return NextResponse.json(clinic);
+        return NextResponse.json(result);
     } catch (error) {
         console.error('Error creating clinic:', error);
         return NextResponse.json(

@@ -97,6 +97,22 @@ export default function DoctorAppointmentsPage() {
                                                 {apt.status === "CONFIRMED" && (
                                                     <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "COMPLETED")} className="text-xs text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Complete</motion.button>
                                                 )}
+                                                {apt.status === "CONFIRMED" && (
+                                                    <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "COMPLETED")} className="text-xs text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Complete</motion.button>
+                                                )}
+                                                <motion.button
+                                                    onClick={async () => {
+                                                        if (!confirm("Are you sure you want to delete this appointment?")) return;
+                                                        const res = await fetch(`/api/appointments?appointmentId=${apt.appointment_id}`, { method: "DELETE" });
+                                                        if (res.ok) setAppointments(appointments.filter(a => a.appointment_id !== apt.appointment_id));
+                                                    }}
+                                                    className="text-xs text-gray-500 hover:bg-gray-100 px-2 py-1 rounded-lg font-medium transition-colors"
+                                                    whileHover={{ scale: 1.05 }}
+                                                    whileTap={{ scale: 0.95 }}
+                                                    title="Delete"
+                                                >
+                                                    Delete
+                                                </motion.button>
                                             </div>
                                         </td>
                                     </motion.tr>
