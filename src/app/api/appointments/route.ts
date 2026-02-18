@@ -96,7 +96,7 @@ export async function POST(request: Request) {
             // Check if slot exists or create it
             // Parse date and time
             const dateObj = new Date(slot_date);
-            const timeObj = new Date(`1970-01-01T${slot_time}`); // Adjust format as needed
+            const timeObj = new Date(`1970-01-01T${slot_time}:00Z`); // Adjust format as needed
 
 
             // Try to find existing slot

@@ -232,8 +232,8 @@ export default function DoctorProfilePage() {
                                                         <div className="flex items-center gap-1 text-gray-500 bg-gray-50 px-2 py-1 rounded-md">
                                                             <Clock className="w-3 h-3" />
                                                             <span>
-                                                                {new Date(sch.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} -
-                                                                {new Date(sch.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                {new Date(sch.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} -
+                                                                {new Date(sch.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}
                                                             </span>
                                                         </div>
                                                     </div>

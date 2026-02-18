@@ -70,12 +70,9 @@ export async function PATCH(req: Request) {
             return NextResponse.json({ error: "doctorId is required" }, { status: 400 });
         }
 
-        // Helper to convert HH:mm to Date for comparison (using arbitrary date)
+        // Helper to convert HH:mm to Date for comparison (using 1970-01-01 UTC)
         const toDate = (timeStr: string) => {
-            const date = new Date();
-            const [hours, minutes] = timeStr.split(':');
-            date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-            return date;
+            return new Date(`1970-01-01T${timeStr}:00Z`);
         };
 
         // Process sequentially
@@ -108,12 +105,12 @@ export async function PATCH(req: Request) {
             const hasOverlap = existingSchedules.some(existing => {
                 if (!existing.start_time || !existing.end_time) return false;
 
-                // Create Date objects for existing times on the same arbitrary reference date
-                const existingStart = new Date();
-                existingStart.setHours(existing.start_time.getHours(), existing.start_time.getMinutes(), 0, 0);
+                // Create Date objects for existing times on the same arbitrary reference date (1970-01-01 UTC)
+                const existingStart = new Date(0);
+                existingStart.setUTCHours(existing.start_time.getUTCHours(), existing.start_time.getUTCMinutes(), 0, 0);
 
-                const existingEnd = new Date();
-                existingEnd.setHours(existing.end_time.getHours(), existing.end_time.getMinutes(), 0, 0);
+                const existingEnd = new Date(0);
+                existingEnd.setUTCHours(existing.end_time.getUTCHours(), existing.end_time.getUTCMinutes(), 0, 0);
 
                 // Overlap condition: (StartA < EndB) and (EndA > StartB)
                 return (start < existingEnd && end > existingStart);

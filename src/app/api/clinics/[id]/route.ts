@@ -59,8 +59,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
                         clinic_id: clinicId,
                         admin_id: existingClinic.admin_id,
                         day_of_week: s.day_of_week,
-                        start_time: new Date(`1970-01-01T${s.start_time}:00`),
-                        end_time: new Date(`1970-01-01T${s.end_time}:00`),
+                        start_time: new Date(`1970-01-01T${s.start_time}:00Z`),
+                        end_time: new Date(`1970-01-01T${s.end_time}:00Z`),
                         slot_duration: Number(s.slot_duration),
                         effective_from: new Date(),
                         effective_to: new Date(new Date().setFullYear(new Date().getFullYear() + 1))

@@ -137,8 +137,8 @@ export async function POST(request: Request) {
                     clinic_id: clinic.clinic_id,
                     admin_id: Number(admin_id),
                     day_of_week: s.day_of_week,
-                    start_time: new Date(`1970-01-01T${s.start_time}:00`), // Assuming HH:mm format
-                    end_time: new Date(`1970-01-01T${s.end_time}:00`),
+                    start_time: new Date(`1970-01-01T${s.start_time}:00Z`), // Assuming HH:mm format
+                    end_time: new Date(`1970-01-01T${s.end_time}:00Z`),
                     slot_duration: Number(s.slot_duration),
                     effective_from: new Date(), // Immediate effect
                     effective_to: new Date(new Date().setFullYear(new Date().getFullYear() + 1)) // Valid for 1 year
