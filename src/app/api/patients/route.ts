@@ -54,7 +54,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { full_name, age, gender, phone, reason, symptoms, patient_type } = body;
+        const { full_name, age, gender, phone, reason, mode, patient_type } = body;
 
         let admin_id: number | null = null;
         let doctor_id: number | null = null;
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
                 gender,
                 phone,
                 reason,
-                symptoms,
+                mode,
                 patient_type,
                 admin_id,
                 doctor_id

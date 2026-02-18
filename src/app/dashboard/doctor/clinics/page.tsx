@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { PremiumButton } from "@/components/ui/PremiumButton";
+import { formatTime } from "@/lib/timeUtils";
+import { Button } from "@/components/ui/moving-border";
 
 interface Clinic {
     clinic_id: number;
@@ -132,11 +134,7 @@ export default function ClinicsPage() {
             const days = schedules.map((s: any) => s.day_of_week);
 
             // Safely handle time parsing
-            const parseTime = (time: string | null | undefined) => {
-                if (!time) return "09:00";
-                const timeStr = String(time);
-                return timeStr.includes("T") ? timeStr.split("T")[1].slice(0, 5) : timeStr.slice(0, 5);
-            };
+            const parseTime = (time: string | null | undefined) => formatTime(time);
 
             setScheduleForm({
                 days: days,
@@ -154,11 +152,7 @@ export default function ClinicsPage() {
                     if (fetchedSchedules.length > 0) {
                         const first = fetchedSchedules[0];
                         const days = fetchedSchedules.map((s: any) => s.day_of_week);
-                        const parseTime = (time: string | null | undefined) => {
-                            if (!time) return "09:00";
-                            const timeStr = String(time);
-                            return timeStr.includes("T") ? timeStr.split("T")[1].slice(0, 5) : timeStr.slice(0, 5);
-                        };
+                        const parseTime = (time: string | null | undefined) => formatTime(time);
 
                         setScheduleForm({
                             days: days,
@@ -427,8 +421,8 @@ export default function ClinicsPage() {
                                             type="button"
                                             onClick={() => handleDayToggle(day.id)}
                                             className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 border shadow-sm ${scheduleForm.days.includes(day.id)
-                                                    ? "bg-indigo-600 text-white border-indigo-600 shadow-indigo-200"
-                                                    : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:shadow-md"
+                                                ? "bg-indigo-600 text-white border-indigo-600 shadow-indigo-200"
+                                                : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:shadow-md"
                                                 }`}
                                         >
                                             {day.label}
@@ -437,7 +431,8 @@ export default function ClinicsPage() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+                            <div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium text-gray-600 flex items-center gap-2">
                                         <Clock className="w-4 h-4" /> Start Time
@@ -474,6 +469,11 @@ export default function ClinicsPage() {
                                         className="input-field"
                                     />
                                 </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-4">
+                                <Button className="bg-transparent text-black">Add Schedule</Button>
+                            </div>
                             </div>
                         </div>
 
@@ -524,8 +524,8 @@ export default function ClinicsPage() {
                                 </h3>
                                 <div className="flex items-center gap-2 mt-1">
                                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${clinic.status === "ACTIVE"
-                                            ? "bg-emerald-50 text-emerald-600 border-emerald-200"
-                                            : "bg-gray-50 text-gray-600 border-gray-200"
+                                        ? "bg-emerald-50 text-emerald-600 border-emerald-200"
+                                        : "bg-gray-50 text-gray-600 border-gray-200"
                                         }`}>
                                         {clinic.status}
                                     </span>
@@ -563,7 +563,7 @@ export default function ClinicsPage() {
                                             <div key={i} className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded-lg">
                                                 <span className="font-medium text-gray-700">{getDayName(sch.day_of_week)}</span>
                                                 <span className="text-gray-500">
-                                                    {String(sch.start_time).slice(11, 16)} - {String(sch.end_time).slice(11, 16)}
+                                                    {formatTime(sch.start_time)} - {formatTime(sch.end_time)}
                                                 </span>
                                             </div>
                                         ))

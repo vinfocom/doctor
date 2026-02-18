@@ -3,8 +3,9 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { GlassCard } from "@/components/ui/GlassCard";
-import { User, Phone, MessageCircle, Activity, Loader2, Save, MapPin, Building2, Clock } from "lucide-react";
+import { User, Phone, MessageCircle, Activity, Loader2, Save, MapPin, Building2, Clock, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { formatTime } from "@/lib/timeUtils";
 
 interface Schedule {
     day_of_week: number;
@@ -21,11 +22,19 @@ interface Clinic {
     schedules: Schedule[];
 }
 
+
+interface DoctorWhatsappNumber {
+    id?: number;
+    whatsapp_number: string;
+    is_primary: boolean;
+}
+
 interface DoctorProfile {
     doctor_id: number;
     doctor_name: string;
     phone: string;
     whatsapp_number: string;
+    whatsapp_numbers?: DoctorWhatsappNumber[];
     status: string;
     clinics: Clinic[];
 }
@@ -47,7 +56,21 @@ export default function DoctorProfilePage() {
             const res = await fetch("/api/doctors/me");
             if (res.ok) {
                 const data = await res.json();
-                setProfile(data.doctor);
+                const profileData = data.doctor;
+
+                // Initialize whatsapp numbers if empty or missing
+                if (!profileData.whatsapp_numbers || profileData.whatsapp_numbers.length === 0) {
+                    if (profileData.whatsapp_number) {
+                        profileData.whatsapp_numbers = [{
+                            whatsapp_number: profileData.whatsapp_number,
+                            is_primary: true
+                        }];
+                    } else {
+                        profileData.whatsapp_numbers = [];
+                    }
+                }
+
+                setProfile(profileData);
             }
         } catch (error) {
             console.error("Error fetching profile:", error);
@@ -164,17 +187,55 @@ export default function DoctorProfilePage() {
                                     </div>
                                 </div>
 
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700">WhatsApp</label>
-                                    <div className="relative">
-                                        <MessageCircle className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                                        <input
-                                            type="tel"
-                                            value={profile?.whatsapp_number || ""}
-                                            onChange={(e) => setProfile(prev => prev ? { ...prev, whatsapp_number: e.target.value } : null)}
-                                            className="input-field pl-10"
-                                            placeholder="+1 234 567 890"
-                                        />
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-sm font-medium text-gray-700">WhatsApp Numbers</label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setProfile(prev => {
+                                                if (!prev) return null;
+                                                return {
+                                                    ...prev,
+                                                    whatsapp_numbers: [...(prev.whatsapp_numbers || []), { whatsapp_number: "", is_primary: false }]
+                                                };
+                                            })}
+                                            className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
+                                        >
+                                            <Plus className="w-3 h-3" /> Add Number
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {profile?.whatsapp_numbers?.map((num, idx) => (
+                                            <div key={idx} className="flex gap-2 items-center">
+                                                <div className="relative flex-1">
+                                                    <MessageCircle className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                                                    <input
+                                                        type="tel"
+                                                        value={num.whatsapp_number}
+                                                        onChange={(e) => {
+                                                            const newS = [...(profile.whatsapp_numbers || [])];
+                                                            newS[idx].whatsapp_number = e.target.value;
+                                                            setProfile({ ...profile, whatsapp_numbers: newS });
+                                                        }}
+                                                        className="input-field pl-10 text-sm"
+                                                        placeholder="+1 234 567 890"
+                                                    />
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const newS = (profile.whatsapp_numbers || []).filter((_, i) => i !== idx);
+                                                        setProfile({ ...profile, whatsapp_numbers: newS });
+                                                    }}
+                                                    className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        {(!profile?.whatsapp_numbers || profile.whatsapp_numbers.length === 0) && (
+                                            <p className="text-xs text-gray-400 italic">No WhatsApp numbers added.</p>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -232,8 +293,7 @@ export default function DoctorProfilePage() {
                                                         <div className="flex items-center gap-1 text-gray-500 bg-gray-50 px-2 py-1 rounded-md">
                                                             <Clock className="w-3 h-3" />
                                                             <span>
-                                                                {new Date(sch.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} -
-                                                                {new Date(sch.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}
+                                                                {formatTime(sch.start_time)} - {formatTime(sch.end_time)}
                                                             </span>
                                                         </div>
                                                     </div>

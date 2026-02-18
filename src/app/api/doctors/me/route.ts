@@ -6,7 +6,14 @@ import { cookies } from "next/headers";
 
 export async function GET(req: Request) {
     const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
+    let token = cookieStore.get("token")?.value;
+
+    if (!token) {
+        const authHeader = req.headers.get("Authorization");
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            token = authHeader.split(" ")[1];
+        }
+    }
 
     if (!token) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -26,7 +33,9 @@ export async function GET(req: Request) {
                 admin: {
                     select: {
                         user: {
-                            select: { email: true } // maybe?
+                            select: {
+                                email: true
+                            }
                         }
                     }
                 },
@@ -34,7 +43,8 @@ export async function GET(req: Request) {
                     include: {
                         schedules: true
                     }
-                }
+                },
+                whatsapp_numbers: true
             }
         });
 
@@ -51,7 +61,14 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
     const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
+    let token = cookieStore.get("token")?.value;
+
+    if (!token) {
+        const authHeader = req.headers.get("Authorization");
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            token = authHeader.split(" ")[1];
+        }
+    }
 
     if (!token) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -64,7 +81,7 @@ export async function PATCH(req: Request) {
 
     try {
         const body = await req.json();
-        const { doctor_name, phone, whatsapp_number, status } = body;
+        const { doctor_name, phone, whatsapp_number, status, whatsapp_numbers } = body;
 
         // Ensure doctor exists for this user
         const doctor = await prisma.doctors.findUnique({
@@ -75,17 +92,40 @@ export async function PATCH(req: Request) {
             return NextResponse.json({ error: "Doctor profile not found" }, { status: 404 });
         }
 
-        const updatedDoctor = await prisma.doctors.update({
-            where: { doctor_id: doctor.doctor_id },
-            data: {
-                doctor_name,
-                phone,
-                whatsapp_number,
-                status // Doctor can update their own status? Maybe restrict this if needed.
+        const result = await prisma.$transaction(async (tx) => {
+            const updatedDoctor = await tx.doctors.update({
+                where: { doctor_id: doctor.doctor_id },
+                data: {
+                    doctor_name,
+                    phone,
+                    whatsapp_number, // Legacy support
+                    status
+                }
+            });
+
+            // Handle multiple whatsapp numbers
+            if (Array.isArray(whatsapp_numbers)) {
+                // Remove all existing
+                await tx.doctor_whatsapp_numbers.deleteMany({
+                    where: { doctor_id: doctor.doctor_id }
+                });
+
+                // Create new ones
+                if (whatsapp_numbers.length > 0) {
+                    await tx.doctor_whatsapp_numbers.createMany({
+                        data: whatsapp_numbers.map((w: any) => ({
+                            doctor_id: doctor.doctor_id,
+                            whatsapp_number: w.whatsapp_number,
+                            is_primary: w.is_primary || false
+                        }))
+                    });
+                }
             }
+
+            return updatedDoctor;
         });
 
-        return NextResponse.json({ doctor: updatedDoctor });
+        return NextResponse.json({ doctor: result });
     } catch (error) {
         console.error("Error updating doctor profile:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

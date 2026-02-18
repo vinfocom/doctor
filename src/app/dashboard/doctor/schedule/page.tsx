@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { MapPin, Plus, Trash2, Clock, Calendar, AlertTriangle } from "lucide-react";
 import { PremiumButton } from "@/components/ui/PremiumButton";
 import { GlassCard } from "@/components/ui/GlassCard";
+import { formatTime } from "@/lib/timeUtils";
 
 interface ScheduleItem {
     schedule_id?: number;
@@ -75,8 +76,8 @@ export default function DoctorSchedulePage() {
                 const data = await res.json();
                 const processed = (data.schedules || []).map((s: any) => ({
                     ...s,
-                    start_time: String(s.start_time).includes("T") ? String(s.start_time).split("T")[1].slice(0, 5) : String(s.start_time).slice(0, 5),
-                    end_time: String(s.end_time).includes("T") ? String(s.end_time).split("T")[1].slice(0, 5) : String(s.end_time).slice(0, 5),
+                    start_time: formatTime(s.start_time),
+                    end_time: formatTime(s.end_time),
                     clinic_name: s.clinic?.clinic_name || "Unknown Clinic"
                 }));
                 setSchedules(processed);
@@ -250,54 +251,77 @@ export default function DoctorSchedulePage() {
                 </div>
             ) : (
                 <div className="space-y-8">
-                    {Object.entries(groupedSchedules).map(([clinicName, items]) => (
-                        <div key={clinicName} className="space-y-4">
-                            <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-                                <MapPin className="w-5 h-5 text-indigo-500" />
-                                {clinicName}
-                            </h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <AnimatePresence mode="popLayout">
-                                    {items.sort((a, b) => a.day_of_week - b.day_of_week).map((item) => (
-                                        <motion.div
-                                            key={item.schedule_id}
-                                            layout
-                                            initial={{ opacity: 0, scale: 0.9 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            exit={{ opacity: 0, scale: 0.9 }}
-                                            transition={{ duration: 0.2 }}
-                                        >
-                                            <GlassCard className="flex flex-col gap-3 group relative h-full hover:shadow-lg transition-shadow duration-300 border border-white/40 bg-white/60">
-                                                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                                                    <button
-                                                        onClick={() => handleEditSchedule(item)}
-                                                        className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                                        title="Edit Schedule"
-                                                    >
-                                                        <Clock className="w-4 h-4" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDeleteSchedule(Number(item.schedule_id))}
-                                                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                        title="Delete Schedule"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                                <div className="flex justify-between items-start">
-                                                    <span className="font-bold text-lg text-gray-900">{DAYS[item.day_of_week]}</span>
-                                                </div>
-                                                <div className="flex items-center gap-2 text-gray-600">
-                                                    <Clock className="w-4 h-4" />
-                                                    <span>{item.start_time} - {item.end_time}</span>
-                                                </div>
-                                            </GlassCard>
-                                        </motion.div>
-                                    ))}
-                                </AnimatePresence>
+                    {Object.entries(groupedSchedules).map(([clinicName, clinicItems]) => {
+                        // Group items by day for this clinic
+                        const dayGroups = clinicItems.reduce((acc, item) => {
+                            const day = item.day_of_week;
+                            if (!acc[day]) acc[day] = [];
+                            acc[day].push(item);
+                            return acc;
+                        }, {} as Record<number, ScheduleItem[]>);
+
+                        // Sort days
+                        const sortedDays = Object.keys(dayGroups).map(Number).sort((a, b) => a - b);
+
+                        return (
+                            <div key={clinicName} className="space-y-4">
+                                <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+                                    <MapPin className="w-5 h-5 text-indigo-500" />
+                                    {clinicName}
+                                </h2>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <AnimatePresence mode="popLayout">
+                                        {sortedDays.map((day) => (
+                                            <motion.div
+                                                key={day}
+                                                layout
+                                                initial={{ opacity: 0, scale: 0.9 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                exit={{ opacity: 0, scale: 0.9 }}
+                                                transition={{ duration: 0.2 }}
+                                            >
+                                                <GlassCard className="flex flex-col gap-3 group relative h-full hover:shadow-lg transition-shadow duration-300 border border-white/40 bg-white/60">
+                                                    <div className="flex justify-between items-start border-b border-gray-100 pb-2 mb-2">
+                                                        <span className="font-bold text-lg text-gray-900">{DAYS[day]}</span>
+                                                        <span className="text-xs font-medium bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full">
+                                                            {dayGroups[day].length} slots
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        {dayGroups[day].sort((a, b) => a.start_time.localeCompare(b.start_time)).map((item, idx) => (
+                                                            <div key={item.schedule_id || idx} className="flex items-center justify-between group/item p-2 hover:bg-gray-50 rounded-lg transition-colors">
+                                                                <div className="flex items-center gap-2 text-gray-600">
+                                                                    <Clock className="w-4 h-4 text-indigo-400" />
+                                                                    <span className="font-medium text-sm">{item.start_time} - {item.end_time}</span>
+                                                                </div>
+                                                                <div className="flex opacity-0 group-hover/item:opacity-100 transition-opacity gap-1">
+                                                                    <button
+                                                                        onClick={() => handleEditSchedule(item)}
+                                                                        className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                                                                        title="Edit Slot"
+                                                                    >
+                                                                        <Clock className="w-3 h-3" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleDeleteSchedule(Number(item.schedule_id))}
+                                                                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                                                        title="Delete Slot"
+                                                                    >
+                                                                        <Trash2 className="w-3 h-3" />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </GlassCard>
+                                            </motion.div>
+                                        ))}
+                                    </AnimatePresence>
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 

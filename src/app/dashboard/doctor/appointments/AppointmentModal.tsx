@@ -33,7 +33,7 @@ export default function AppointmentModal({ isOpen, onClose, onSuccess }: Appoint
         clinic_id: '',
         date: '',
         time: '',
-        symptoms: ''
+        mode: ''
     });
 
     const [availableSlots, setAvailableSlots] = useState<string[]>([]);
@@ -146,7 +146,7 @@ export default function AppointmentModal({ isOpen, onClose, onSuccess }: Appoint
                     clinic_id: formData.clinic_id,
                     slot_date: formData.date,
                     slot_time: formData.time,
-                    symptoms: formData.symptoms
+                    mode: formData.mode
                     // doctor_id and admin_id are handled by backend session ideally, or passed if needed
                 })
             });
@@ -262,13 +262,13 @@ export default function AppointmentModal({ isOpen, onClose, onSuccess }: Appoint
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Symptoms</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">mode</label>
                                 <textarea
                                     className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                                     rows={3}
-                                    placeholder="Describe symptoms..."
-                                    value={formData.symptoms}
-                                    onChange={(e) => setFormData({ ...formData, symptoms: e.target.value })}
+                                    placeholder="Describe mode..."
+                                    value={formData.mode}
+                                    onChange={(e) => setFormData({ ...formData, mode: e.target.value })}
                                 />
                             </div>
 

@@ -6,8 +6,48 @@ import { cookies } from 'next/headers';
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
-        const doctorId = searchParams.get('doctorId');
-        const adminId = searchParams.get('adminId');
+        let doctorId = searchParams.get('doctorId');
+        let adminId = searchParams.get('adminId');
+
+        const cookieStore = await cookies();
+        let token = cookieStore.get("token")?.value;
+
+        if (!token) {
+            const authHeader = request.headers.get("Authorization");
+            if (authHeader && authHeader.startsWith("Bearer ")) {
+                token = authHeader.split(" ")[1];
+            }
+        }
+
+        if (!token) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const user = verifyToken(token);
+        if (!user) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        // Automatic role-based filtering
+        if (user.role === 'DOCTOR') {
+            const doctor = await prisma.doctors.findUnique({
+                where: { user_id: user.userId },
+                select: { doctor_id: true }
+            });
+            if (doctor) {
+                doctorId = String(doctor.doctor_id);
+            } else {
+                return NextResponse.json({ error: "Doctor profile not found" }, { status: 404 });
+            }
+        } else if (user.role === 'ADMIN') {
+            const admin = await prisma.admins.findUnique({
+                where: { user_id: user.userId },
+                select: { admin_id: true }
+            });
+            if (admin) {
+                adminId = String(admin.admin_id);
+            }
+        }
 
         const where: any = {};
         if (doctorId) where.doctor_id = Number(doctorId);
@@ -43,7 +83,14 @@ export async function POST(request: Request) {
 
         // Resolve IDs from session
         const cookieStore = await cookies();
-        const token = cookieStore.get("token")?.value;
+        let token = cookieStore.get("token")?.value;
+
+        if (!token) {
+            const authHeader = request.headers.get("Authorization");
+            if (authHeader && authHeader.startsWith("Bearer ")) {
+                token = authHeader.split(" ")[1];
+            }
+        }
         if (token) {
             const user = verifyToken(token);
             if (user) {
@@ -196,7 +243,14 @@ export async function PATCH(request: Request) {
 
         // Ideally verify user has permission (Doctor/Admin)
         const cookieStore = await cookies();
-        const token = cookieStore.get("token")?.value;
+        let token = cookieStore.get("token")?.value;
+
+        if (!token) {
+            const authHeader = request.headers.get("Authorization");
+            if (authHeader && authHeader.startsWith("Bearer ")) {
+                token = authHeader.split(" ")[1];
+            }
+        }
         if (!token || !verifyToken(token)) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
