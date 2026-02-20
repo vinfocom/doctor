@@ -5,7 +5,14 @@ import { cookies } from "next/headers";
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
+    let token = cookieStore.get("token")?.value;
+
+    if (!token) {
+        const authHeader = req.headers.get("Authorization");
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            token = authHeader.split(" ")[1];
+        }
+    }
 
     if (!token) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -59,8 +66,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
                         clinic_id: clinicId,
                         admin_id: existingClinic.admin_id,
                         day_of_week: s.day_of_week,
-                        start_time: new Date(`1970-01-01T${s.start_time}:00Z`),
-                        end_time: new Date(`1970-01-01T${s.end_time}:00Z`),
+                        start_time: s.start_time,
+                        end_time: s.end_time,
                         slot_duration: Number(s.slot_duration),
                         effective_from: new Date(),
                         effective_to: new Date(new Date().setFullYear(new Date().getFullYear() + 1))
@@ -84,7 +91,14 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
+    let token = cookieStore.get("token")?.value;
+
+    if (!token) {
+        const authHeader = req.headers.get("Authorization");
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            token = authHeader.split(" ")[1];
+        }
+    }
 
     if (!token) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

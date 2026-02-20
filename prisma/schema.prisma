@@ -35,13 +35,7 @@ enum DoctorStatus {
   INACTIVE
 }
 
-enum SlotStatus {
-  AVAILABLE
-  BOOKED
-  BLOCKED
 
-  @@map("slots_slot_status")
-}
 
 model users {
   user_id    Int       @id @default(autoincrement())
@@ -65,9 +59,11 @@ model admins {
   clinics  clinics[]
   doctors  doctors[]
   patients patients[]
-  slots    slots[]
+  
+  
   appointments appointment[]
   schedules doctor_clinic_schedule[]
+  leaves       doctor_leaves[]
 }
 
 model doctors {
@@ -78,6 +74,7 @@ model doctors {
   admin_id        Int
   user_id         Int?         @unique
   whatsapp_number String?      @db.VarChar(255)
+  specialization  String?      @db.VarChar(255)
 
   admin     admins?                 @relation(fields: [admin_id], references: [admin_id])
   user      users?                  @relation(fields: [user_id], references: [user_id])
@@ -86,6 +83,9 @@ model doctors {
   clinics      clinics[]
   patients     patients[]
   whatsapp_numbers doctor_whatsapp_numbers[]
+  leaves       doctor_leaves[]
+  acceptDays   Int?
+  chat_messages chat_messages[]
 }
 
 model doctor_whatsapp_numbers {
@@ -116,61 +116,63 @@ model clinics {
 model patients {
   patient_id   Int     @id @default(autoincrement())
   full_name    String? @db.VarChar(255)
-  age          Int?
-  gender       String? @db.VarChar(50)
   admin_id     Int
   doctor_id    Int?
-  patient_type String? @db.VarChar(50)
-  reason       String? @db.VarChar(255)
-  mode         String? @db.VarChar(255)
   phone        String? @db.VarChar(255)
+  booking_id   Int?
 
   admin        admins?       @relation(fields: [admin_id], references: [admin_id])
   doctor       doctors?      @relation(fields: [doctor_id], references: [doctor_id])
   appointments appointment[]
+  chat_messages chat_messages[]
 }
 
 model appointment {
   appointment_id Int                @id @default(autoincrement())
   patient_id     Int?
-  slot_id        Int?
   doctor_id      Int?
   clinic_id      Int?
   admin_id       Int?
+
   status         AppointmentStatus?
-  symptoms       String?            @db.Text
-  mode           String?            @db.Text
   created_at     DateTime?          @default(now()) @db.Timestamp(0)
+  start_time     DateTime?          @db.Time(0)
+  end_time       DateTime?          @db.Time(0)  
+  appointment_date           DateTime?          @db.Date
   
   patient patients? @relation(fields: [patient_id], references: [patient_id])
   doctor  doctors?  @relation(fields: [doctor_id], references: [doctor_id])
   clinic  clinics?  @relation(fields: [clinic_id], references: [clinic_id])
-  slot    slots?    @relation(fields: [slot_id], references: [slot_id])
   admin   admins?   @relation(fields: [admin_id], references: [admin_id])
 
-  @@map("appointments")
+  @@unique([doctor_id, appointment_date, start_time])
+  @@index([appointment_date])
 }
 
-model slots {
-  slot_id     Int         @id @default(autoincrement())
-  schedule_id Int?
-  admin_id    Int?
-  slot_date   DateTime?   @db.Date
-  slot_time   DateTime?   @db.Time(0)
-  slot_status SlotStatus? @default(AVAILABLE)
+model doctor_leaves {
+  leave_id    Int      @id @default(autoincrement())
+  doctor_id   Int
+  admin_id    Int
 
-  schedule     doctor_clinic_schedule? @relation(fields: [schedule_id], references: [schedule_id])
-  admin        admins?       @relation(fields: [admin_id], references: [admin_id])
-  appointments appointment[]
+  leave_date  DateTime @db.Date
+  start_time  DateTime? @db.Time
+  end_time    DateTime? @db.Time
+
+  reason      String?  @db.VarChar(255)
+
+  doctor doctors @relation(fields: [doctor_id], references: [doctor_id])
+  admin  admins  @relation(fields: [admin_id], references: [admin_id])
 }
+
+
 
 model doctor_clinic_schedule {
   schedule_id    Int      @id @default(autoincrement())
   doctor_id      Int?
   clinic_id      Int?
   admin_id       Int?
-  start_time     DateTime? @db.Time(0)
-  end_time       DateTime? @db.Time(0)
+  start_time     String?  @db.VarChar(20)
+  end_time       String?  @db.VarChar(20)
   slot_duration  Int?
   day_of_week    Int      @db.TinyInt
   effective_from DateTime @db.Date
@@ -179,7 +181,7 @@ model doctor_clinic_schedule {
   doctor doctors? @relation(fields: [doctor_id], references: [doctor_id])
   clinic clinics? @relation(fields: [clinic_id], references: [clinic_id])
   admin  admins?  @relation(fields: [admin_id], references: [admin_id])
-  slots  slots[]
+ 
 }
 
 model conversation_sessions {
@@ -211,4 +213,19 @@ model user_tokens {
   created_at DateTime @default(now()) @db.Timestamp(0)
 
   user users @relation(fields: [user_id], references: [user_id])
+}
+
+model chat_messages {
+  message_id Int      @id @default(autoincrement())
+  patient_id Int
+  doctor_id  Int
+  sender     String   @db.VarChar(50) // 'DOCTOR' or 'PATIENT'
+  content    String   @db.Text
+  is_read    Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+
+  patient patients @relation(fields: [patient_id], references: [patient_id])
+  doctor  doctors  @relation(fields: [doctor_id], references: [doctor_id])
+
+  @@index([doctor_id, patient_id])
 }

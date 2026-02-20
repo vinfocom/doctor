@@ -8,6 +8,8 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         let doctorId = searchParams.get('doctorId');
         let adminId = searchParams.get('adminId');
+        let clinicId = searchParams.get('clinicId');
+        let date = searchParams.get('date');
 
         const cookieStore = await cookies();
         let token = cookieStore.get("token")?.value;
@@ -24,6 +26,7 @@ export async function GET(request: Request) {
         }
 
         const user = verifyToken(token);
+        console.log(user, "user", token);
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -52,19 +55,23 @@ export async function GET(request: Request) {
         const where: any = {};
         if (doctorId) where.doctor_id = Number(doctorId);
         if (adminId) where.admin_id = Number(adminId);
+        if (clinicId) where.clinic_id = Number(clinicId);
+        if (date) {
+            where.appointment_date = new Date(date);
+        }
 
         const appointments = await prisma.appointment.findMany({
             where,
             include: {
                 patient: true,
                 doctor: true,
-                clinic: true,
-                slot: true
+                clinic: true
             },
             orderBy: {
                 created_at: 'desc'
             }
         });
+
 
         return NextResponse.json(appointments);
     } catch (error) {
@@ -79,7 +86,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        let { patient_phone, patient_name, doctor_id, clinic_id, slot_id, admin_id, symptoms, slot_date, slot_time } = body;
+        let { patient_phone, patient_name, doctor_id, clinic_id, admin_id, appointment_date, start_time, end_time } = body;
 
         // Resolve IDs from session
         const cookieStore = await cookies();
@@ -121,6 +128,25 @@ export async function POST(request: Request) {
         }
 
 
+        if (!appointment_date || !start_time || !end_time) {
+            return NextResponse.json({ error: 'Date and time required' }, { status: 400 });
+        }
+
+        // Construct Date objects
+        const dateObj = new Date(appointment_date);
+        const startTimeObj = new Date(`1970-01-01T${start_time}:00Z`);
+        const endTimeObj = new Date(`1970-01-01T${end_time}:00Z`);
+
+        // Calculate booking_id based on number of appointments for this doctor, clinic and date
+        const existingAppointmentsCount = await prisma.appointment.count({
+            where: {
+                doctor_id: Number(doctor_id),
+                clinic_id: Number(clinic_id),
+                appointment_date: dateObj
+            }
+        });
+        const booking_id = existingAppointmentsCount + 1;
+
         // Find or create patient by phone
         let patient = await prisma.patients.findFirst({
             where: { phone: patient_phone }
@@ -131,77 +157,45 @@ export async function POST(request: Request) {
                 data: {
                     phone: patient_phone,
                     admin_id: Number(admin_id),
+                    doctor_id: Number(doctor_id),
+                    booking_id: booking_id,
                     full_name: patient_name || 'New Patient',
-                    patient_type: 'NEW'
+                }
+            });
+        } else {
+            // Update existing patient with current doctor and booking id
+            patient = await prisma.patients.update({
+                where: { patient_id: patient.patient_id },
+                data: {
+                    doctor_id: Number(doctor_id),
+                    booking_id: booking_id
                 }
             });
         }
-
-        let finalSlotId = slot_id ? Number(slot_id) : null;
-
-        if (!finalSlotId && slot_date && slot_time) {
-            // Check if slot exists or create it
-            // Parse date and time
-            const dateObj = new Date(slot_date);
-            const timeObj = new Date(`1970-01-01T${slot_time}:00Z`); // Adjust format as needed
-
-
-            // Try to find existing slot
-            let slot = await prisma.slots.findFirst({
-                where: {
-                    admin_id: Number(admin_id),
-                    slot_date: dateObj,
-                    slot_time: timeObj,
-                    // We might want to link it to a schedule if we can resolve it, but for ad-hoc it's fine
-                }
-            });
-
-            if (!slot) {
-                slot = await prisma.slots.create({
-                    data: {
-                        admin_id: Number(admin_id),
-                        slot_date: dateObj,
-                        slot_time: timeObj,
-                        slot_status: 'BOOKED',
-                        // schedule_id: ... // Optional: could try to find matching schedule
-                    }
-                });
-            } else {
-                if (slot.slot_status === 'BOOKED') {
-                    // Check if actually booked in appointment table to be sure?
-                    // Or trust the status. For now, trust status.
-                    return NextResponse.json({ error: 'Slot already booked' }, { status: 409 });
-                }
-                // Mark as booked
-                await prisma.slots.update({
-                    where: { slot_id: slot.slot_id },
-                    data: { slot_status: 'BOOKED' }
-                });
-            }
-            finalSlotId = slot.slot_id;
-        }
-
-        if (!finalSlotId) {
-            return NextResponse.json({ error: 'Slot information required' }, { status: 400 });
-        }
-
 
         const appointment = await prisma.appointment.create({
             data: {
                 patient_id: patient.patient_id,
                 doctor_id: Number(doctor_id),
                 clinic_id: Number(clinic_id),
-                slot_id: finalSlotId,
                 admin_id: Number(admin_id),
                 status: 'PENDING',
-                symptoms: symptoms
+                appointment_date: dateObj,
+                start_time: startTimeObj,
+                end_time: endTimeObj
             }
         });
 
         return NextResponse.json(appointment);
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error creating appointment:', error);
+        if (error.code === 'P2002') {
+            return NextResponse.json(
+                { error: 'Slot already booked' },
+                { status: 409 }
+            );
+        }
         return NextResponse.json(
             { error: 'Failed to create appointment' },
             { status: 500 }
@@ -259,25 +253,6 @@ export async function PATCH(request: Request) {
             where: { appointment_id: Number(appointmentId) },
             data: { status: status }
         });
-
-        // Also update slot status if needed?
-        // If status is CANCELLED, maybe free the slot?
-        // If status is COMPLETED, maybe mark slot as... used? (It's already BOOKED)
-
-        if (status === 'CANCELLED' || status === 'REJECTED') {
-            // Find the appointment to get the slot_id
-            const appointment = await prisma.appointment.findUnique({
-                where: { appointment_id: Number(appointmentId) },
-                select: { slot_id: true }
-            });
-
-            if (appointment && appointment.slot_id) {
-                await prisma.slots.update({
-                    where: { slot_id: appointment.slot_id },
-                    data: { slot_status: 'AVAILABLE' }
-                });
-            }
-        }
 
         return NextResponse.json(updatedAppointment);
     } catch (error) {

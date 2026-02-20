@@ -23,10 +23,7 @@ interface RecentAppointment {
 
 export default function DoctorDashboard() {
     const router = useRouter();
-    // User name for welcome message - could be fetched or passed down, 
-    // but for now we'll keep a simple local state or fetch it if 'user' was used for more than just the name.
-    // actually, let's keep the user state for the "Welcome Back" message for now to minimize disruption,
-    // but we acknowledge the sidebar is gone.
+    
     const [user, setUser] = useState({ name: "Doctor" });
     const [stats, setStats] = useState<DoctorStats | null>(null);
     const [recentAppointments, setRecentAppointments] = useState<RecentAppointment[]>([]);

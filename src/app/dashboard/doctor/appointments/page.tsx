@@ -7,12 +7,16 @@ interface Appointment {
     appointment_id: number;
     created_at: string;
     status: string;
-    symptoms?: string;
+    // symptoms removed
     patient: { full_name: string; phone: string; symptoms?: string } | null;
-    slot: { slot_date: string; slot_time: string } | null;
+    appointment_date: string;
+    start_time: string;
+    end_time: string;
+    doctor_id: number;
 }
 
 import AppointmentModal from "./AppointmentModal";
+import { formatTime, convertTo12Hour } from "@/lib/timeUtils";
 
 export default function DoctorAppointmentsPage() {
     const router = useRouter();
@@ -90,7 +94,7 @@ export default function DoctorAppointmentsPage() {
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="data-table">
-                            <thead><tr><th>Patient</th><th>Phone</th><th>Symptoms</th><th>Date & Time</th><th>Status</th><th>Actions</th></tr></thead>
+                            <thead><tr><th>Patient</th><th>Phone</th><th>Date & Time</th><th>Status</th><th>Actions</th></tr></thead>
                             <tbody>
                                 {appointments.map((apt, i) => (
                                     <motion.tr key={apt.appointment_id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + i * 0.05 }}>
@@ -103,15 +107,12 @@ export default function DoctorAppointmentsPage() {
                                             </div>
                                         </td>
                                         <td className="text-gray-500">{apt.patient?.phone || "N/A"}</td>
-                                        <td className="text-gray-500 max-w-[150px] truncate" title={apt.symptoms || apt.patient?.symptoms || ""}>
-                                            {apt.symptoms || apt.patient?.symptoms || "-"}
-                                        </td>
                                         <td className="text-gray-500">
-                                            {apt.slot?.slot_date
-                                                ? new Date(apt.slot.slot_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                            {apt.appointment_date
+                                                ? new Date(apt.appointment_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                                                 : "N/A"}{" "}
-                                            {apt.slot?.slot_time
-                                                ? new Date(apt.slot.slot_time).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
+                                            {apt.start_time
+                                                ? convertTo12Hour(formatTime(apt.start_time))
                                                 : ""}
                                         </td>
                                         <td><span className={`badge badge-${apt.status.toLowerCase()}`}>{apt.status}</span></td>
@@ -141,6 +142,7 @@ export default function DoctorAppointmentsPage() {
                                                 </motion.button>
                                             </div>
                                         </td>
+                                        
                                     </motion.tr>
                                 ))}
                             </tbody>

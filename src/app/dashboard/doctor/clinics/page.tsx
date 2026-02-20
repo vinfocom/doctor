@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { PremiumButton } from "@/components/ui/PremiumButton";
-import { formatTime } from "@/lib/timeUtils";
+import { formatTime, convertTo12Hour } from "@/lib/timeUtils";
 import { Button } from "@/components/ui/moving-border";
 
 interface Clinic {
@@ -179,14 +179,21 @@ export default function ClinicsPage() {
         e.preventDefault();
         setError("");
 
+        const currentScheduleParts = scheduleForm.days.map(day => ({
+            day_of_week: day,
+            start_time: convertTo12Hour(scheduleForm.start_time),
+            end_time: convertTo12Hour(scheduleForm.end_time),
+            slot_duration: scheduleForm.slot_duration
+        }));
+
+        const finalSchedule = [
+            ...formData.schedule,
+            ...currentScheduleParts
+        ];
+
         const payload = {
             ...formData,
-            schedule: scheduleForm.days.map(day => ({
-                day_of_week: day,
-                start_time: scheduleForm.start_time,
-                end_time: scheduleForm.end_time,
-                slot_duration: scheduleForm.slot_duration
-            }))
+            schedule: finalSchedule
         };
 
         try {
@@ -433,63 +440,107 @@ export default function ClinicsPage() {
 
                             <div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-600 flex items-center gap-2">
-                                        <Clock className="w-4 h-4" /> Start Time
-                                    </label>
-                                    <input
-                                        type="time"
-                                        name="start_time"
-                                        value={scheduleForm.start_time}
-                                        onChange={handleScheduleChange}
-                                        className="input-field"
-                                    />
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-600 flex items-center gap-2">
+                                            <Clock className="w-4 h-4" /> Start Time
+                                        </label>
+                                        <input
+                                            type="time"
+                                            name="start_time"
+                                            value={scheduleForm.start_time}
+                                            onChange={handleScheduleChange}
+                                            className="input-field"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-600 flex items-center gap-2">
+                                            <Clock className="w-4 h-4" /> End Time
+                                        </label>
+                                        <input
+                                            type="time"
+                                            name="end_time"
+                                            value={scheduleForm.end_time}
+                                            onChange={handleScheduleChange}
+                                            className="input-field"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-600">Slot Duration (mins)</label>
+                                        <input
+                                            type="number"
+                                            name="slot_duration"
+                                            value={scheduleForm.slot_duration}
+                                            onChange={handleScheduleChange}
+                                            min="5"
+                                            step="5"
+                                            className="input-field"
+                                        />
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-600 flex items-center gap-2">
-                                        <Clock className="w-4 h-4" /> End Time
-                                    </label>
-                                    <input
-                                        type="time"
-                                        name="end_time"
-                                        value={scheduleForm.end_time}
-                                        onChange={handleScheduleChange}
-                                        className="input-field"
-                                    />
+
+                                <div className="flex justify-end gap-3 pt-4">
+                                    <Button
+                                        type="button"
+                                        onClick={() => {
+                                            if (scheduleForm.days.length === 0) {
+                                                alert("Please select at least one day");
+                                                return;
+                                            }
+                                            const newSchedules = scheduleForm.days.map(day => ({
+                                                day_of_week: day,
+                                                start_time: convertTo12Hour(scheduleForm.start_time),
+                                                end_time: convertTo12Hour(scheduleForm.end_time),
+                                                slot_duration: scheduleForm.slot_duration
+                                            }));
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                schedule: [...prev.schedule, ...newSchedules]
+                                            }));
+                                            setScheduleForm({ days: [], start_time: "09:00", end_time: "17:00", slot_duration: 30 });
+                                        }}
+                                        className="bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                                    >
+                                        Add Schedule Block
+                                    </Button>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-600">Slot Duration (mins)</label>
-                                    <input
-                                        type="number"
-                                        name="slot_duration"
-                                        value={scheduleForm.slot_duration}
-                                        onChange={handleScheduleChange}
-                                        min="5"
-                                        step="5"
-                                        className="input-field"
-                                    />
-                                </div>
+
+                                {/* Added Schedules Display */}
+                                {formData.schedule.length > 0 && (
+                                    <div className="mt-4 space-y-2">
+                                        <h4 className="text-sm font-medium text-gray-700">Added Schedules:</h4>
+                                        <div className="space-y-2">
+                                            {formData.schedule.map((sch, idx) => (
+                                                <div key={idx} className="flex justify-between items-center bg-gray-50 p-2 rounded text-sm">
+                                                    <span>{daysOfWeek.find(d => d.id === sch.day_of_week)?.label} : {sch.start_time} - {sch.end_time}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFormData(prev => ({ ...prev, schedule: prev.schedule.filter((_, i) => i !== idx) }))}
+                                                        className="text-red-500 hover:text-red-700"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                             </div>
 
                             <div className="flex justify-end gap-3 pt-4">
-                                <Button className="bg-transparent text-black">Add Schedule</Button>
+                                <PremiumButton type="button" variant="ghost" onClick={() => {
+                                    setShowForm(false);
+                                    setEditingClinicId(null);
+                                    setFormData({ clinic_name: "", location: "", phone: "", status: "ACTIVE", schedule: [] });
+                                    setScheduleForm({ days: [], start_time: "09:00", end_time: "17:00", slot_duration: 30 });
+                                }}>
+                                    Cancel
+                                </PremiumButton>
+                                <PremiumButton type="submit">
+                                    {editingClinicId ? "Update Clinic" : "Save Clinic"}
+                                </PremiumButton>
                             </div>
                             </div>
-                        </div>
-
-                        <div className="flex justify-end gap-3 pt-4">
-                            <PremiumButton type="button" variant="ghost" onClick={() => {
-                                setShowForm(false);
-                                setEditingClinicId(null);
-                                setFormData({ clinic_name: "", location: "", phone: "", status: "ACTIVE", schedule: [] });
-                                setScheduleForm({ days: [], start_time: "09:00", end_time: "17:00", slot_duration: 30 });
-                            }}>
-                                Cancel
-                            </PremiumButton>
-                            <PremiumButton type="submit">
-                                {editingClinicId ? "Update Clinic" : "Save Clinic"}
-                            </PremiumButton>
-                        </div>
                     </form>
                 </GlassCard>
             )}
@@ -563,7 +614,7 @@ export default function ClinicsPage() {
                                             <div key={i} className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded-lg">
                                                 <span className="font-medium text-gray-700">{getDayName(sch.day_of_week)}</span>
                                                 <span className="text-gray-500">
-                                                    {formatTime(sch.start_time)} - {formatTime(sch.end_time)}
+                                                    {convertTo12Hour(formatTime(sch.start_time))} - {convertTo12Hour(formatTime(sch.end_time))}
                                                 </span>
                                             </div>
                                         ))

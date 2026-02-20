@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatTime, convertTo12Hour, convertTo24Hour, parseTime } from '@/lib/timeUtils';
 
 interface Clinic {
     clinic_id: number;
@@ -23,7 +24,8 @@ interface AppointmentModalProps {
 
 export default function AppointmentModal({ isOpen, onClose, onSuccess }: AppointmentModalProps) {
     const [clinics, setClinics] = useState<Clinic[]>([]);
-    const [schedules, setSchedules] = useState<Schedule[]>([]);
+    // Schedules removed, using API for slots and duration
+    const [slotDuration, setSlotDuration] = useState<number>(30);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -33,7 +35,7 @@ export default function AppointmentModal({ isOpen, onClose, onSuccess }: Appoint
         clinic_id: '',
         date: '',
         time: '',
-        mode: ''
+
     });
 
     const [availableSlots, setAvailableSlots] = useState<string[]>([]);
@@ -46,9 +48,9 @@ export default function AppointmentModal({ isOpen, onClose, onSuccess }: Appoint
 
     useEffect(() => {
         if (formData.clinic_id && formData.date) {
-            calculateSlots();
+            fetchSlots();
         }
-    }, [formData.clinic_id, formData.date, schedules]);
+    }, [formData.clinic_id, formData.date]);
 
 
     const fetchClinics = async () => {
@@ -63,72 +65,31 @@ export default function AppointmentModal({ isOpen, onClose, onSuccess }: Appoint
         }
     };
 
-    const fetchSchedule = async (clinicId: string) => {
+    // calculateSlots replaced by fetchSlots
+    const fetchSlots = async () => {
+        if (!formData.date || !formData.clinic_id) return;
+
         try {
-            const res = await fetch(`/api/schedule?clinicId=${clinicId}`);
+            const res = await fetch(`/api/slots?date=${formData.date}&clinicId=${formData.clinic_id}`);
             if (res.ok) {
                 const data = await res.json();
-                setSchedules(data.schedules || []);
+                setAvailableSlots(data.slots || []);
+                if (data.slot_duration) {
+                    setSlotDuration(data.slot_duration);
+                }
+            } else {
+                setAvailableSlots([]);
             }
-        } catch (err) {
-            console.error("Failed to fetch schedule", err);
+        } catch (e) {
+            console.error(e);
+            setAvailableSlots([]);
         }
     };
 
     const handleClinicChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const clinicId = e.target.value;
         setFormData({ ...formData, clinic_id: clinicId, date: '', time: '' });
-        if (clinicId) {
-            fetchSchedule(clinicId);
-        } else {
-            setSchedules([]);
-        }
-    };
-
-    const calculateSlots = async () => {
-        if (!formData.date || !formData.clinic_id) return;
-
-        const date = new Date(formData.date);
-        const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
-
-        const schedule = schedules.find(s => s.day_of_week === dayOfWeek && s.clinic_id === Number(formData.clinic_id));
-
-        if (!schedule) {
-            setAvailableSlots([]);
-            return;
-        }
-
-        // Generate slots based on start_time, end_time, and slot_duration
-        // This is a simplified version. Ideally, we should also check for existing appointments to exclude booked slots.
-        // For now, we will just generate all possible slots.
-
-        // Fetch existing appointments for this date/clinic to filter out booked slots
-        let bookedTimes: string[] = [];
-        try {
-            // We need an endpoint to get booked slots. 
-            // For now, let's assume valid slots are generated and backend rejects if booked.
-            // Ideally: const res = await fetch(\`/api/appointments?date=\${formData.date}&clinicId=\${formData.clinic_id}\`);
-            // if (res.ok) { const apps = await res.json(); bookedTimes = apps.map(a => a.slot.slot_time); }
-        } catch (e) {
-            console.error(e);
-        }
-
-
-        const slots: string[] = [];
-        const start = new Date(`1970-01-01T${new Date(schedule.start_time).toLocaleTimeString('en-US', { hour12: false })}`);
-        const end = new Date(`1970-01-01T${new Date(schedule.end_time).toLocaleTimeString('en-US', { hour12: false })}`);
-        const duration = schedule.slot_duration || 30;
-
-        let current = new Date(start);
-        while (current < end) {
-            const timeString = current.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-            if (!bookedTimes.includes(timeString)) {
-                slots.push(timeString);
-            }
-            current.setMinutes(current.getMinutes() + duration);
-        }
-
-        setAvailableSlots(slots);
+        // No need to fetch schedule manually anymore
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -137,17 +98,45 @@ export default function AppointmentModal({ isOpen, onClose, onSuccess }: Appoint
         setError('');
 
         try {
+            const duration = slotDuration;
+
+            // Parse selected 12h or 24h time. Backend returns HH:MM 24h or 12h? 
+            // The API returns "HH:MM" (e.g. "09:00"). 
+            // If API returns 24h, `convertTo24Hour` might fail if it expects AM/PM.
+            // My API route returns `toLocaleTimeString` with `en-GB`. It returns "09:00".
+            // So `formData.time` is "09:00".
+            // `convertTo24Hour` handles "09:00" -> "09:00" if no AM/PM? 
+            // Let's check `convertTo24Hour`. It expects " ".
+            // If `formData.time` is already 24h, we use it directly.
+
+            let startTime24 = formData.time;
+            if (startTime24.match(/AM|PM/i)) {
+                startTime24 = convertTo24Hour(formData.time);
+            }
+
+            // Calculate end time
+            const [sh, sm] = startTime24.split(':').map(Number);
+            const startTimeDate = new Date();
+            startTimeDate.setHours(sh, sm, 0, 0);
+
+            const endTimeDate = new Date(startTimeDate.getTime() + duration * 60000);
+
+            // Format end time to HH:MM (24h)
+            const eh = endTimeDate.getHours().toString().padStart(2, '0');
+            const em = endTimeDate.getMinutes().toString().padStart(2, '0');
+            const endTime24 = `${eh}:${em}`;
+
+
             const res = await fetch('/api/appointments', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     patient_phone: formData.patient_phone,
-                    patient_name: formData.patient_name, // Backend needs to handle this if patient doesn't exist
+                    patient_name: formData.patient_name,
                     clinic_id: formData.clinic_id,
-                    slot_date: formData.date,
-                    slot_time: formData.time,
-                    mode: formData.mode
-                    // doctor_id and admin_id are handled by backend session ideally, or passed if needed
+                    appointment_date: formData.date,
+                    start_time: startTime24,
+                    end_time: endTime24
                 })
             });
 
@@ -235,6 +224,7 @@ export default function AppointmentModal({ isOpen, onClose, onSuccess }: Appoint
                                     <input
                                         type="date"
                                         required
+                                        min={new Date().toISOString().split('T')[0]}
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                                         value={formData.date}
                                         onChange={(e) => setFormData({ ...formData, date: e.target.value })}
@@ -259,17 +249,6 @@ export default function AppointmentModal({ isOpen, onClose, onSuccess }: Appoint
                                 {formData.date && formData.clinic_id && availableSlots.length === 0 && (
                                     <p className="text-xs text-orange-500 mt-1">No slots available or no schedule for this day.</p>
                                 )}
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">mode</label>
-                                <textarea
-                                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-                                    rows={3}
-                                    placeholder="Describe mode..."
-                                    value={formData.mode}
-                                    onChange={(e) => setFormData({ ...formData, mode: e.target.value })}
-                                />
                             </div>
 
                             <div className="flex justify-end gap-3 pt-4">

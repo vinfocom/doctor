@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { MapPin, Plus, Trash2, Clock, Calendar, AlertTriangle } from "lucide-react";
 import { PremiumButton } from "@/components/ui/PremiumButton";
 import { GlassCard } from "@/components/ui/GlassCard";
-import { formatTime } from "@/lib/timeUtils";
+import { formatTime, convertTo12Hour } from "@/lib/timeUtils";
 
 interface ScheduleItem {
     schedule_id?: number;
@@ -173,13 +173,20 @@ export default function DoctorSchedulePage() {
                 }));
             }
 
+            // Convert to 12h format for DB
+            const finalSchedules = schedulesPayload.map(s => ({
+                ...s,
+                start_time: convertTo12Hour(s.start_time),
+                end_time: convertTo12Hour(s.end_time)
+            }));
+
             const res = await fetch("/api/schedule", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     clinicId: Number(scheduleForm.clinic_id),
                     doctorId: user.doctor_id,
-                    schedules: schedulesPayload
+                    schedules: finalSchedules
                 })
             });
 
@@ -293,7 +300,7 @@ export default function DoctorSchedulePage() {
                                                             <div key={item.schedule_id || idx} className="flex items-center justify-between group/item p-2 hover:bg-gray-50 rounded-lg transition-colors">
                                                                 <div className="flex items-center gap-2 text-gray-600">
                                                                     <Clock className="w-4 h-4 text-indigo-400" />
-                                                                    <span className="font-medium text-sm">{item.start_time} - {item.end_time}</span>
+                                                                    <span className="font-medium text-sm">{convertTo12Hour(item.start_time)} - {convertTo12Hour(item.end_time)}</span>
                                                                 </div>
                                                                 <div className="flex opacity-0 group-hover/item:opacity-100 transition-opacity gap-1">
                                                                     <button
@@ -329,7 +336,7 @@ export default function DoctorSchedulePage() {
             <AnimatePresence>
                 {showAddModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white dark:bg-slate-900 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+                        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white  rounded-2xl p-6 max-w-md w-full shadow-2xl">
                             <h3 className="text-xl font-bold mb-6">{editingScheduleId ? "Edit Schedule" : "Add New Schedule"}</h3>
 
                             <div className="space-y-4">

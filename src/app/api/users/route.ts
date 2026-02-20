@@ -7,7 +7,14 @@ import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
     const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
+    let token = cookieStore.get("token")?.value;
+
+    if (!token) {
+        const authHeader = req.headers.get("Authorization");
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            token = authHeader.split(" ")[1];
+        }
+    }
 
     if (!token) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -87,7 +87,6 @@ export async function POST(req: Request) {
                 gender,
                 phone,
                 reason,
-                mode,
                 patient_type,
                 admin_id,
                 doctor_id

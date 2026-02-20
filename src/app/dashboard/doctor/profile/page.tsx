@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { User, Phone, MessageCircle, Activity, Loader2, Save, MapPin, Building2, Clock, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { formatTime } from "@/lib/timeUtils";
+import { formatTime, convertTo12Hour } from "@/lib/timeUtils";
 
 interface Schedule {
     day_of_week: number;
@@ -293,7 +293,7 @@ export default function DoctorProfilePage() {
                                                         <div className="flex items-center gap-1 text-gray-500 bg-gray-50 px-2 py-1 rounded-md">
                                                             <Clock className="w-3 h-3" />
                                                             <span>
-                                                                {formatTime(sch.start_time)} - {formatTime(sch.end_time)}
+                                                                {convertTo12Hour(formatTime(sch.start_time))} - {convertTo12Hour(formatTime(sch.end_time))}
                                                             </span>
                                                         </div>
                                                     </div>
