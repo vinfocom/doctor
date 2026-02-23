@@ -44,13 +44,13 @@ export default function ClinicsPage() {
     });
 
     const daysOfWeek = [
-        { id: 1, label: "Mon" },
-        { id: 2, label: "Tue" },
-        { id: 3, label: "Wed" },
-        { id: 4, label: "Thu" },
-        { id: 5, label: "Fri" },
-        { id: 6, label: "Sat" },
-        { id: 0, label: "Sun" },
+        { id: 0, label: "Mon" },
+        { id: 1, label: "Tue" },
+        { id: 2, label: "Wed" },
+        { id: 3, label: "Thu" },
+        { id: 4, label: "Fri" },
+        { id: 5, label: "Sat" },
+        { id: 6, label: "Sun" },
     ];
 
     const [editingClinicId, setEditingClinicId] = useState<number | null>(null);
