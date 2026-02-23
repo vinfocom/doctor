@@ -3,6 +3,12 @@ import prisma from '@/lib/prisma';
 import { verifyToken } from '@/lib/jwt';
 import { cookies } from 'next/headers';
 
+function jsonSafe<T>(value: T): T {
+    return JSON.parse(
+        JSON.stringify(value, (_key, v) => (typeof v === 'bigint' ? v.toString() : v))
+    ) as T;
+}
+
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -72,7 +78,7 @@ export async function GET(request: Request) {
         });
 
 
-        return NextResponse.json(appointments);
+        return NextResponse.json(jsonSafe(appointments));
     } catch (error) {
         console.error('Error fetching appointments:', error);
         return NextResponse.json(
