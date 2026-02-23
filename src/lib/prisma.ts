@@ -21,6 +21,7 @@ function createPrismaClient() {
     ssl: true,
     connectTimeout: 10_000,
     acquireTimeout: 10_000,
+    connectionLimit: 1, // Fixes Vercel Serverless pool exhaustion
   });
   return new PrismaClient({ adapter });
 }
