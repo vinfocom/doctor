@@ -26,7 +26,6 @@ export async function GET(request: Request) {
         }
 
         const user = verifyToken(token);
-        console.log(user, "user", token);
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -137,7 +136,6 @@ export async function POST(request: Request) {
         const startTimeObj = new Date(`1970-01-01T${start_time}:00Z`);
         const endTimeObj = new Date(`1970-01-01T${end_time}:00Z`);
 
-        // Calculate booking_id based on number of appointments for this doctor, clinic and date
         const existingAppointmentsCount = await prisma.appointment.count({
             where: {
                 doctor_id: Number(doctor_id),
