@@ -72,10 +72,10 @@ model doctors {
   user_id         Int?          @unique
   whatsapp_number String?       @db.VarChar(255)
   specialization  String?       @db.VarChar(255)
-  username        String?        @db.VarChar(255)
-  chat_id         Int?           @unique
+  username        String?       @db.VarChar(255)
+  chat_id         BigInt?       @unique
 
-  admin            admins?                   @relation(fields: [admin_id], references: [admin_id])
+  admin            admins                    @relation(fields: [admin_id], references: [admin_id])
   user             users?                    @relation(fields: [user_id], references: [user_id])
   schedules        doctor_clinic_schedule[]
   appointments     appointment[]
@@ -113,13 +113,13 @@ model clinics {
 }
 
 model patients {
-  patient_id Int     @id @default(autoincrement())
-  full_name  String? @db.VarChar(255)
-  admin_id   Int
-  doctor_id  Int?
-  phone      String? @db.VarChar(255)
+  patient_id       Int     @id @default(autoincrement())
+  full_name        String? @db.VarChar(255)
+  admin_id         Int
+  doctor_id        Int?
+  phone            String? @db.VarChar(255)
   telegram_chat_id String? @unique @db.VarChar(255)
-  booking_id Int?
+  booking_id       Int?
 
   admin         admins?         @relation(fields: [admin_id], references: [admin_id])
   doctor        doctors?        @relation(fields: [doctor_id], references: [doctor_id])
@@ -142,10 +142,10 @@ model appointment {
   cancelled_by     String?            @db.VarChar(255)
   rescheduled_by   String?            @db.VarChar(255)
 
-  patient                     patients?                       @relation(fields: [patient_id], references: [patient_id])
-  doctor                      doctors?                        @relation(fields: [doctor_id], references: [doctor_id])
-  clinic                      clinics?                        @relation(fields: [clinic_id], references: [clinic_id])
-  admin                       admins?                         @relation(fields: [admin_id], references: [admin_id])
+  patient                     patients?                      @relation(fields: [patient_id], references: [patient_id])
+  doctor                      doctors?                       @relation(fields: [doctor_id], references: [doctor_id])
+  clinic                      clinics?                       @relation(fields: [clinic_id], references: [clinic_id])
+  admin                       admins?                        @relation(fields: [admin_id], references: [admin_id])
   appointmentNotificationLogs appointment_notification_log[]
 
   @@unique([doctor_id, appointment_date, start_time])
@@ -158,12 +158,12 @@ model appointment_notification_log {
   appointment_id Int?
   appointment    appointment? @relation(fields: [appointment_id], references: [appointment_id])
 
-  event_type     String? @db.VarChar(255)
-  channel        String? @db.VarChar(255)
-  destination String? @db.VarChar(255)
-  status         String? @db.VarChar(255)
-  error_text     String? @db.VarChar(255)
-  sent_at        DateTime? @db.Timestamp(0)
+  event_type  String?   @db.VarChar(255)
+  channel     String?   @db.VarChar(255)
+  destination String?   @db.VarChar(255)
+  status      String?   @db.VarChar(255)
+  error_text  String?   @db.VarChar(255)
+  sent_at     DateTime? @db.Timestamp(0)
 
   meta_json Json?
   admin_id  Int?

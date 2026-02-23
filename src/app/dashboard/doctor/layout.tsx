@@ -13,10 +13,11 @@ export default async function DoctorLayout({
     if (!session || session.role !== "DOCTOR") {
         redirect("/login");
     }
+    const userName = session.email?.split("@")[0] || "Doctor";
 
     return (
         <div className="dashboard-layout">
-            <DashboardSidebar role={session.role} userName={session.email.split('@')[0] || "Doctor"} />
+            <DashboardSidebar role={session.role} userName={userName} />
             <div className="dashboard-main">
                 {children}
             </div>

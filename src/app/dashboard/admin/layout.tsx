@@ -13,10 +13,11 @@ export default async function AdminLayout({
     if (!session || (session.role !== "ADMIN" && session.role !== "SUPER_ADMIN")) {
         redirect("/login");
     }
+    const userName = session.email?.split("@")[0] || "Admin";
 
     return (
         <div className="dashboard-layout">
-            <DashboardSidebar role={session.role} userName={session.email.split('@')[0] || "Admin"} />
+            <DashboardSidebar role={session.role} userName={userName} />
             <div className="dashboard-main">
                 {children}
             </div>

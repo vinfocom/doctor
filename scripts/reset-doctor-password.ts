@@ -54,7 +54,9 @@ async function main() {
                     admin_id: adminId,
                     status: "ACTIVE",
                     phone: "1234567890",
-                    user_id: newUser.user_id
+                    user_id: newUser.user_id,
+                    username: "demo_doctor",
+                    chat_id: Math.floor(Date.now() / 1000) + newUser.user_id,
                 }
             });
             // Actually, looking at schema:

@@ -92,7 +92,16 @@ export async function POST(req: Request) {
                         whatsapp_number: specific_details?.whatsapp_number || null,
                         status: "ACTIVE",
                         admin_id: adminId,
-                        user_id: newUser.user_id
+                        user_id: newUser.user_id,
+                        username: String(
+                            specific_details?.username ||
+                            email.split("@")[0] ||
+                            `doctor_${newUser.user_id}`
+                        ),
+                        chat_id: Number(
+                            specific_details?.chat_id ??
+                            (Math.floor(Date.now() / 1000) + newUser.user_id)
+                        ),
                     }
                 });
             } else if (role === "ADMIN") {
