@@ -18,11 +18,12 @@ function createPrismaClient() {
     user: decodeURIComponent(parsed.username),
     password: decodeURIComponent(parsed.password),
     database: parsed.pathname.replace(/^\//, ""),
-    ssl: true,
+    ssl: { rejectUnauthorized: false }, // Aiven uses self-signed certs
     connectTimeout: 10_000,
-    acquireTimeout: 10_000,
-    connectionLimit: 1, // Fixes Vercel Serverless pool exhaustion
+    acquireTimeout: 15_000,
+    connectionLimit: 5, // Allow a few connections per warm instance
   });
+
   return new PrismaClient({ adapter });
 }
 
@@ -32,10 +33,7 @@ function getPrismaClient() {
   }
 
   const client = createPrismaClient();
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.prisma = client;
-  }
-
+  globalForPrisma.prisma = client; // Cache in ALL environments
   return client;
 }
 
