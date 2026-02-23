@@ -54,7 +54,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { full_name, age, gender, phone, reason, mode, patient_type } = body;
+        const { full_name, phone } = body;
 
         let admin_id: number | null = null;
         let doctor_id: number | null = null;
@@ -83,11 +83,7 @@ export async function POST(req: Request) {
         const patient = await prisma.patients.create({
             data: {
                 full_name,
-                age: Number(age),
-                gender,
                 phone,
-                reason,
-                patient_type,
                 admin_id,
                 doctor_id
             }

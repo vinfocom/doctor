@@ -33,7 +33,6 @@ export async function GET() {
                             patient: true,
                             doctor: true,
                             clinic: true,
-                            slot: true,
                         },
                     }),
                     prisma.appointment.count({ where: { ...adminFilter, status: "PENDING" } }),
@@ -78,7 +77,6 @@ export async function GET() {
                         include: {
                             patient: true,
                             clinic: true,
-                            slot: true,
                         },
                     }),
                 ]);
