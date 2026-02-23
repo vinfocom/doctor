@@ -4,6 +4,12 @@ import prisma from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 import { cookies } from "next/headers";
 
+function jsonSafe<T>(value: T): T {
+    return JSON.parse(
+        JSON.stringify(value, (_key, v) => (typeof v === "bigint" ? v.toString() : v))
+    ) as T;
+}
+
 export async function GET(req: Request) {
     const cookieStore = await cookies();
     let token = cookieStore.get("token")?.value;
@@ -52,7 +58,7 @@ export async function GET(req: Request) {
             return NextResponse.json({ error: "Doctor profile not found" }, { status: 404 });
         }
 
-        return NextResponse.json({ doctor });
+        return NextResponse.json({ doctor: jsonSafe(doctor) });
     } catch (error) {
         console.error("Error fetching doctor profile:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -125,7 +131,7 @@ export async function PATCH(req: Request) {
             return updatedDoctor;
         });
 
-        return NextResponse.json({ doctor: result });
+        return NextResponse.json({ doctor: jsonSafe(result) });
     } catch (error) {
         console.error("Error updating doctor profile:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
