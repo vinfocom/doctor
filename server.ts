@@ -4,7 +4,7 @@ import next from "next";
 import { Server as SocketIOServer } from "socket.io";
 
 const dev = process.env.NODE_ENV !== "production";
-const hostname = "localhost";
+const hostname = process.env.HOST || "0.0.0.0";
 const port = parseInt(process.env.PORT || "3000", 10);
 // when using middleware `hostname` and `port` must be provided below
 const app = next({ dev, hostname, port });
@@ -29,6 +29,7 @@ app.prepare().then(() => {
             methods: ["GET", "POST"],
         },
     });
+    (globalThis as any).__DOCTOR_IO__ = io;
 
     io.on("connection", (socket) => {
         console.log("A user connected:", socket.id);

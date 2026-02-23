@@ -88,6 +88,7 @@ export default function AppointmentsPage() {
             header: "Status",
             accessorKey: (item: Appointment) => {
                 const colors: Record<string, string> = {
+                    BOOKED: "bg-indigo-50 text-indigo-600 border-indigo-200",
                     PENDING: "bg-amber-50 text-amber-600 border-amber-200",
                     CONFIRMED: "bg-emerald-50 text-emerald-600 border-emerald-200",
                     CANCELLED: "bg-red-50 text-red-600 border-red-200",

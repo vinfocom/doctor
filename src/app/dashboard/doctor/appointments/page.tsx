@@ -42,6 +42,33 @@ export default function DoctorAppointmentsPage() {
         if (res.ok) setAppointments(appointments.map((a) => a.appointment_id === appointmentId ? { ...a, status } : a));
     };
 
+    const handleReschedule = async (appointmentId: number, currentDate: string, currentStart: string, currentEnd: string) => {
+        const dateDefault = currentDate ? new Date(currentDate).toISOString().split("T")[0] : "";
+        const newDate = prompt("New date (YYYY-MM-DD)", dateDefault);
+        if (!newDate) return;
+        const newStart = prompt("New start time (HH:MM)", formatTime(currentStart));
+        if (!newStart) return;
+        const newEnd = prompt("New end time (HH:MM)", formatTime(currentEnd));
+        if (!newEnd) return;
+
+        const res = await fetch("/api/appointments", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                appointmentId,
+                appointment_date: newDate,
+                start_time: newStart,
+                end_time: newEnd,
+                status: "BOOKED",
+            })
+        });
+        if (res.ok) {
+            setAppointments(appointments.map((a) => a.appointment_id === appointmentId
+                ? { ...a, appointment_date: newDate, start_time: newStart, end_time: newEnd, status: "BOOKED" }
+                : a));
+        }
+    };
+
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     if (loading) {
@@ -118,14 +145,12 @@ export default function DoctorAppointmentsPage() {
                                         <td><span className={`badge badge-${apt.status.toLowerCase()}`}>{apt.status}</span></td>
                                         <td>
                                             <div className="flex gap-2">
-                                                {apt.status === "PENDING" && (
+                                                {apt.status !== "COMPLETED" && apt.status !== "CANCELLED" && (
                                                     <>
-                                                        <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "CONFIRMED")} className="text-xs text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Confirm</motion.button>
+                                                        <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "COMPLETED")} className="text-xs text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Complete</motion.button>
                                                         <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "CANCELLED")} className="text-xs text-red-500 hover:bg-red-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Cancel</motion.button>
+                                                        <motion.button onClick={() => handleReschedule(apt.appointment_id, apt.appointment_date, apt.start_time, apt.end_time)} className="text-xs text-amber-600 hover:bg-amber-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Reschedule</motion.button>
                                                     </>
-                                                )}
-                                                {apt.status === "CONFIRMED" && (
-                                                    <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "COMPLETED")} className="text-xs text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Complete</motion.button>
                                                 )}
                                                 <motion.button
                                                     onClick={async () => {

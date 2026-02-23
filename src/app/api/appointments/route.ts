@@ -183,7 +183,7 @@ export async function POST(request: Request) {
                 doctor_id: Number(doctor_id),
                 clinic_id: Number(clinic_id),
                 admin_id: Number(admin_id),
-                status: 'PENDING',
+                status: 'BOOKED',
                 appointment_date: dateObj,
                 start_time: startTimeObj,
                 end_time: endTimeObj
@@ -233,13 +233,12 @@ export async function DELETE(request: Request) {
 export async function PATCH(request: Request) {
     try {
         const body = await request.json();
-        const { appointmentId, status } = body;
+        const { appointmentId, status, appointment_date, start_time, end_time } = body;
 
-        if (!appointmentId || !status) {
-            return NextResponse.json({ error: "Appointment ID and status required" }, { status: 400 });
+        if (!appointmentId) {
+            return NextResponse.json({ error: "Appointment ID required" }, { status: 400 });
         }
 
-        // Ideally verify user has permission (Doctor/Admin)
         const cookieStore = await cookies();
         let token = cookieStore.get("token")?.value;
 
@@ -253,12 +252,29 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
+        const hasRescheduleFields = Boolean(appointment_date || start_time || end_time);
+        if (!status && !hasRescheduleFields) {
+            return NextResponse.json(
+                { error: "Provide status or reschedule fields" },
+                { status: 400 }
+            );
+        }
+
+        const updateData: Record<string, unknown> = {};
+        if (status) updateData.status = status;
+        if (appointment_date) updateData.appointment_date = new Date(appointment_date);
+        if (start_time) updateData.start_time = new Date(`1970-01-01T${start_time}:00Z`);
+        if (end_time) updateData.end_time = new Date(`1970-01-01T${end_time}:00Z`);
+        if (hasRescheduleFields && !status) {
+            updateData.status = "BOOKED";
+        }
+
         const updatedAppointment = await prisma.appointment.update({
             where: { appointment_id: Number(appointmentId) },
-            data: { status: status }
+            data: updateData
         });
 
-        return NextResponse.json(updatedAppointment);
+        return NextResponse.json(jsonSafe(updatedAppointment));
     } catch (error) {
         console.error('Error updating appointment:', error);
         return NextResponse.json(

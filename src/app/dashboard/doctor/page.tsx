@@ -10,7 +10,7 @@ import { PremiumTable } from "@/components/ui/PremiumTable";
 interface DoctorStats {
     totalAppointments: number;
     todayAppointments: number;
-    pendingAppointments: number;
+    bookedAppointments: number;
 }
 
 interface RecentAppointment {
@@ -48,7 +48,7 @@ export default function DoctorDashboard() {
                 const sortedData = data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
                 const total = sortedData.length;
-                const pending = sortedData.filter(a => a.status === 'PENDING').length;
+                const booked = sortedData.filter(a => a.status === 'BOOKED').length;
                 const today = sortedData.filter(a => {
                     if (!a.slot?.slot_date) return false;
                     const d = new Date(a.slot.slot_date);
@@ -58,7 +58,7 @@ export default function DoctorDashboard() {
 
                 setStats({
                     totalAppointments: total,
-                    pendingAppointments: pending,
+                    bookedAppointments: booked,
                     todayAppointments: today
                 });
                 setRecentAppointments(sortedData.slice(0, 5));
@@ -83,7 +83,7 @@ export default function DoctorDashboard() {
     const statCards = [
         { label: "Total Appointments", value: stats?.totalAppointments || 0, icon: Calendar, color: "#4f46e5" },
         { label: "Today's Visits", value: stats?.todayAppointments || 0, icon: Activity, color: "#0891b2" },
-        { label: "Pending Requests", value: stats?.pendingAppointments || 0, icon: Clock, color: "#d97706" },
+        { label: "Booked Appointments", value: stats?.bookedAppointments || 0, icon: Clock, color: "#4f46e5" },
     ];
 
     const columns = [
@@ -108,6 +108,7 @@ export default function DoctorDashboard() {
             header: "Status",
             accessorKey: (item: RecentAppointment) => {
                 const colors: Record<string, string> = {
+                    BOOKED: "bg-indigo-50 text-indigo-600 border-indigo-200",
                     PENDING: "bg-amber-50 text-amber-600 border-amber-200",
                     CONFIRMED: "bg-emerald-50 text-emerald-600 border-emerald-200",
                     CANCELLED: "bg-red-50 text-red-600 border-red-200",

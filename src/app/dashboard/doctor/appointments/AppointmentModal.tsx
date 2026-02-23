@@ -22,6 +22,11 @@ interface AppointmentModalProps {
     onSuccess: () => void;
 }
 
+const to12HourLabel = (time: string): string => {
+    if (!time) return "";
+    return /AM|PM/i.test(time) ? time : convertTo12Hour(time);
+};
+
 export default function AppointmentModal({ isOpen, onClose, onSuccess }: AppointmentModalProps) {
     const [clinics, setClinics] = useState<Clinic[]>([]);
     // Schedules removed, using API for slots and duration
@@ -243,7 +248,7 @@ export default function AppointmentModal({ isOpen, onClose, onSuccess }: Appoint
                                 >
                                     <option value="">Select Time</option>
                                     {availableSlots.map(slot => (
-                                        <option key={slot} value={slot}>{slot}</option>
+                                        <option key={slot} value={slot}>{to12HourLabel(slot)}</option>
                                     ))}
                                 </select>
                                 {formData.date && formData.clinic_id && availableSlots.length === 0 && (
@@ -274,4 +279,3 @@ export default function AppointmentModal({ isOpen, onClose, onSuccess }: Appoint
         </AnimatePresence>
     );
 }
-

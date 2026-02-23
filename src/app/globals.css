@@ -314,6 +314,11 @@ textarea:focus {
   color: #d97706;
 }
 
+.badge-booked {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4338ca;
+}
+
 .badge-confirmed {
   background: rgba(16, 185, 129, 0.1);
   color: #059669;

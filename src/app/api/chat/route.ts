@@ -53,6 +53,11 @@ export async function GET(request: NextRequest) {
             where: {
                 patient_id: patientIdNum,
                 doctor_id: doctorIdNum,
+                content: {
+                    not: {
+                        startsWith: "Announcement:",
+                    },
+                },
             },
             orderBy: {
                 created_at: "asc",
@@ -129,6 +134,18 @@ export async function POST(request: NextRequest) {
                 content,
             },
         });
+        const room = `chat_patient_${patientIdNum}_doctor_${doctorIdNum}`;
+        const io = (globalThis as any).__DOCTOR_IO__;
+        if (io && typeof io.to === "function") {
+            io.to(room).emit("receive_message", {
+                message_id: message.message_id,
+                patient_id: patientIdNum,
+                doctor_id: doctorIdNum,
+                sender: message.sender,
+                content: message.content,
+                created_at: message.created_at,
+            });
+        }
 
         return NextResponse.json({ message }, { status: 201 });
     } catch (error) {

@@ -35,6 +35,38 @@ enum DoctorStatus {
   INACTIVE
 }
 
+model doctor_remainder_queue {
+  queue_id Int @id @default(autoincrement())
+
+  doctor_id   Int
+  schedule_id Int?
+  admin_id    Int?
+
+  slot_date           DateTime  @db.Date
+  schedule_start_time DateTime? @db.Time
+  schedule_end_time   DateTime? @db.Time
+
+  channel     String? @db.VarChar(50)
+  destination String? @db.VarChar(255)
+  status      String? @db.VarChar(50)
+
+  attempt_count Int       @default(0)
+  next_retry_at DateTime?
+  last_error    String?   @db.VarChar(255)
+
+  dedup_key String? @unique @db.VarChar(255)
+
+  created_at DateTime  @default(now()) @db.Timestamp(0)
+  updated_at DateTime  @updatedAt @db.Timestamp(0)
+  sent_at    DateTime? @db.Timestamp(0)
+
+  doctor   doctors                 @relation(fields: [doctor_id], references: [doctor_id])
+  schedule doctor_clinic_schedule? @relation(fields: [schedule_id], references: [schedule_id])
+  admin    admins?                 @relation(fields: [admin_id], references: [admin_id])
+
+  @@index([doctor_id, slot_date])
+}
+
 model users {
   user_id    Int       @id @default(autoincrement())
   name       String?   @db.VarChar(255)
@@ -58,9 +90,10 @@ model admins {
   doctors  doctors[]
   patients patients[]
 
-  appointments appointment[]
-  schedules    doctor_clinic_schedule[]
-  leaves       doctor_leaves[]
+  appointments          appointment[]
+  schedules             doctor_clinic_schedule[]
+  leaves                doctor_leaves[]
+  doctorRemainderQueues doctor_remainder_queue[]
 }
 
 model doctors {
@@ -75,16 +108,18 @@ model doctors {
   username        String?       @db.VarChar(255)
   chat_id         BigInt?       @unique
 
-  admin            admins                    @relation(fields: [admin_id], references: [admin_id])
-  user             users?                    @relation(fields: [user_id], references: [user_id])
-  schedules        doctor_clinic_schedule[]
-  appointments     appointment[]
-  clinics          clinics[]
-  patients         patients[]
-  whatsapp_numbers doctor_whatsapp_numbers[]
-  leaves           doctor_leaves[]
-  acceptDays       Int?
-  chat_messages    chat_messages[]
+  admin                 admins                    @relation(fields: [admin_id], references: [admin_id])
+  user                  users?                    @relation(fields: [user_id], references: [user_id])
+  schedules             doctor_clinic_schedule[]
+  appointments          appointment[]
+  clinics               clinics[]
+  patients              patients[]
+  whatsapp_numbers      doctor_whatsapp_numbers[]
+  leaves                doctor_leaves[]
+  acceptDays            Int?
+  chat_messages         chat_messages[]
+  doctorRemainderQueues doctor_remainder_queue[]
+  announcement_campaigns announcement_campaigns[]
 }
 
 model doctor_whatsapp_numbers {
@@ -125,6 +160,7 @@ model patients {
   doctor        doctors?        @relation(fields: [doctor_id], references: [doctor_id])
   appointments  appointment[]
   chat_messages chat_messages[]
+  announcement_recipients announcement_campaign_recipients[]
 }
 
 model appointment {
@@ -198,9 +234,10 @@ model doctor_clinic_schedule {
   effective_from DateTime @db.Date
   effective_to   DateTime @db.Date
 
-  doctor doctors? @relation(fields: [doctor_id], references: [doctor_id])
-  clinic clinics? @relation(fields: [clinic_id], references: [clinic_id])
-  admin  admins?  @relation(fields: [admin_id], references: [admin_id])
+  doctor                doctors?                 @relation(fields: [doctor_id], references: [doctor_id])
+  clinic                clinics?                 @relation(fields: [clinic_id], references: [clinic_id])
+  admin                 admins?                  @relation(fields: [admin_id], references: [admin_id])
+  doctorRemainderQueues doctor_remainder_queue[]
 }
 
 model conversation_sessions {
@@ -247,4 +284,33 @@ model chat_messages {
   doctor  doctors  @relation(fields: [doctor_id], references: [doctor_id])
 
   @@index([doctor_id, patient_id])
+}
+
+model announcement_campaigns {
+  campaign_id  Int      @id @default(autoincrement())
+  doctor_id    Int
+  message      String   @db.Text
+  target_mode  String?  @db.VarChar(20)
+  target_date  DateTime? @db.Date
+  created_at   DateTime @default(now()) @db.Timestamp(0)
+
+  doctor     doctors                           @relation(fields: [doctor_id], references: [doctor_id])
+  recipients announcement_campaign_recipients[]
+
+  @@index([doctor_id, created_at])
+}
+
+model announcement_campaign_recipients {
+  id          Int      @id @default(autoincrement())
+  campaign_id Int
+  patient_id  Int
+  is_read     Boolean  @default(false)
+  created_at  DateTime @default(now()) @db.Timestamp(0)
+  read_at     DateTime? @db.Timestamp(0)
+
+  campaign announcement_campaigns @relation(fields: [campaign_id], references: [campaign_id], onDelete: Cascade)
+  patient  patients               @relation(fields: [patient_id], references: [patient_id])
+
+  @@unique([campaign_id, patient_id])
+  @@index([patient_id, created_at])
 }
