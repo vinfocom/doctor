@@ -72,6 +72,8 @@ model doctors {
   user_id         Int?          @unique
   whatsapp_number String?       @db.VarChar(255)
   specialization  String?       @db.VarChar(255)
+  username        String?        @db.VarChar(255)
+  chat_id         Int?           @unique
 
   admin            admins?                   @relation(fields: [admin_id], references: [admin_id])
   user             users?                    @relation(fields: [user_id], references: [user_id])
@@ -116,6 +118,7 @@ model patients {
   admin_id   Int
   doctor_id  Int?
   phone      String? @db.VarChar(255)
+  telegram_chat_id String? @unique @db.VarChar(255)
   booking_id Int?
 
   admin         admins?         @relation(fields: [admin_id], references: [admin_id])
