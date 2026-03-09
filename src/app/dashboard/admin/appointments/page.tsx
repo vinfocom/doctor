@@ -76,10 +76,18 @@ export default function AppointmentsPage() {
             accessorKey: (item: Appointment) => (
                 <div className="flex flex-col">
                     <span className="text-gray-700">
-                        {item.slot?.slot_date ? new Date(item.slot.slot_date).toLocaleDateString() : 'N/A'}
+                        {item.slot?.slot_date
+                            ? new Date(`${String(item.slot.slot_date).slice(0, 10)}T00:00:00+05:30`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+                            : 'N/A'}
                     </span>
                     <span className="text-xs text-gray-400">
-                        {item.slot?.slot_time ? new Date(item.slot.slot_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A'}
+                        {item.slot?.slot_time ? (() => {
+                            const t = new Date(item.slot.slot_time);
+                            if (Number.isNaN(t.getTime())) return 'N/A';
+                            const h = t.getUTCHours(), m = t.getUTCMinutes();
+                            const ampm = h >= 12 ? 'PM' : 'AM';
+                            return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
+                        })() : 'N/A'}
                     </span>
                 </div>
             )

@@ -27,12 +27,16 @@ export async function GET(req: NextRequest) {
                 schedules: true,
             },
         });
+        const serializedDoctors = doctors.map(doc => ({
+            ...doc,
+            chat_id: doc.chat_id ? String(doc.chat_id) : null
+        }));
 
-        return NextResponse.json({ doctors });
-    } catch (error) {
+        return NextResponse.json({ doctors: serializedDoctors });
+    } catch (error: any) {
         console.error("Get doctors error:", error);
         return NextResponse.json(
-            { error: "Internal server error" },
+            { error: "Internal server error", details: error?.message || String(error) },
             { status: 500 }
         );
     }

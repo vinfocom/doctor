@@ -22,16 +22,20 @@ export async function GET(request: NextRequest) {
         }
 
         const patientIdNum = parseInt(patient_id, 10);
-        const doctorIdNum = parseInt(doctor_id, 10);
+        // For DOCTOR: always use the doctor_id from their session, not the param
+        // (mobile may pass 0 or stale id from patient object)
+        let doctorIdNum = parseInt(doctor_id, 10);
 
         if (session.role === "DOCTOR") {
             const doctor = await prisma.doctors.findUnique({
                 where: { user_id: session.userId },
                 select: { doctor_id: true },
             });
-            if (!doctor || doctor.doctor_id !== doctorIdNum) {
+            if (!doctor) {
                 return NextResponse.json({ error: "Forbidden" }, { status: 403 });
             }
+            // Override doctorIdNum with authoritative value from session
+            doctorIdNum = doctor.doctor_id;
         } else if (session.role === "PATIENT") {
             const sessionPatientId = session.patientId ?? session.userId;
             if (sessionPatientId !== patientIdNum) {
@@ -100,16 +104,19 @@ export async function POST(request: NextRequest) {
         }
 
         const patientIdNum = parseInt(patient_id, 10);
-        const doctorIdNum = parseInt(doctor_id, 10);
+        // For DOCTOR: always use the doctor_id from their session, not the param
+        let doctorIdNum = parseInt(doctor_id, 10);
 
         if (session.role === "DOCTOR") {
             const doctor = await prisma.doctors.findUnique({
                 where: { user_id: session.userId },
                 select: { doctor_id: true },
             });
-            if (!doctor || doctor.doctor_id !== doctorIdNum || sender !== "DOCTOR") {
+            if (!doctor || sender !== "DOCTOR") {
                 return NextResponse.json({ error: "Forbidden" }, { status: 403 });
             }
+            // Override with session-derived doctor_id
+            doctorIdNum = doctor.doctor_id;
         } else if (session.role === "PATIENT") {
             const sessionPatientId = session.patientId ?? session.userId;
             if (sessionPatientId !== patientIdNum || sender !== "PATIENT") {

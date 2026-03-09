@@ -43,10 +43,27 @@ export async function GET(req: Request) {
                 })
                 : null;
 
+            // Collect unique patient senders
+            const patientIds = [...new Set(incoming.map((m) => m.patient_id))];
+            const senderPatients = patientIds.length
+                ? await prisma.patients.findMany({
+                    where: { patient_id: { in: patientIds } },
+                    select: { patient_id: true, full_name: true },
+                })
+                : [];
+
+            const uniqueSenders = senderPatients.map((p) => ({
+                patientId: p.patient_id,
+                patientName: p.full_name || 'Patient',
+                // most recent doctorId for this patient
+                doctorId: incoming.find((m) => m.patient_id === p.patient_id)?.doctor_id ?? 0,
+            }));
+
             return NextResponse.json({
                 count: incoming.length,
                 announcementCount: 0,
                 latestAt: latest?.created_at ?? null,
+                uniqueSenders,
                 latestMessage: latest
                     ? {
                         senderName: latestSender?.full_name || "Patient",

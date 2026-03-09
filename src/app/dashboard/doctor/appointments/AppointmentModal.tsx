@@ -229,7 +229,7 @@ export default function AppointmentModal({ isOpen, onClose, onSuccess }: Appoint
                                     <input
                                         type="date"
                                         required
-                                        min={new Date().toISOString().split('T')[0]}
+                                        min={new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })}
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                                         value={formData.date}
                                         onChange={(e) => setFormData({ ...formData, date: e.target.value })}

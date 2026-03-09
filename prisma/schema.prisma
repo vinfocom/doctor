@@ -56,6 +56,8 @@ model doctor_remainder_queue {
 
   dedup_key String? @unique @db.VarChar(255)
 
+  lead_minutes Int @default(10)
+
   created_at DateTime  @default(now()) @db.Timestamp(0)
   updated_at DateTime  @updatedAt @db.Timestamp(0)
   sent_at    DateTime? @db.Timestamp(0)
@@ -155,12 +157,50 @@ model patients {
   phone            String? @db.VarChar(255)
   telegram_chat_id String? @unique @db.VarChar(255)
   booking_id       Int?
+  patient_count    Int?    @default(0)
+  password         String? @db.VarChar(255)
+  age              Int?
+  gender           String? @db.VarChar(20)
 
   admin         admins?         @relation(fields: [admin_id], references: [admin_id])
   doctor        doctors?        @relation(fields: [doctor_id], references: [doctor_id])
   appointments  appointment[]
   chat_messages chat_messages[]
   announcement_recipients announcement_campaign_recipients[]
+  whatsapp_numbers patient_whatsapp_numbers[]
+}
+
+model inbound_turn_queue {
+  queue_id       BigInt    @id @default(autoincrement())
+  inbound_sid    String    @unique(map: "uq_inbound_turn_sid") @db.VarChar(96)
+  from_number    String    @db.VarChar(80)
+  body           String    @db.Text
+  pre_state      String    @db.VarChar(64)
+  status         String    @default("PENDING") @db.VarChar(20)
+  attempt_count  Int       @default(0)
+  next_retry_at  DateTime? @db.DateTime(0)
+  locked_at      DateTime? @db.DateTime(0)
+  lock_owner     String?   @db.VarChar(80)
+  last_error     String?   @db.Text
+  dead_at        DateTime? @db.DateTime(0)
+  dead_reason    String?   @db.Text
+  created_at     DateTime  @default(now()) @db.Timestamp(0)
+  updated_at     DateTime  @default(now()) @updatedAt @db.Timestamp(0)
+
+  @@index([status, next_retry_at], map: "idx_inbound_turn_poll")
+  @@index([locked_at, lock_owner], map: "idx_inbound_turn_lock")
+}
+
+model patient_whatsapp_numbers {
+  id              Int      @id @default(autoincrement())
+  patient_id      Int
+  whatsapp_number String   @db.VarChar(255)
+  is_primary      Boolean  @default(false)
+  chat_id         BigInt?  // Telegram/WhatsApp chat ID
+  username        String?  @db.VarChar(255)
+  created_at      DateTime @default(now()) @db.Timestamp(0)
+
+  patient patients @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade)
 }
 
 model appointment {
@@ -177,6 +217,7 @@ model appointment {
   appointment_date DateTime?          @db.Date
   cancelled_by     String?            @db.VarChar(255)
   rescheduled_by   String?            @db.VarChar(255)
+  
 
   patient                     patients?                      @relation(fields: [patient_id], references: [patient_id])
   doctor                      doctors?                       @relation(fields: [doctor_id], references: [doctor_id])
@@ -203,6 +244,16 @@ model appointment_notification_log {
 
   meta_json Json?
   admin_id  Int?
+
+  attempt_count         Int       @default(0)
+  next_retry_at         DateTime? @db.DateTime(0)
+  locked_at             DateTime? @db.DateTime(0)
+  lock_owner            String?   @db.VarChar(80)
+  dead_at               DateTime? @db.DateTime(0)
+  dead_reason           String?   @db.Text
+  provider_message_sid  String?   @db.VarChar(80)
+  delivery_status       String?   @db.VarChar(30)
+  delivery_updated_at   DateTime? @db.DateTime(0)
 
   created_at DateTime @default(now()) @db.Timestamp(0)
 }

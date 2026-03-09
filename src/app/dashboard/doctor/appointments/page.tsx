@@ -7,6 +7,8 @@ interface Appointment {
     appointment_id: number;
     created_at: string;
     status: string;
+    cancelled_by?: string | null;
+    rescheduled_by?: string | null;
     // symptoms removed
     patient: { full_name: string; phone: string; symptoms?: string } | null;
     appointment_date: string;
@@ -17,6 +19,23 @@ interface Appointment {
 
 import AppointmentModal from "./AppointmentModal";
 import { formatTime, convertTo12Hour } from "@/lib/timeUtils";
+
+// Format a date string (YYYY-MM-DD or ISO) as a human-readable date in IST.
+// Using '+05:30' ensures the date is interpreted as IST midnight regardless of server tz.
+const toISTDateStr = (value: string) => {
+    if (!value) return 'N/A';
+    // If it's a date-only string, append IST offset so it's not treated as UTC midnight
+    const iso = value.includes('T') ? value : `${value.slice(0, 10)}T00:00:00+05:30`;
+    return new Date(iso).toLocaleDateString('en-IN', {
+        month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Kolkata',
+    });
+};
+
+const toISTDateInput = (value: string) => {
+    if (!value) return '';
+    const iso = value.includes('T') ? value : `${value.slice(0, 10)}T00:00:00+05:30`;
+    return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // en-CA gives YYYY-MM-DD
+};
 
 export default function DoctorAppointmentsPage() {
     const router = useRouter();
@@ -38,12 +57,14 @@ export default function DoctorAppointmentsPage() {
     useEffect(() => { fetchData(); }, [fetchData]);
 
     const handleStatusUpdate = async (appointmentId: number, status: string) => {
-        const res = await fetch("/api/appointments", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ appointmentId, status }) });
-        if (res.ok) setAppointments(appointments.map((a) => a.appointment_id === appointmentId ? { ...a, status } : a));
+        const body: Record<string, unknown> = { appointmentId, status };
+        if (status === 'CANCELLED') body.cancelled_by = 'DOCTOR';
+        const res = await fetch("/api/appointments", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (res.ok) setAppointments(appointments.map((a) => a.appointment_id === appointmentId ? { ...a, status, ...(status === 'CANCELLED' ? { cancelled_by: 'DOCTOR' } : {}) } : a));
     };
 
     const handleReschedule = async (appointmentId: number, currentDate: string, currentStart: string, currentEnd: string) => {
-        const dateDefault = currentDate ? new Date(currentDate).toISOString().split("T")[0] : "";
+        const dateDefault = currentDate ? toISTDateInput(currentDate) : "";
         const newDate = prompt("New date (YYYY-MM-DD)", dateDefault);
         if (!newDate) return;
         const newStart = prompt("New start time (HH:MM)", formatTime(currentStart));
@@ -136,13 +157,20 @@ export default function DoctorAppointmentsPage() {
                                         <td className="text-gray-500">{apt.patient?.phone || "N/A"}</td>
                                         <td className="text-gray-500">
                                             {apt.appointment_date
-                                                ? new Date(apt.appointment_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                                ? toISTDateStr(apt.appointment_date)
                                                 : "N/A"}{" "}
                                             {apt.start_time
                                                 ? convertTo12Hour(formatTime(apt.start_time))
                                                 : ""}
                                         </td>
-                                        <td><span className={`badge badge-${apt.status.toLowerCase()}`}>{apt.status}</span></td>
+                                        <td>
+                                            <span className={`badge badge-${apt.status.toLowerCase()}`}>{apt.status}</span>
+                                            {apt.status === 'CANCELLED' && apt.cancelled_by && (
+                                                <div className="text-xs text-red-500 mt-1 font-medium">
+                                                    By: {String(apt.cancelled_by).charAt(0).toUpperCase() + String(apt.cancelled_by).slice(1).toLowerCase()}
+                                                </div>
+                                            )}
+                                        </td>
                                         <td>
                                             <div className="flex gap-2">
                                                 {apt.status !== "COMPLETED" && apt.status !== "CANCELLED" && (
@@ -167,7 +195,7 @@ export default function DoctorAppointmentsPage() {
                                                 </motion.button>
                                             </div>
                                         </td>
-                                        
+
                                     </motion.tr>
                                 ))}
                             </tbody>

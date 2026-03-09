@@ -141,7 +141,7 @@ export default function DoctorSchedulePage() {
             } else if (scheduleForm.durationUnit === "Days") {
                 effectiveToDate.setDate(effectiveToDate.getDate() + durationValue);
             }
-            const effectiveTo = effectiveToDate.toISOString().split('T')[0];
+            const effectiveTo = effectiveToDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
             let schedulesPayload = [];
             if (editingScheduleId) {

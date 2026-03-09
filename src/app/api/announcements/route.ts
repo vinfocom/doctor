@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/request-auth";
 
-type TargetMode = "UPCOMING" | "TODAY" | "CUSTOM";
-const prismaAny = prisma as any;
+type TargetMode = "TOMORROW" | "TODAY" | "CUSTOM";
 
 function isMissingAnnouncementTableError(error: unknown) {
     const e = error as { code?: string; meta?: { table?: string }; message?: string };
@@ -18,47 +17,77 @@ function isMissingAnnouncementTableError(error: unknown) {
     );
 }
 
-async function getDoctorTargetPatients(userId: number, targetMode: TargetMode = "UPCOMING", targetDate?: string) {
+async function getDoctorTargetPatients(userId: number, targetMode: TargetMode = "TODAY", targetDate?: string) {
     const doctor = await prisma.doctors.findUnique({
         where: { user_id: userId },
         select: { doctor_id: true },
     });
     if (!doctor) return null;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const nextDay = new Date(today);
-    nextDay.setDate(today.getDate() + 1);
+    // Compute "today" in IST (UTC+5:30) as a YYYY-MM-DD string so the comparison
+    // works correctly regardless of server timezone.
+    const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000); // shift to IST
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const todayIST = `${nowIST.getUTCFullYear()}-${pad(nowIST.getUTCMonth() + 1)}-${pad(nowIST.getUTCDate())}`;
 
-    let dateFilter: { gte?: Date; lt?: Date } = { gte: today };
+    const addDays = (ymd: string, days: number) => {
+        const d = new Date(`${ymd}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + days);
+        return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+    };
+
+    let filterDate: string; // YYYY-MM-DD to match
     if (targetMode === "TODAY") {
-        dateFilter = { gte: today, lt: nextDay };
-    } else if (targetMode === "CUSTOM") {
-        const parsed = targetDate ? new Date(`${targetDate}T00:00:00`) : null;
-        if (!parsed || Number.isNaN(parsed.getTime())) {
+        filterDate = todayIST;
+    } else if (targetMode === "TOMORROW") {
+        filterDate = addDays(todayIST, 1);
+    } else {
+        // CUSTOM
+        if (!targetDate || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
             return { doctorId: doctor.doctor_id, patientIds: [], invalidDate: true as const };
         }
-        const next = new Date(parsed);
-        next.setDate(parsed.getDate() + 1);
-        dateFilter = { gte: parsed, lt: next };
+        filterDate = targetDate;
     }
 
-    const upcoming = await prisma.appointment.findMany({
-        where: {
-            doctor_id: doctor.doctor_id,
-            status: "BOOKED",
-            appointment_date: dateFilter,
-            patient_id: { not: null },
-        },
-        select: { patient_id: true },
-        distinct: ["patient_id"],
-    });
+    // Use raw SQL to compare appointment_date as a calendar date in IST (Asia/Kolkata).
+    // This avoids all UTC-vs-IST issues regardless of how datetimes were stored.
+    const upcoming = await prisma.$queryRaw<Array<{
+        patient_id: number | null;
+        appointment_date: Date | null;
+        start_time: Date | null;
+        full_name: string | null;
+    }>>`
+        SELECT
+            a.patient_id,
+            a.appointment_date,
+            a.start_time,
+            p.full_name
+        FROM appointment a
+        LEFT JOIN patients p ON p.patient_id = a.patient_id
+        WHERE
+            a.doctor_id = ${doctor.doctor_id}
+            AND a.status = 'BOOKED'
+            AND a.patient_id IS NOT NULL
+            AND DATE(CONVERT_TZ(a.appointment_date, '+00:00', '+05:30')) = ${filterDate}
+        ORDER BY a.appointment_date ASC, a.start_time ASC
+    `;
 
-    const patientIds = upcoming
-        .map((a) => a.patient_id)
-        .filter((id): id is number => typeof id === "number");
+    const uniquePatients = new Map<number, any>();
+    for (const a of upcoming) {
+        if (a.patient_id && !uniquePatients.has(a.patient_id)) {
+            uniquePatients.set(a.patient_id, {
+                patient_id: a.patient_id,
+                name: a.full_name || 'Unknown Patient',
+                appointment_date: a.appointment_date,
+                start_time: a.start_time,
+            });
+        }
+    }
 
-    return { doctorId: doctor.doctor_id, patientIds };
+    const patientsList = Array.from(uniquePatients.values());
+    const patientIds = patientsList.map(p => p.patient_id);
+
+    return { doctorId: doctor.doctor_id, patientIds, patientsList };
 }
 
 async function createAnnouncementCampaign(params: {
@@ -68,7 +97,7 @@ async function createAnnouncementCampaign(params: {
     targetMode: TargetMode;
     targetDate?: string;
 }) {
-    const campaign = await prismaAny.announcement_campaigns.create({
+    const campaign = await prisma.announcement_campaigns.create({
         data: {
             doctor_id: params.doctorId,
             message: params.message,
@@ -152,7 +181,7 @@ export async function GET(req: Request) {
             const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit") || "30")));
             let received: any[] = [];
             try {
-                received = await prismaAny.announcement_campaign_recipients.findMany({
+                received = await prisma.announcement_campaign_recipients.findMany({
                     where: { patient_id: patientId },
                     orderBy: { created_at: "desc" },
                     take: limit,
@@ -171,6 +200,7 @@ export async function GET(req: Request) {
                 });
             } catch (error) {
                 if (!isMissingAnnouncementTableError(error)) throw error;
+                console.error('[announcements] announcement_campaign_recipients table missing, using chat_messages fallback:', error);
                 // Fallback for older DBs: infer announcements from prefixed chat messages.
                 const fallbackMessages = await prisma.chat_messages.findMany({
                     where: {
@@ -242,7 +272,7 @@ export async function GET(req: Request) {
             const limit = Math.max(1, Math.min(500, Number(url.searchParams.get("limit") || "200")));
             let campaigns: any[] = [];
             try {
-                campaigns = await prismaAny.announcement_campaigns.findMany({
+                campaigns = await prisma.announcement_campaigns.findMany({
                     where: { doctor_id: doctor.doctor_id },
                     orderBy: { created_at: "desc" },
                     take: limit,
@@ -255,23 +285,67 @@ export async function GET(req: Request) {
                 });
             } catch (error) {
                 if (!isMissingAnnouncementTableError(error)) throw error;
-                return NextResponse.json({ campaigns: [] });
+                console.error('[announcements] announcement_campaigns table missing:', error);
+                // Fall through to chat_messages fallback below
             }
 
-            return NextResponse.json({
-                campaigns: campaigns.map((c: any) => ({
+            // Also fetch announcements sent via the fallback path (stored as chat_messages with "Announcement:" prefix).
+            // This covers broadcasts sent before the campaigns table existed or via the mobile offline fallback.
+            const fallbackMessages = await prisma.chat_messages.findMany({
+                where: {
+                    doctor_id: doctor.doctor_id,
+                    sender: "DOCTOR",
+                    content: { startsWith: "Announcement:" },
+                },
+                orderBy: { created_at: "desc" },
+                take: limit,
+                select: { message_id: true, patient_id: true, content: true, created_at: true },
+            });
+
+            // Build a set of campaign keys (message + minute) so we can skip duplicates
+            const campaignKeys = new Set(
+                campaigns.map((c: any) =>
+                    `${String(c.message).trim()}|${new Date(c.created_at).toISOString().slice(0, 16)}`
+                )
+            );
+
+            // Group fallback messages by unique broadcast (same content + same minute = one broadcast)
+            const fallbackGrouped = new Map<string, { content: string; created_at: Date; count: number; id: number }>();
+            for (const m of fallbackMessages) {
+                const clean = String(m.content).replace(/^Announcement:\s*/, "").trim();
+                const key = `${clean}|${new Date(m.created_at).toISOString().slice(0, 16)}`;
+                if (campaignKeys.has(key)) continue; // Already represented by a campaign record
+                if (!fallbackGrouped.has(key)) {
+                    fallbackGrouped.set(key, { content: clean, created_at: m.created_at, count: 0, id: m.message_id });
+                }
+                fallbackGrouped.get(key)!.count++;
+            }
+
+            const allCampaigns = [
+                ...campaigns.map((c: any) => ({
                     campaign_id: c.campaign_id,
                     created_at: c.created_at,
                     content: c.message,
                     asAnnouncement: true,
                     recipientCount: c._count.recipients,
                 })),
-            });
+                ...[...fallbackGrouped.values()].map((g) => ({
+                    campaign_id: `fallback_${g.id}`,
+                    created_at: g.created_at,
+                    content: g.content,
+                    asAnnouncement: true,
+                    recipientCount: g.count,
+                })),
+            ]
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                .slice(0, limit);
+
+            return NextResponse.json({ campaigns: allCampaigns });
         }
 
-        const targetModeRaw = (url.searchParams.get("targetMode") || "UPCOMING").toUpperCase();
+        const targetModeRaw = (url.searchParams.get("targetMode") || "TODAY").toUpperCase();
         const targetMode: TargetMode =
-            targetModeRaw === "TODAY" ? "TODAY" : targetModeRaw === "CUSTOM" ? "CUSTOM" : "UPCOMING";
+            targetModeRaw === "TODAY" ? "TODAY" : targetModeRaw === "TOMORROW" ? "TOMORROW" : targetModeRaw === "CUSTOM" ? "CUSTOM" : "TODAY";
         const targetDate = url.searchParams.get("targetDate") || undefined;
 
         const targets = await getDoctorTargetPatients(session.userId, targetMode, targetDate);
@@ -280,7 +354,10 @@ export async function GET(req: Request) {
             return NextResponse.json({ error: "Invalid targetDate. Use YYYY-MM-DD" }, { status: 400 });
         }
 
-        return NextResponse.json({ count: targets.patientIds.length });
+        return NextResponse.json({
+            count: targets.patientIds.length,
+            patients: targets.patientsList || [],
+        });
     } catch (error) {
         console.error("Get announcement targets error:", error);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -309,7 +386,7 @@ export async function POST(req: Request) {
                 return NextResponse.json({ error: "campaignId is required" }, { status: 400 });
             }
 
-            const anchor = await prismaAny.announcement_campaigns.findUnique({
+            const anchor = await prisma.announcement_campaigns.findUnique({
                 where: { campaign_id: campaignIdNum },
                 select: {
                     campaign_id: true,
@@ -334,7 +411,7 @@ export async function POST(req: Request) {
                 doctorId: doctor.doctor_id,
                 message,
                 recipientIds,
-                targetMode: "UPCOMING",
+                targetMode: "TODAY",
             });
             const contentForChat = await mirrorCampaignToChatMessages({
                 doctorId: doctor.doctor_id,
@@ -361,9 +438,9 @@ export async function POST(req: Request) {
         }
 
         const message = String(body?.message || "").trim();
-        const targetModeRaw = String(body?.targetMode || "UPCOMING").toUpperCase();
+        const targetModeRaw = String(body?.targetMode || "TODAY").toUpperCase();
         const targetMode: TargetMode =
-            targetModeRaw === "TODAY" ? "TODAY" : targetModeRaw === "CUSTOM" ? "CUSTOM" : "UPCOMING";
+            targetModeRaw === "TODAY" ? "TODAY" : targetModeRaw === "TOMORROW" ? "TOMORROW" : targetModeRaw === "CUSTOM" ? "CUSTOM" : "TODAY";
         const targetDate = body?.targetDate ? String(body.targetDate) : undefined;
         if (!message) {
             return NextResponse.json({ error: "Message is required" }, { status: 400 });

@@ -87,7 +87,7 @@ export async function PATCH(req: Request) {
 
     try {
         const body = await req.json();
-        const { doctor_name, phone, whatsapp_number, status, whatsapp_numbers } = body;
+        const { doctor_name, phone, whatsapp_number, status, specialization, whatsapp_numbers } = body;
 
         // Ensure doctor exists for this user
         const doctor = await prisma.doctors.findUnique({
@@ -105,7 +105,8 @@ export async function PATCH(req: Request) {
                     doctor_name,
                     phone,
                     whatsapp_number, // Legacy support
-                    status
+                    status,
+                    specialization,
                 }
             });
 

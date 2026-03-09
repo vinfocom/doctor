@@ -1,9 +1,18 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { verifyToken, JWTPayload } from "./jwt";
 
 export async function getSession(): Promise<JWTPayload | null> {
     const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
+    let token = cookieStore.get("token")?.value;
+
+    if (!token) {
+        const headersList = await headers();
+        const authHeader = headersList.get("authorization") || headersList.get("Authorization");
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            token = authHeader.split(" ")[1];
+        }
+    }
+
     if (!token) return null;
     return verifyToken(token);
 }

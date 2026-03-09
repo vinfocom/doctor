@@ -23,7 +23,7 @@ interface RecentAppointment {
 
 export default function DoctorDashboard() {
     const router = useRouter();
-    
+
     const [user, setUser] = useState({ name: "Doctor" });
     const [stats, setStats] = useState<DoctorStats | null>(null);
     const [recentAppointments, setRecentAppointments] = useState<RecentAppointment[]>([]);
@@ -51,9 +51,13 @@ export default function DoctorDashboard() {
                 const booked = sortedData.filter(a => a.status === 'BOOKED').length;
                 const today = sortedData.filter(a => {
                     if (!a.slot?.slot_date) return false;
-                    const d = new Date(a.slot.slot_date);
-                    const now = new Date();
-                    return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                    // Parse date using IST offset to avoid UTC midnight shifting the date
+                    const dateStr = String(a.slot.slot_date).slice(0, 10);
+                    const d = new Date(`${dateStr}T00:00:00+05:30`);
+                    const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+                    return d.getUTCFullYear() === nowIST.getUTCFullYear() &&
+                        d.getUTCMonth() === nowIST.getUTCMonth() &&
+                        d.getUTCDate() === nowIST.getUTCDate();
                 }).length;
 
                 setStats({
@@ -100,7 +104,9 @@ export default function DoctorDashboard() {
             header: "Date",
             accessorKey: (item: RecentAppointment) => (
                 <span className="text-gray-600">
-                    {item.slot?.slot_date ? new Date(item.slot.slot_date).toLocaleDateString() : 'N/A'}
+                    {item.slot?.slot_date
+                        ? new Date(`${String(item.slot.slot_date).slice(0, 10)}T00:00:00+05:30`).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Kolkata' })
+                        : 'N/A'}
                 </span>
             )
         },

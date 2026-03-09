@@ -33,7 +33,8 @@ export async function GET(request: Request) {
         }
 
         // 1. Get ALL Schedules for the specific day
-        const queryDate = new Date(date);
+        const [year, month, day] = date.split('-').map(Number);
+        const queryDate = new Date(year, month - 1, day);
         const dayOfWeek = queryDate.getDay(); // 0-6
 
         const schedules = await prisma.doctor_clinic_schedule.findMany({
@@ -44,15 +45,27 @@ export async function GET(request: Request) {
             }
         });
 
+        console.log("=== SLOTS API DEBUG ===");
+        console.log("queryDate:", queryDate, "dayOfWeek:", dayOfWeek);
+        console.log("clinicId:", clinicId, "doctorId:", doctorId);
+        console.log("Found Schedules:", schedules);
+
         if (!schedules || schedules.length === 0) {
             return NextResponse.json({ slots: [] });
         }
 
-        // 2. Fetched Booked Appointments
+        // Fetch booked appointments for that calendar day using UTC midnight boundaries
+        // (MariaDB DATE columns store dates as UTC midnight when read back via Prisma)
+        const [yr, mo, dy] = [year, month, day].map(n => String(n).padStart(2, '0'));
+        const dateKey = `${yr}-${mo}-${dy}`;
+        const apptStart = new Date(`${dateKey}T00:00:00.000Z`);
+        const apptEnd = new Date(`${dateKey}T00:00:00.000Z`);
+        apptEnd.setUTCDate(apptEnd.getUTCDate() + 1);
+
         const appointments = await prisma.appointment.findMany({
             where: {
                 clinic_id: Number(clinicId),
-                appointment_date: queryDate,
+                appointment_date: { gte: apptStart, lt: apptEnd },
                 status: {
                     in: ['PENDING', 'CONFIRMED', 'BOOKED']
                 }
@@ -97,14 +110,12 @@ export async function GET(request: Request) {
             return d;
         };
 
-        const [year, month, day] = date.split('-').map(Number);
-        const now = new Date();
-
-        // Local time components for "Is Past" Logic
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth() + 1;
-        const currentDay = now.getDate();
-        const currentTotalMinutes = now.getHours() * 60 + now.getMinutes();
+        // Compute "now" in IST for "isToday" / past slot logic
+        const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+        const currentYear = nowIST.getUTCFullYear();
+        const currentMonth = nowIST.getUTCMonth() + 1;
+        const currentDay = nowIST.getUTCDate();
+        const currentTotalMinutes = nowIST.getUTCHours() * 60 + nowIST.getUTCMinutes();
 
         const isToday = year === currentYear && month === currentMonth && day === currentDay;
 
@@ -155,6 +166,8 @@ export async function GET(request: Request) {
         slots = [...new Set(slots)];
         // sort
         slots.sort();
+
+        console.log("Generated Final Slots:", slots);
 
         return NextResponse.json({ slots, slot_duration: globalSlotDuration });
 

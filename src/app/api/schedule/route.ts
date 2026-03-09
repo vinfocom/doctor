@@ -88,10 +88,25 @@ export async function PATCH(req: Request) {
             return NextResponse.json({ error: "Invalid data" }, { status: 400 });
         }
 
+        let resolvedDoctorId = Number(doctorId);
+        if (!resolvedDoctorId && user.role === 'DOCTOR') {
+            const currentDoctor = await prisma.doctors.findUnique({
+                where: { user_id: user.userId },
+                select: { doctor_id: true }
+            });
+            if (currentDoctor) {
+                resolvedDoctorId = currentDoctor.doctor_id;
+            }
+        }
+
+        if (!resolvedDoctorId) {
+            return NextResponse.json({ error: "doctorId is required" }, { status: 400 });
+        }
+
         const results = [];
         for (const s of schedules) {
             let scheduleData: any = {
-                doctor_id: Number(doctorId),
+                doctor_id: resolvedDoctorId,
                 clinic_id: Number(clinicId),
                 day_of_week: s.day_of_week,
                 start_time: s.start_time,
@@ -104,7 +119,7 @@ export async function PATCH(req: Request) {
             // If we need admin_id, we should fetch it.
             // Let's get it from doctor record
             const doctor = await prisma.doctors.findUnique({
-                where: { doctor_id: Number(doctorId) },
+                where: { doctor_id: resolvedDoctorId },
                 select: { admin_id: true }
             });
 
