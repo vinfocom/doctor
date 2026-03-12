@@ -28,7 +28,6 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         const clinicId = parseInt(id);
         const { clinic_name, location, phone, status, schedule } = await req.json();
 
-        // Verify clinic exists
         const existingClinic = await prisma.clinics.findUnique({
             where: { clinic_id: clinicId },
         });
@@ -37,30 +36,24 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             return NextResponse.json({ error: "Clinic not found" }, { status: 404 });
         }
 
-        // Use transaction to update clinic and schedules
         const updatedClinic = await prisma.$transaction(async (tx) => {
             const clinic = await tx.clinics.update({
                 where: { clinic_id: clinicId },
                 data: {
-                    clinic_name,
-                    location,
-                    phone,
-                    status,
+                    ...(clinic_name !== undefined && { clinic_name }),
+                    ...(location !== undefined && { location }),
+                    ...(phone !== undefined && { phone }),
+                    ...(status !== undefined && { status }),
                 },
             });
 
             // If schedule is provided, replace existing schedules for this clinic
             if (schedule && Array.isArray(schedule)) {
-                // Delete existing schedules for this clinic
                 await tx.doctor_clinic_schedule.deleteMany({
                     where: { clinic_id: clinicId }
                 });
 
                 if (schedule.length > 0) {
-                    // Start from fresh, so we need doctor_id and admin_id
-                    // We can reuse the ones from existingClinic or fetch from user context if critical
-                    // existingClinic has admin_id and doctor_id.
-
                     const scheduleData = schedule.map((s: any) => ({
                         doctor_id: existingClinic.doctor_id,
                         clinic_id: clinicId,
@@ -113,7 +106,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         const { id } = await params;
         const clinicId = parseInt(id);
 
-        // Verify clinic exists
         const existingClinic = await prisma.clinics.findUnique({
             where: { clinic_id: clinicId },
         });
@@ -122,8 +114,21 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
             return NextResponse.json({ error: "Clinic not found" }, { status: 404 });
         }
 
-        await prisma.clinics.delete({
-            where: { clinic_id: clinicId },
+        const doctorId = existingClinic.doctor_id;
+
+        await prisma.$transaction(async (tx) => {
+            await tx.clinics.delete({
+                where: { clinic_id: clinicId },
+            });
+
+            // Sync num_clinics on doctor after deletion
+            if (doctorId) {
+                const count = await tx.clinics.count({ where: { doctor_id: doctorId } });
+                await tx.doctors.update({
+                    where: { doctor_id: doctorId },
+                    data: { num_clinics: count }
+                });
+            }
         });
 
         return NextResponse.json({ success: true });

@@ -6,7 +6,7 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { motion } from "motion/react";
-import { TrendingUp, Users, CalendarDays, Globe } from "lucide-react";
+import { TrendingUp, Users, CalendarDays, Globe, Stethoscope } from "lucide-react";
 
 type Period = "daily" | "weekly" | "monthly" | "yearly";
 
@@ -15,10 +15,11 @@ interface TrendsData {
     doctorsGrowth: { label: string; count: number }[];
     patientsPerDoctor: { doctor: string; patients: number }[];
     appointmentTrend: { label: string; count: number }[];
+    appointmentsPerDoctor: { doctor: string; appointments: number }[];
     systemDistribution: { name: string; value: number }[];
 }
 
-const COLORS = ["#4f46e5", "#0891b2", "#7c3aed", "#059669"];
+const COLORS = ["#4f46e5", "#0891b2", "#7c3aed", "#059669", "#d946ef", "#f59e0b"];
 const PIE_COLORS = ["#4f46e5", "#0891b2", "#7c3aed"];
 
 const TooltipStyle = {
@@ -98,7 +99,7 @@ export default function SystemTrends() {
             {/* Loading shimmer */}
             {loading ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                    {[1, 2, 3, 4].map(i => (
+                    {[1, 2, 3, 4, 5].map(i => (
                         <div key={i} className={`${chartCard} h-[300px]`}>
                             <div className="w-32 h-4 bg-gray-100 rounded animate-pulse mb-4" />
                             <div className="flex-1 bg-gray-50 rounded-xl animate-pulse" />
@@ -164,7 +165,27 @@ export default function SystemTrends() {
                         )}
                     </motion.div>
 
-                    {/* 4. System Distribution */}
+                    {/* 4. Appointments per Doctor */}
+                    <motion.div className={chartCard} key={`apd-${period}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.12 }}>
+                        {chartTitle(<Stethoscope size={14} className="text-purple-500" />, "Appointments per Doctor", "")}
+                        {data.appointmentsPerDoctor.length === 0 ? <Empty label="No appointments yet" /> : (
+                            <ResponsiveContainer width="100%" height={220}>
+                                <BarChart data={data.appointmentsPerDoctor} margin={{ top: 4, right: 12, left: -20, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                    <XAxis dataKey="doctor" tick={{ fontSize: 10, fill: "#94a3b8" }} interval={0} />
+                                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                                    <Tooltip contentStyle={TooltipStyle} />
+                                    <Bar dataKey="appointments" name="Appointments" radius={[6, 6, 0, 0]}>
+                                        {data.appointmentsPerDoctor.map((_, i) => (
+                                            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        )}
+                    </motion.div>
+
+                    {/* 5. System Distribution */}
                     <motion.div className={chartCard} key={`sd-${period}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.15 }}>
                         {chartTitle(<Globe size={14} className="text-violet-500" />, "System Distribution", "(total)")}
                         <div className="flex items-center gap-4">

@@ -14,8 +14,36 @@ export async function GET(req: Request) {
         if (session.role === "SUPER_ADMIN") {
             const patients = await prisma.patients.findMany({
                 orderBy: { patient_id: "desc" },
+                include: {
+                    doctor: { select: { doctor_id: true, doctor_name: true } },
+                    _count: { select: { appointments: true } },
+                },
             });
-            return NextResponse.json({ patients });
+
+            // Get first appointment date per patient as "registration date"
+            const firstAppointments = await prisma.appointment.groupBy({
+                by: ["patient_id"],
+                _min: { created_at: true },
+                where: { patient_id: { not: null } },
+            });
+            const firstApptMap = new Map<number, Date | null>();
+            for (const fa of firstAppointments) {
+                if (fa.patient_id) firstApptMap.set(fa.patient_id, fa._min.created_at);
+            }
+
+            const result = patients.map((p) => ({
+                patient_id: p.patient_id,
+                full_name: p.full_name,
+                phone: p.phone,
+                age: p.age,
+                gender: p.gender,
+                doctor_id: p.doctor_id,
+                doctor_name: p.doctor?.doctor_name || null,
+                appointment_count: p._count.appointments,
+                registered_at: firstApptMap.get(p.patient_id)?.toISOString() || null,
+            }));
+
+            return NextResponse.json({ patients: result });
         }
 
         let doctorId: number | null = null;

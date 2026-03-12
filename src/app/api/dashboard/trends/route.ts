@@ -56,7 +56,7 @@ export async function GET(req: Request) {
         const period: Period = (searchParams.get("period") as Period) || "monthly";
         const rangeStart = getRangeStart(period);
 
-        const [allDoctorUsers, patientsPerDoctorRaw, recentAppointments, totalDoctors, totalPatients, totalAppointments] =
+        const [allDoctorUsers, patientsPerDoctorRaw, recentAppointments, appointmentsPerDoctorRaw, totalDoctors, totalPatients, totalAppointments] =
             await Promise.all([
                 // 1. Doctors growth filtered by period range
                 prisma.users.findMany({
@@ -84,7 +84,16 @@ export async function GET(req: Request) {
                     orderBy: { created_at: "asc" },
                 }),
 
-                // 4. System distribution (period-independent totals)
+                // 4. Appointments per doctor (period-independent)
+                prisma.doctors.findMany({
+                    select: {
+                        doctor_name: true,
+                        _count: { select: { appointments: true } },
+                    },
+                    orderBy: { doctor_name: "asc" },
+                }),
+
+                // 5. System distribution (period-independent totals)
                 prisma.doctors.count(),
                 prisma.patients.count(),
                 prisma.appointment.count(),
@@ -122,6 +131,16 @@ export async function GET(req: Request) {
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([label, count]) => ({ label, count }));
 
+        // --- Process: Appointments per Doctor ---
+        const appointmentsPerDoctor = appointmentsPerDoctorRaw
+            .filter((d) => d._count.appointments > 0)
+            .map((d) => ({
+                doctor: d.doctor_name
+                    ? d.doctor_name.length > 14 ? d.doctor_name.slice(0, 13) + "…" : d.doctor_name
+                    : "Unknown",
+                appointments: d._count.appointments,
+            }));
+
         // --- Process: System Distribution ---
         const systemDistribution = [
             { name: "Doctors", value: totalDoctors },
@@ -134,6 +153,7 @@ export async function GET(req: Request) {
             doctorsGrowth,
             patientsPerDoctor,
             appointmentTrend,
+            appointmentsPerDoctor,
             systemDistribution,
         }));
     } catch (err) {

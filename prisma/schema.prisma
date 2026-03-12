@@ -118,6 +118,7 @@ model clinics {
   admin_id     Int
   doctor_id    Int?
   location     String?                  @db.VarChar(255)
+  created_at   DateTime?                @default(now()) @db.Timestamp(0)
   appointments appointment[]
   admin        admins                   @relation(fields: [admin_id], references: [admin_id])
   doctor       doctors?                 @relation(fields: [doctor_id], references: [doctor_id])

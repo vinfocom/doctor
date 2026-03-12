@@ -24,28 +24,8 @@ export async function GET(req: Request) {
     }
 
     try {
-        const clinics = await prisma.clinics.findMany({
-            include: {
-                schedules: true,
-                doctor: {
-                    select: {
-                        doctor_name: true,
-                        user_id: true
-                    }
-                }
-            }
-        });
-
-        // If user is doctor, maybe filter? But requirement says "list clinics", usually for that doctor.
-        // Let's filter if the user is a DOCTOR.
+        // For doctors, filter to their own clinics
         if (user.role === 'DOCTOR') {
-            const filteredClinics = clinics.filter(c => c.doctor?.user_id === user.userId);
-            // Wait, c.doctor_id refers to doctor table. user.userId is from users table.
-            // We need to match clinics where doctor.user_id === user.userId
-            // The include handles the join, but let's do it in the query for efficiency next time.
-            // For now, let's just return all for admins, and filtered for doctors if needed.
-            // Actually, let's refine the query:
-
             const doctor = await prisma.doctors.findUnique({
                 where: { user_id: user.userId }
             });
@@ -64,7 +44,38 @@ export async function GET(req: Request) {
             }
         }
 
-        return NextResponse.json({ clinics });
+        // For admins / super_admins — return all clinics with doctor info
+        const clinics = await prisma.clinics.findMany({
+            include: {
+                schedules: true,
+                doctor: {
+                    select: {
+                        doctor_id: true,
+                        doctor_name: true,
+                        profile_pic_url: true,
+                        num_clinics: true,
+                        specialization: true,
+                        status: true,
+                    }
+                }
+            },
+            orderBy: { created_at: 'desc' }
+        });
+
+        // Also fetch all doctors for the "Add Clinic" dropdown
+        const doctors = await prisma.doctors.findMany({
+            select: {
+                doctor_id: true,
+                doctor_name: true,
+                profile_pic_url: true,
+                num_clinics: true,
+                specialization: true,
+                status: true,
+            },
+            orderBy: { doctor_name: 'asc' }
+        });
+
+        return NextResponse.json({ clinics, doctors });
     } catch (error) {
         console.error("Error fetching clinics:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -104,12 +115,11 @@ export async function POST(req: Request) {
                 doctor_id = doctor.doctor_id;
                 admin_id = doctor.admin_id;
             }
-        } else if (user.role === 'ADMIN') {
+        } else if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') {
             const admin = await prisma.admins.findUnique({ where: { user_id: user.userId } });
             if (admin) {
                 admin_id = admin.admin_id;
             }
-            // Validating if doctor_id is passed in body for admin? 
             if (body.doctor_id) {
                 doctor_id = Number(body.doctor_id);
             }
@@ -125,7 +135,7 @@ export async function POST(req: Request) {
                     clinic_name,
                     location,
                     phone,
-                    status,
+                    status: status || "ACTIVE",
                     admin_id,
                     doctor_id,
                 }
@@ -149,9 +159,21 @@ export async function POST(req: Request) {
                 });
             }
 
+            // Sync num_clinics on doctor — only update upward when actual exceeds defined
+            if (doctor_id) {
+                const count = await tx.clinics.count({ where: { doctor_id } });
+                const doc = await tx.doctors.findUnique({ where: { doctor_id }, select: { num_clinics: true } });
+                if (count > (doc?.num_clinics ?? 0)) {
+                    await tx.doctors.update({
+                        where: { doctor_id },
+                        data: { num_clinics: count }
+                    });
+                }
+            }
+
             return await tx.clinics.findUnique({
                 where: { clinic_id: newClinic.clinic_id },
-                include: { schedules: true }
+                include: { schedules: true, doctor: { select: { doctor_id: true, doctor_name: true, profile_pic_url: true, num_clinics: true, specialization: true, status: true } } }
             });
         });
 

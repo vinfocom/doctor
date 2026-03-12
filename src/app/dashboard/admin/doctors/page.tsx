@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { PremiumButton } from "@/components/ui/PremiumButton";
-import { Shield, UserPlus, X, Pencil, Trash2, AlertTriangle, UploadCloud, FileText, CheckCircle2, Plus, CircleMinus, Image as ImageIcon, Power, Smartphone, User, Bot, Building2, Stethoscope, GraduationCap, MapPin, BarChart3 } from "lucide-react";
+import { Shield, UserPlus, X, Pencil, Trash2, AlertTriangle, UploadCloud, FileText, CheckCircle2, Plus, CircleMinus, Image as ImageIcon, Power, Smartphone, User, Bot, Building2, Stethoscope, GraduationCap, MapPin, BarChart3, Eye, Phone, Hash, FileDigit, ExternalLink } from "lucide-react";
 
 /* ───────────────── Types ───────────────── */
 interface WhatsAppNum { id?: number; whatsapp_number: string }
@@ -194,6 +194,9 @@ export default function AdminDoctorsPage() {
     // ── Delete confirm
     const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
     const [deleteConfirmName, setDeleteConfirmName] = useState<string>("");
+
+    // ── View details
+    const [viewDoc, setViewDoc] = useState<Doctor | null>(null);
 
     // ── Status toggle confirm
     const [statusToggleDoc, setStatusToggleDoc] = useState<Doctor | null>(null);
@@ -426,7 +429,7 @@ export default function AdminDoctorsPage() {
                         <table className="data-table">
                             <thead>
                                 <tr>
-                                    <th>Name</th>
+                                    <th>Doctor's Name</th>
                                     <th>Status</th>
                                     <th>Phone</th>
                                     <th>Specialization</th>
@@ -446,7 +449,7 @@ export default function AdminDoctorsPage() {
                                             transition={{ delay: 0.3 + i * 0.05 }}
                                         >
                                             <td>
-                                                <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setViewDoc(doc)}>
                                                     {doc.profile_pic_url ? (
                                                         <img src={doc.profile_pic_url} alt="" className="w-9 h-9 rounded-xl object-cover" />
                                                     ) : (
@@ -454,7 +457,7 @@ export default function AdminDoctorsPage() {
                                                             {doc.doctor_name?.charAt(0)?.toUpperCase()}
                                                         </div>
                                                     )}
-                                                    <span className="text-gray-800 font-medium">Dr. {doc.doctor_name}</span>
+                                                    <span className="text-gray-800 font-medium group-hover:text-indigo-600 group-hover:underline transition-colors">Dr. {doc.doctor_name}</span>
                                                 </div>
                                             </td>
                                             <td>
@@ -482,31 +485,31 @@ export default function AdminDoctorsPage() {
                                                 )}
                                             </td>
                                             <td>
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-1.5">
                                                     <motion.button
                                                         onClick={() => openEdit(doc)}
-                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors text-xs font-semibold"
-                                                        title="Edit doctor" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.95 }}
+                                                        className="p-2 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
+                                                        title="Edit" whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
                                                     >
-                                                        <Pencil size={13} /> Edit
+                                                        <Pencil size={15} />
                                                     </motion.button>
                                                     <motion.button
                                                         onClick={() => setStatusToggleDoc(doc)}
-                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${doc.status === "INACTIVE"
+                                                        className={`p-2 rounded-lg transition-colors ${doc.status === "INACTIVE"
                                                             ? "bg-green-50 text-green-600 hover:bg-green-100"
                                                             : "bg-orange-50 text-orange-600 hover:bg-orange-100"
                                                             }`}
-                                                        title={doc.status === "INACTIVE" ? "Activate doctor" : "Deactivate doctor"}
-                                                        whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.95 }}
+                                                        title={doc.status === "INACTIVE" ? "Activate" : "Deactivate"}
+                                                        whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
                                                     >
-                                                        <Power size={13} /> {doc.status === "INACTIVE" ? "Activate" : "Deactivate"}
+                                                        <Power size={15} />
                                                     </motion.button>
                                                     <motion.button
                                                         onClick={() => { setDeleteConfirmId(doc.doctor_id); setDeleteConfirmName(doc.doctor_name); }}
-                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors text-xs font-semibold"
-                                                        title="Delete doctor" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.95 }}
+                                                        className="p-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+                                                        title="Delete" whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
                                                     >
-                                                        <Trash2 size={13} /> Delete
+                                                        <Trash2 size={15} />
                                                     </motion.button>
                                                 </div>
                                             </td>
@@ -518,6 +521,145 @@ export default function AdminDoctorsPage() {
                     </div>
                 )}
             </motion.div>
+
+            {/* ═══════ View Doctor Details Modal ═══════ */}
+            <AnimatePresence>
+                {viewDoc && (
+                    <>
+                        <motion.div className="fixed inset-0 bg-black/40 z-40 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setViewDoc(null)} />
+                        <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                            <motion.div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8 relative max-h-[90vh] overflow-y-auto" initial={{ scale: 0.92, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 30 }} onClick={(e) => e.stopPropagation()}>
+                                <button onClick={() => setViewDoc(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
+
+                                {/* Header */}
+                                <div className="flex items-center gap-4 mb-6">
+                                    {viewDoc.profile_pic_url ? (
+                                        <img src={viewDoc.profile_pic_url} alt="" className="w-16 h-16 rounded-2xl object-cover shadow-md" />
+                                    ) : (
+                                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xl font-bold text-white shadow-md">
+                                            {viewDoc.doctor_name?.charAt(0)?.toUpperCase()}
+                                        </div>
+                                    )}
+                                    <div>
+                                        <h2 className="text-xl font-bold text-gray-900">Dr. {viewDoc.doctor_name}</h2>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className={`inline-block w-2 h-2 rounded-full ${viewDoc.status === "INACTIVE" ? "bg-red-500" : "bg-green-500"}`} />
+                                            <span className={`text-xs font-semibold ${viewDoc.status === "INACTIVE" ? "text-red-600" : "text-green-600"}`}>
+                                                {viewDoc.status === "INACTIVE" ? "Inactive" : "Active"}
+                                            </span>
+                                            {viewDoc.specialization && (
+                                                <span className="badge badge-confirmed ml-1">{viewDoc.specialization}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Details Grid */}
+                                <div className="space-y-5">
+                                    {/* Basic Info */}
+                                    <div>
+                                        <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-2.5 flex items-center gap-1.5"><User size={13} /> Basic Info</p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {viewDoc.phone && (
+                                                <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
+                                                    <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">Phone</p>
+                                                    <p className="text-sm font-medium text-gray-800">{viewDoc.phone}</p>
+                                                </div>
+                                            )}
+                                            {viewDoc.chat_id && (
+                                                <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
+                                                    <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">Telegram ID</p>
+                                                    <p className="text-sm font-medium text-gray-800">{viewDoc.chat_id}</p>
+                                                </div>
+                                            )}
+                                            {(viewDoc.num_clinics !== null && viewDoc.num_clinics !== undefined) && (
+                                                <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
+                                                    <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">Clinics</p>
+                                                    <p className="text-sm font-medium text-gray-800">{viewDoc.num_clinics}</p>
+                                                </div>
+                                            )}
+                                            {viewDoc.whatsapp_numbers && viewDoc.whatsapp_numbers.length > 0 && (
+                                                <div className="bg-gray-50 rounded-xl px-3.5 py-2.5 col-span-2">
+                                                    <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">WhatsApp</p>
+                                                    <p className="text-sm font-medium text-gray-800">{viewDoc.whatsapp_numbers.map(w => w.whatsapp_number).join(", ")}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Professional */}
+                                    {(viewDoc.registration_no || viewDoc.education || viewDoc.address) && (
+                                        <div>
+                                            <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-2.5 flex items-center gap-1.5"><Stethoscope size={13} /> Professional</p>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {viewDoc.registration_no && (
+                                                    <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
+                                                        <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">Registration No.</p>
+                                                        <p className="text-sm font-medium text-gray-800">{viewDoc.registration_no}</p>
+                                                    </div>
+                                                )}
+                                                {viewDoc.education && (
+                                                    <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
+                                                        <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">Education</p>
+                                                        <p className="text-sm font-medium text-gray-800">{viewDoc.education}</p>
+                                                    </div>
+                                                )}
+                                                {viewDoc.gst_number && (
+                                                    <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
+                                                        <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">GST Number</p>
+                                                        <p className="text-sm font-medium text-gray-800">{viewDoc.gst_number}</p>
+                                                    </div>
+                                                )}
+                                                {viewDoc.pan_number && (
+                                                    <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
+                                                        <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">PAN Number</p>
+                                                        <p className="text-sm font-medium text-gray-800">{viewDoc.pan_number}</p>
+                                                    </div>
+                                                )}
+                                                {viewDoc.address && (
+                                                    <div className="bg-gray-50 rounded-xl px-3.5 py-2.5 col-span-2">
+                                                        <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">Address</p>
+                                                        <p className="text-sm font-medium text-gray-800">{viewDoc.address}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Documents */}
+                                    {(viewDoc.document_url || viewDoc.barcode_url) && (
+                                        <div>
+                                            <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-2.5 flex items-center gap-1.5"><FileText size={13} /> Documents</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {viewDoc.document_url && (
+                                                    <a href={viewDoc.document_url} target="_blank" rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-100 transition-colors">
+                                                        <FileText size={12} /> Education Document <ExternalLink size={10} />
+                                                    </a>
+                                                )}
+                                                {viewDoc.barcode_url && (
+                                                    <a href={viewDoc.barcode_url} target="_blank" rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-100 transition-colors">
+                                                        <ImageIcon size={12} /> Barcode <ExternalLink size={10} />
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Footer action */}
+                                <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end">
+                                    <button onClick={() => { setViewDoc(null); openEdit(viewDoc); }}
+                                        className="btn-primary flex items-center gap-2 text-sm">
+                                        <Pencil size={14} /> Edit Doctor
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
 
             {/* ═══════ Delete Confirmation Modal ═══════ */}
             <AnimatePresence>
