@@ -20,7 +20,7 @@ interface TrendsData {
 }
 
 const COLORS = ["#4f46e5", "#0891b2", "#7c3aed", "#059669", "#d946ef", "#f59e0b"];
-const PIE_COLORS = ["#4f46e5", "#0891b2", "#7c3aed"];
+const PIE_COLORS = ["#10b981", "#f59e0b", "#f43f5e"];
 
 const TooltipStyle = {
     backgroundColor: "rgba(255,255,255,0.97)",
@@ -73,7 +73,7 @@ export default function SystemTrends() {
             {/* Header row */}
             <div className="flex flex-wrap items-center gap-3 mb-6">
                 <div className="w-1 h-6 rounded-full bg-gradient-to-b from-indigo-500 to-violet-500 flex-shrink-0" />
-                <h2 className="text-xl font-bold text-gray-900">System Trends</h2>
+                <h2 className="text-xl font-bold text-gray-900">Overall Trends</h2>
 
                 {/* Period Selector */}
                 <div className="ml-auto flex items-center gap-1 bg-gray-100 rounded-xl p-1">
@@ -130,7 +130,7 @@ export default function SystemTrends() {
 
                     {/* 2. Patients per Doctor */}
                     <motion.div className={chartCard} key={`ppd-${period}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.05 }}>
-                        {chartTitle(<Users size={14} className="text-cyan-600" />, "Patients per Doctor", "")}
+                        {chartTitle(<Users size={14} className="text-cyan-600" />, "Patients per Doctor", `(${periodDesc})`)}
                         {data.patientsPerDoctor.length === 0 ? <Empty label="No patients assigned yet" /> : (
                             <ResponsiveContainer width="100%" height={220}>
                                 <BarChart data={data.patientsPerDoctor} margin={{ top: 4, right: 12, left: -20, bottom: 0 }}>
@@ -167,7 +167,7 @@ export default function SystemTrends() {
 
                     {/* 4. Appointments per Doctor */}
                     <motion.div className={chartCard} key={`apd-${period}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.12 }}>
-                        {chartTitle(<Stethoscope size={14} className="text-purple-500" />, "Appointments per Doctor", "")}
+                        {chartTitle(<Stethoscope size={14} className="text-purple-500" />, "Appointments per Doctor", `(${periodDesc})`)}
                         {data.appointmentsPerDoctor.length === 0 ? <Empty label="No appointments yet" /> : (
                             <ResponsiveContainer width="100%" height={220}>
                                 <BarChart data={data.appointmentsPerDoctor} margin={{ top: 4, right: 12, left: -20, bottom: 0 }}>

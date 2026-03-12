@@ -93,7 +93,7 @@ export default function AdminDashboard() {
                 ))}
             </div>
 
-            {/* System Trends — SUPER_ADMIN only */}
+            {/* Overall Trends — SUPER_ADMIN only */}
             {user?.role === "SUPER_ADMIN" && (
                 <SystemTrends />
             )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { PremiumTable } from "@/components/ui/PremiumTable";
 import { PremiumButton } from "@/components/ui/PremiumButton";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -20,16 +20,15 @@ interface Appointment {
     } | null;
     status: string;
     created_at: string;
-    slot: {
-        slot_date: string;
-        slot_time: string;
-    } | null;
+    appointment_date: string | null;
+    start_time: string | null;
 }
 
 export default function AppointmentsPage() {
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [search, setSearch] = useState("");
 
     useEffect(() => {
         fetchAppointments();
@@ -37,6 +36,7 @@ export default function AppointmentsPage() {
 
     const fetchAppointments = async () => {
         setLoading(true);
+        setError("");
         try {
             const res = await fetch("/api/appointments");
             if (res.ok) {
@@ -52,6 +52,59 @@ export default function AppointmentsPage() {
         }
     };
 
+    const filtered = useMemo(() => {
+        if (!search.trim()) return appointments;
+        const q = search.toLowerCase().trim();
+        return appointments.filter((a) => {
+            return (
+                a.patient?.full_name?.toLowerCase().includes(q) ||
+                a.patient?.phone?.toLowerCase().includes(q) ||
+                a.doctor?.doctor_name?.toLowerCase().includes(q) ||
+                a.clinic?.clinic_name?.toLowerCase().includes(q) ||
+                a.status?.toLowerCase().includes(q)
+            );
+        });
+    }, [appointments, search]);
+
+    const formatDate = (dateStr: string | null) => {
+        if (!dateStr) return "N/A";
+        try {
+            const d = new Date(`${String(dateStr).slice(0, 10)}T00:00:00+05:30`);
+            return d.toLocaleDateString("en-IN", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+                timeZone: "Asia/Kolkata",
+            });
+        } catch {
+            return "N/A";
+        }
+    };
+
+    const formatTime = (timeStr: string | null) => {
+        if (!timeStr) return "N/A";
+        try {
+            const t = new Date(timeStr);
+            if (Number.isNaN(t.getTime())) {
+                // Could be "HH:MM:SS" string
+                const parts = String(timeStr).split(":");
+                if (parts.length >= 2) {
+                    const h = parseInt(parts[0]);
+                    const m = parseInt(parts[1]);
+                    const ampm = h >= 12 ? "PM" : "AM";
+                    return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${ampm}`;
+                }
+                return "N/A";
+            }
+            const h = t.getUTCHours();
+            const m = t.getUTCMinutes();
+            const ampm = h >= 12 ? "PM" : "AM";
+            return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${ampm}`;
+        } catch {
+            return "N/A";
+        }
+    };
+
     const columns = [
         {
             header: "Patient",
@@ -60,37 +113,25 @@ export default function AppointmentsPage() {
                     <div className="font-medium text-gray-900">{item.patient?.full_name || "Unknown"}</div>
                     <div className="text-xs text-gray-400">{item.patient?.phone}</div>
                 </div>
-            )
+            ),
         },
         {
-            header: "Doctor/Clinic",
+            header: "Doctor / Clinic",
             accessorKey: (item: Appointment) => (
                 <div>
-                    <div className="font-medium text-indigo-600">{item.doctor?.doctor_name}</div>
-                    <div className="text-xs text-gray-400">{item.clinic?.clinic_name}</div>
+                    <div className="font-medium text-indigo-600">{item.doctor?.doctor_name || "—"}</div>
+                    <div className="text-xs text-gray-400">{item.clinic?.clinic_name || "—"}</div>
                 </div>
-            )
+            ),
         },
         {
             header: "Date & Time",
             accessorKey: (item: Appointment) => (
                 <div className="flex flex-col">
-                    <span className="text-gray-700">
-                        {item.slot?.slot_date
-                            ? new Date(`${String(item.slot.slot_date).slice(0, 10)}T00:00:00+05:30`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
-                            : 'N/A'}
-                    </span>
-                    <span className="text-xs text-gray-400">
-                        {item.slot?.slot_time ? (() => {
-                            const t = new Date(item.slot.slot_time);
-                            if (Number.isNaN(t.getTime())) return 'N/A';
-                            const h = t.getUTCHours(), m = t.getUTCMinutes();
-                            const ampm = h >= 12 ? 'PM' : 'AM';
-                            return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
-                        })() : 'N/A'}
-                    </span>
+                    <span className="text-gray-700 font-medium">{formatDate(item.appointment_date)}</span>
+                    <span className="text-xs text-gray-400">{formatTime(item.start_time)}</span>
                 </div>
-            )
+            ),
         },
         {
             header: "Status",
@@ -100,34 +141,36 @@ export default function AppointmentsPage() {
                     PENDING: "bg-amber-50 text-amber-600 border-amber-200",
                     CONFIRMED: "bg-emerald-50 text-emerald-600 border-emerald-200",
                     CANCELLED: "bg-red-50 text-red-600 border-red-200",
-                    COMPLETED: "bg-indigo-50 text-indigo-600 border-indigo-200",
+                    COMPLETED: "bg-green-50 text-green-600 border-green-200",
                 };
-                const statusColor = colors[item.status] || "bg-gray-50 text-gray-500";
+                const statusColor = colors[item.status] || "bg-gray-50 text-gray-500 border-gray-200";
                 return (
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium border ${statusColor}`}>
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${statusColor}`}>
                         {item.status}
                     </span>
                 );
-            }
+            },
         },
     ];
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold gradient-text">
-                        Appointments
-                    </h1>
+                    <h1 className="text-3xl font-bold gradient-text">Appointments</h1>
                     <p className="text-gray-500 mt-2">View and manage patient appointments.</p>
                 </div>
-                <div className="flex gap-3">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <div className="flex gap-3 items-center">
+                    {/* Search — inline style overrides .input-field padding shorthand */}
+                    <div className="relative flex items-center">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 z-10" />
                         <input
                             type="text"
-                            placeholder="Search patients..."
-                            className="input-field pl-10 w-64"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Search patients, doctors…"
+                            className="input-field w-64"
+                            style={{ paddingLeft: "2.25rem", paddingRight: "0.75rem" }}
                         />
                     </div>
                     <PremiumButton variant="secondary" onClick={fetchAppointments} icon={RefreshCcw}>
@@ -148,10 +191,14 @@ export default function AppointmentsPage() {
                         <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
                     </div>
                 ) : (
-                    <PremiumTable
-                        columns={columns}
-                        data={appointments}
-                    />
+                    <>
+                        {search.trim() && (
+                            <div className="text-sm text-gray-500 mb-3 px-1">
+                                Showing <span className="font-semibold text-indigo-600">{filtered.length}</span> result{filtered.length !== 1 ? "s" : ""} for &quot;<span className="font-medium">{search}</span>&quot;
+                            </div>
+                        )}
+                        <PremiumTable columns={columns} data={filtered} />
+                    </>
                 )}
             </GlassCard>
         </div>

@@ -68,7 +68,7 @@ export async function GET(req: Request) {
                     orderBy: { created_at: "asc" },
                 }),
 
-                // 2. Patients per doctor (period-independent)
+                // 2. Patients per doctor (total — patients table has no created_at)
                 prisma.doctors.findMany({
                     select: {
                         doctor_name: true,
@@ -84,11 +84,17 @@ export async function GET(req: Request) {
                     orderBy: { created_at: "asc" },
                 }),
 
-                // 4. Appointments per doctor (period-independent)
+                // 4. Appointments per doctor (period-dependent)
                 prisma.doctors.findMany({
                     select: {
                         doctor_name: true,
-                        _count: { select: { appointments: true } },
+                        _count: {
+                            select: {
+                                appointments: {
+                                    where: period === "yearly" ? {} : { created_at: { gte: rangeStart } },
+                                },
+                            },
+                        },
                     },
                     orderBy: { doctor_name: "asc" },
                 }),
