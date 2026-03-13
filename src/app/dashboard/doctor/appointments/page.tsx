@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { Check, UserX, CalendarSync, Trash2, X, Filter, RotateCcw } from "lucide-react";
+import { Check, UserX, CalendarSync, Trash2, X, Filter, RotateCcw, Stethoscope, User } from "lucide-react";
 
 interface Appointment {
     appointment_id: number;
@@ -43,6 +43,63 @@ const STATUS_LABELS: Record<string, string> = {
     CANCELLED: "Cancelled",
     COMPLETED: "Completed",
     PENDING: "Not Visited",
+};
+
+const getAppointmentStatusLabel = (appointment: Pick<Appointment, "status" | "cancelled_by">) => {
+    if (appointment.status === "CANCELLED") {
+        if (appointment.cancelled_by === "DOCTOR") return "Cancelled by doctor";
+        if (appointment.cancelled_by === "PATIENT") return "Cancelled by patient";
+    }
+
+    return STATUS_LABELS[appointment.status] || appointment.status;
+};
+
+const getStatusTone = (appointment: Pick<Appointment, "status" | "cancelled_by">) => {
+    if (appointment.status === "CANCELLED") {
+        if (appointment.cancelled_by === "DOCTOR") {
+            return {
+                wrapper: "border border-rose-200 bg-rose-50 text-rose-700",
+                iconWrap: "text-rose-600",
+                Icon: Stethoscope,
+            };
+        }
+
+        if (appointment.cancelled_by === "PATIENT") {
+            return {
+                wrapper: "border border-orange-200 bg-orange-50 text-orange-700",
+                iconWrap: "text-orange-600",
+                Icon: User,
+            };
+        }
+
+        return {
+            wrapper: "border border-red-200 bg-red-50 text-red-700",
+            iconWrap: "text-red-600",
+            Icon: X,
+        };
+    }
+
+    if (appointment.status === "COMPLETED") {
+        return {
+            wrapper: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+            iconWrap: "text-emerald-600",
+            Icon: Check,
+        };
+    }
+
+    if (appointment.status === "PENDING") {
+        return {
+            wrapper: "border border-amber-200 bg-amber-50 text-amber-700",
+            iconWrap: "text-amber-600",
+            Icon: UserX,
+        };
+    }
+
+    return {
+        wrapper: "border border-indigo-200 bg-indigo-50 text-indigo-700",
+        iconWrap: "text-indigo-600",
+        Icon: Check,
+    };
 };
 
 type DatePreset = "ALL" | "TODAY" | "TOMORROW" | "YESTERDAY" | "CUSTOM";
@@ -360,14 +417,17 @@ export default function DoctorAppointmentsPage() {
                                                 : ""}
                                         </td>
                                         <td>
-                                            <span className={`badge badge-${apt.status.toLowerCase()}`}>
-                                                {STATUS_LABELS[apt.status] || apt.status}
-                                            </span>
-                                            {apt.status === 'CANCELLED' && apt.cancelled_by && (
-                                                <div className="text-xs text-red-500 mt-1 font-medium">
-                                                    By: {String(apt.cancelled_by).charAt(0).toUpperCase() + String(apt.cancelled_by).slice(1).toLowerCase()}
-                                                </div>
-                                            )}
+                                            {(() => {
+                                                const tone = getStatusTone(apt);
+                                                const StatusIcon = tone.Icon;
+
+                                                return (
+                                                    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap ${tone.wrapper}`}>
+                                                        <StatusIcon size={14} className={tone.iconWrap} />
+                                                        {getAppointmentStatusLabel(apt)}
+                                                    </span>
+                                                );
+                                            })()}
                                         </td>
                                         <td>
                                             <div className="flex gap-2">
