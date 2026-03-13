@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { PremiumTable } from "@/components/ui/PremiumTable";
 import { PremiumButton } from "@/components/ui/PremiumButton";
 import { GlassCard } from "@/components/ui/GlassCard";
-import { Loader2, RefreshCcw, Search } from "lucide-react";
+import { Loader2, RefreshCcw, Search, Filter } from "lucide-react";
 
 interface Appointment {
     appointment_id: number;
@@ -24,21 +24,72 @@ interface Appointment {
     start_time: string | null;
 }
 
+const STATUS_LABELS: Record<string, string> = {
+    BOOKED: "Booked",
+    PENDING: "Not Visited",
+    CONFIRMED: "Confirmed",
+    CANCELLED: "Cancelled",
+    COMPLETED: "Completed",
+};
+
+type DatePreset = "ALL" | "TODAY" | "TOMORROW" | "YESTERDAY" | "CUSTOM";
+
+const toYMD = (date: Date) => {
+    const shifted = new Date(date.getTime() + 5.5 * 60 * 60 * 1000);
+    const year = shifted.getUTCFullYear();
+    const month = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(shifted.getUTCDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+
+const addDays = (base: Date, days: number) => {
+    const next = new Date(base);
+    next.setDate(next.getDate() + days);
+    return next;
+};
+
 export default function AppointmentsPage() {
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [search, setSearch] = useState("");
+    const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
+    const [statusFilter, setStatusFilter] = useState("ALL");
+    const [customFrom, setCustomFrom] = useState("");
+    const [customTo, setCustomTo] = useState("");
 
     useEffect(() => {
         fetchAppointments();
-    }, []);
+    }, [datePreset, statusFilter, customFrom, customTo]);
 
     const fetchAppointments = async () => {
         setLoading(true);
         setError("");
         try {
-            const res = await fetch("/api/appointments");
+            const params = new URLSearchParams();
+            if (statusFilter !== "ALL") {
+                params.set("status", statusFilter);
+            }
+
+            const now = new Date();
+            if (datePreset === "TODAY") {
+                const today = toYMD(now);
+                params.set("dateFrom", today);
+                params.set("dateTo", today);
+            } else if (datePreset === "TOMORROW") {
+                const tomorrow = toYMD(addDays(now, 1));
+                params.set("dateFrom", tomorrow);
+                params.set("dateTo", tomorrow);
+            } else if (datePreset === "YESTERDAY") {
+                const yesterday = toYMD(addDays(now, -1));
+                params.set("dateFrom", yesterday);
+                params.set("dateTo", yesterday);
+            } else if (customFrom) {
+                params.set("dateFrom", customFrom);
+                params.set("dateTo", customTo || customFrom);
+            }
+
+            const res = await fetch(`/api/appointments${params.toString() ? `?${params.toString()}` : ""}`);
             if (res.ok) {
                 const data = await res.json();
                 setAppointments(data || []);
@@ -146,7 +197,7 @@ export default function AppointmentsPage() {
                 const statusColor = colors[item.status] || "bg-gray-50 text-gray-500 border-gray-200";
                 return (
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${statusColor}`}>
-                        {item.status}
+                        {STATUS_LABELS[item.status] || item.status}
                     </span>
                 );
             },
@@ -178,6 +229,92 @@ export default function AppointmentsPage() {
                     </PremiumButton>
                 </div>
             </div>
+
+            <GlassCard className="p-5">
+                <div className="flex items-center gap-2 mb-4">
+                    <Filter className="w-4 h-4 text-indigo-600" />
+                    <h2 className="text-sm font-semibold text-gray-800">Filters</h2>
+                </div>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="flex-1 flex flex-col gap-4">
+                        <div className="flex flex-wrap gap-2">
+                            {(["ALL", "TODAY", "TOMORROW", "YESTERDAY", "CUSTOM"] as DatePreset[]).map((preset) => (
+                                <button
+                                    key={preset}
+                                    type="button"
+                                    onClick={() => setDatePreset(preset)}
+                                    className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                                        datePreset === preset
+                                            ? "bg-indigo-600 text-white"
+                                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                    }`}
+                                >
+                                    {preset === "ALL"
+                                        ? "All Time"
+                                        : preset === "TODAY"
+                                            ? "Today"
+                                            : preset === "TOMORROW"
+                                                ? "Tomorrow"
+                                                : preset === "YESTERDAY"
+                                                    ? "Yesterday"
+                                                    : "Custom Range"}
+                                </button>
+                            ))}
+                        </div>
+                        {datePreset === "CUSTOM" && (
+                            <div className="flex flex-col gap-3 sm:flex-row">
+                                <div className="flex-1">
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">From</label>
+                                    <input
+                                        type="date"
+                                        value={customFrom}
+                                        onChange={(e) => setCustomFrom(e.target.value)}
+                                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">To</label>
+                                    <input
+                                        type="date"
+                                        value={customTo}
+                                        min={customFrom || undefined}
+                                        onChange={(e) => setCustomTo(e.target.value)}
+                                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                        <div className="min-w-[180px]">
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
+                            <select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                            >
+                                <option value="ALL">All Statuses</option>
+                                <option value="BOOKED">Booked</option>
+                                <option value="PENDING">Not Visited</option>
+                                <option value="COMPLETED">Completed</option>
+                                <option value="CANCELLED">Cancelled</option>
+                            </select>
+                        </div>
+                        <PremiumButton
+                            variant="secondary"
+                            onClick={() => {
+                                setDatePreset("ALL");
+                                setStatusFilter("ALL");
+                                setCustomFrom("");
+                                setCustomTo("");
+                            }}
+                            icon={RefreshCcw}
+                        >
+                            Reset
+                        </PremiumButton>
+                    </div>
+                </div>
+            </GlassCard>
 
             {error && (
                 <div className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-xl text-sm">

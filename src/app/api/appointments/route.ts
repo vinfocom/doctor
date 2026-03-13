@@ -23,6 +23,9 @@ export async function GET(request: Request) {
         let adminId = searchParams.get('adminId');
         let clinicId = searchParams.get('clinicId');
         let date = searchParams.get('date');
+        const dateFrom = searchParams.get('dateFrom');
+        const dateTo = searchParams.get('dateTo');
+        const status = searchParams.get('status');
 
         const cookieStore = await cookies();
         let token = cookieStore.get("token")?.value;
@@ -68,10 +71,23 @@ export async function GET(request: Request) {
         if (doctorId) where.doctor_id = Number(doctorId);
         if (adminId) where.admin_id = Number(adminId);
         if (clinicId) where.clinic_id = Number(clinicId);
+        if (status && status !== 'ALL') {
+            where.status = status;
+        }
         if (date) {
             const dateStart = parseISTDate(date);
             const dateEnd = new Date(dateStart.getTime() + 24 * 60 * 60 * 1000);
             where.appointment_date = { gte: dateStart, lt: dateEnd };
+        } else if (dateFrom || dateTo) {
+            const range: Record<string, Date> = {};
+            if (dateFrom) {
+                range.gte = parseISTDate(dateFrom);
+            }
+            if (dateTo) {
+                const endStart = parseISTDate(dateTo);
+                range.lt = new Date(endStart.getTime() + 24 * 60 * 60 * 1000);
+            }
+            where.appointment_date = range;
         }
 
         const appointments = await prisma.appointment.findMany({

@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
+import { Check, UserX, CalendarSync, Trash2, X, Filter, RotateCcw } from "lucide-react";
 
 interface Appointment {
     appointment_id: number;
@@ -9,8 +10,8 @@ interface Appointment {
     status: string;
     cancelled_by?: string | null;
     rescheduled_by?: string | null;
-    // symptoms removed
     patient: { full_name: string; phone: string; symptoms?: string } | null;
+    clinic?: { clinic_id: number; clinic_name: string } | null;
     appointment_date: string;
     start_time: string;
     end_time: string;
@@ -34,7 +35,30 @@ const toISTDateStr = (value: string) => {
 const toISTDateInput = (value: string) => {
     if (!value) return '';
     const iso = value.includes('T') ? value : `${value.slice(0, 10)}T00:00:00+05:30`;
-    return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // en-CA gives YYYY-MM-DD
+    return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+};
+
+const STATUS_LABELS: Record<string, string> = {
+    BOOKED: "Booked",
+    CANCELLED: "Cancelled",
+    COMPLETED: "Completed",
+    PENDING: "Not Visited",
+};
+
+type DatePreset = "ALL" | "TODAY" | "TOMORROW" | "YESTERDAY" | "CUSTOM";
+
+const toYMD = (date: Date) => {
+    const shifted = new Date(date.getTime() + 5.5 * 60 * 60 * 1000);
+    const year = shifted.getUTCFullYear();
+    const month = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(shifted.getUTCDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+
+const addDays = (base: Date, days: number) => {
+    const next = new Date(base);
+    next.setDate(next.getDate() + days);
+    return next;
 };
 
 export default function DoctorAppointmentsPage() {
@@ -42,17 +66,52 @@ export default function DoctorAppointmentsPage() {
     const [user, setUser] = useState<{ name: string } | null>(null);
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(true);
+    const [deleteAppointment, setDeleteAppointment] = useState<Appointment | null>(null);
+    const [deleting, setDeleting] = useState(false);
+    const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
+    const [statusFilter, setStatusFilter] = useState("ALL");
+    const [customFrom, setCustomFrom] = useState("");
+    const [customTo, setCustomTo] = useState("");
 
     const fetchData = useCallback(async () => {
         try {
-            const [meRes, aptRes] = await Promise.all([fetch("/api/auth/me"), fetch("/api/appointments")]);
+            const params = new URLSearchParams();
+            if (statusFilter !== "ALL") {
+                params.set("status", statusFilter);
+            }
+
+            const now = new Date();
+            if (datePreset === "TODAY") {
+                const today = toYMD(now);
+                params.set("dateFrom", today);
+                params.set("dateTo", today);
+            } else if (datePreset === "TOMORROW") {
+                const tomorrow = toYMD(addDays(now, 1));
+                params.set("dateFrom", tomorrow);
+                params.set("dateTo", tomorrow);
+            } else if (datePreset === "YESTERDAY") {
+                const yesterday = toYMD(addDays(now, -1));
+                params.set("dateFrom", yesterday);
+                params.set("dateTo", yesterday);
+            } else if (customFrom) {
+                params.set("dateFrom", customFrom);
+                if (customTo) {
+                    params.set("dateTo", customTo);
+                } else {
+                    params.set("dateTo", customFrom);
+                }
+            }
+
+            const query = params.toString();
+            const appointmentsUrl = query ? `/api/appointments?${query}` : "/api/appointments";
+            const [meRes, aptRes] = await Promise.all([fetch("/api/auth/me"), fetch(appointmentsUrl)]);
             if (!meRes.ok) { router.push("/login"); return; }
             const meData = await meRes.json();
             if (meData.user.role !== "DOCTOR") { router.push("/login"); return; }
             setUser(meData.user);
             if (aptRes.ok) { const data = await aptRes.json(); setAppointments(data || []); }
         } catch { router.push("/login"); } finally { setLoading(false); }
-    }, [router]);
+    }, [router, datePreset, customFrom, customTo, statusFilter]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -63,34 +122,8 @@ export default function DoctorAppointmentsPage() {
         if (res.ok) setAppointments(appointments.map((a) => a.appointment_id === appointmentId ? { ...a, status, ...(status === 'CANCELLED' ? { cancelled_by: 'DOCTOR' } : {}) } : a));
     };
 
-    const handleReschedule = async (appointmentId: number, currentDate: string, currentStart: string, currentEnd: string) => {
-        const dateDefault = currentDate ? toISTDateInput(currentDate) : "";
-        const newDate = prompt("New date (YYYY-MM-DD)", dateDefault);
-        if (!newDate) return;
-        const newStart = prompt("New start time (HH:MM)", formatTime(currentStart));
-        if (!newStart) return;
-        const newEnd = prompt("New end time (HH:MM)", formatTime(currentEnd));
-        if (!newEnd) return;
-
-        const res = await fetch("/api/appointments", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                appointmentId,
-                appointment_date: newDate,
-                start_time: newStart,
-                end_time: newEnd,
-                status: "BOOKED",
-            })
-        });
-        if (res.ok) {
-            setAppointments(appointments.map((a) => a.appointment_id === appointmentId
-                ? { ...a, appointment_date: newDate, start_time: newStart, end_time: newEnd, status: "BOOKED" }
-                : a));
-        }
-    };
-
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [rescheduleAppointment, setRescheduleAppointment] = useState<Appointment | null>(null);
 
     if (loading) {
         return (
@@ -127,11 +160,174 @@ export default function DoctorAppointmentsPage() {
                 </motion.button>
             </div>
 
+            <motion.div
+                className="glass-card p-5 mb-6"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+            >
+                <div className="flex items-center gap-2 mb-4">
+                    <Filter size={16} className="text-indigo-600" />
+                    <h2 className="text-sm font-semibold text-gray-800">Filters</h2>
+                </div>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="flex flex-col gap-4 flex-1">
+                        <div className="flex flex-wrap gap-2">
+                            {(["ALL", "TODAY", "TOMORROW", "YESTERDAY", "CUSTOM"] as DatePreset[]).map((preset) => (
+                                <button
+                                    key={preset}
+                                    type="button"
+                                    onClick={() => setDatePreset(preset)}
+                                    className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                                        datePreset === preset
+                                            ? "bg-indigo-600 text-white"
+                                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                    }`}
+                                >
+                                    {preset === "ALL"
+                                        ? "All Time"
+                                        : preset === "TODAY"
+                                            ? "Today"
+                                            : preset === "TOMORROW"
+                                                ? "Tomorrow"
+                                                : preset === "YESTERDAY"
+                                                    ? "Yesterday"
+                                                    : "Custom Range"}
+                                </button>
+                            ))}
+                        </div>
+                        {datePreset === "CUSTOM" && (
+                            <div className="flex flex-col gap-3 sm:flex-row">
+                                <div className="flex-1">
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">From</label>
+                                    <input
+                                        type="date"
+                                        value={customFrom}
+                                        onChange={(e) => setCustomFrom(e.target.value)}
+                                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">To</label>
+                                    <input
+                                        type="date"
+                                        value={customTo}
+                                        min={customFrom || undefined}
+                                        onChange={(e) => setCustomTo(e.target.value)}
+                                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                        <div className="min-w-[180px]">
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
+                            <select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                            >
+                                <option value="ALL">All Statuses</option>
+                                <option value="BOOKED">Booked</option>
+                                <option value="PENDING">Not Visited</option>
+                                <option value="COMPLETED">Completed</option>
+                                <option value="CANCELLED">Cancelled</option>
+                            </select>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setDatePreset("ALL");
+                                setStatusFilter("ALL");
+                                setCustomFrom("");
+                                setCustomTo("");
+                            }}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                        >
+                            <RotateCcw size={14} />
+                            Reset
+                        </button>
+                    </div>
+                </div>
+            </motion.div>
+
             <AppointmentModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onSuccess={() => { fetchData(); }}
             />
+            <AppointmentModal
+                isOpen={Boolean(rescheduleAppointment)}
+                onClose={() => setRescheduleAppointment(null)}
+                onSuccess={() => {
+                    setRescheduleAppointment(null);
+                    fetchData();
+                }}
+                mode="reschedule"
+                initialValues={rescheduleAppointment ? {
+                    appointmentId: rescheduleAppointment.appointment_id,
+                    patient_phone: rescheduleAppointment.patient?.phone || '',
+                    patient_name: rescheduleAppointment.patient?.full_name || '',
+                    clinic_id: rescheduleAppointment.clinic?.clinic_id ? String(rescheduleAppointment.clinic.clinic_id) : '',
+                    date: toISTDateInput(rescheduleAppointment.appointment_date),
+                    time: formatTime(rescheduleAppointment.start_time),
+                } : undefined}
+            />
+            {deleteAppointment && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-xl"
+                    >
+                        <div className="border-b border-gray-100 p-6">
+                            <h2 className="text-xl font-bold text-gray-800">Delete Appointment</h2>
+                            <p className="mt-2 text-sm text-gray-500">
+                                Are you sure you want to delete the appointment for{" "}
+                                <span className="font-semibold text-gray-700">
+                                    {deleteAppointment.patient?.full_name || "this patient"}
+                                </span>
+                                ?
+                            </p>
+                        </div>
+                        <div className="bg-gray-50 px-6 py-4 text-sm text-gray-600">
+                            <div>
+                                Date: {deleteAppointment.appointment_date ? toISTDateStr(deleteAppointment.appointment_date) : "N/A"}
+                            </div>
+                            <div>
+                                Time: {deleteAppointment.start_time ? convertTo12Hour(formatTime(deleteAppointment.start_time)) : "N/A"}
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-3 p-6">
+                            <button
+                                type="button"
+                                onClick={() => setDeleteAppointment(null)}
+                                disabled={deleting}
+                                className="rounded-lg px-4 py-2 text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    setDeleting(true);
+                                    const res = await fetch(`/api/appointments?appointmentId=${deleteAppointment.appointment_id}`, { method: "DELETE" });
+                                    if (res.ok) {
+                                        setAppointments(appointments.filter((a) => a.appointment_id !== deleteAppointment.appointment_id));
+                                        setDeleteAppointment(null);
+                                    }
+                                    setDeleting(false);
+                                }}
+                                disabled={deleting}
+                                className="rounded-lg bg-red-600 px-5 py-2 font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+                            >
+                                {deleting ? "Deleting..." : "Delete"}
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
 
             <motion.div className="glass-card p-7" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                 {appointments.length === 0 ? (
@@ -164,7 +360,9 @@ export default function DoctorAppointmentsPage() {
                                                 : ""}
                                         </td>
                                         <td>
-                                            <span className={`badge badge-${apt.status.toLowerCase()}`}>{apt.status}</span>
+                                            <span className={`badge badge-${apt.status.toLowerCase()}`}>
+                                                {STATUS_LABELS[apt.status] || apt.status}
+                                            </span>
                                             {apt.status === 'CANCELLED' && apt.cancelled_by && (
                                                 <div className="text-xs text-red-500 mt-1 font-medium">
                                                     By: {String(apt.cancelled_by).charAt(0).toUpperCase() + String(apt.cancelled_by).slice(1).toLowerCase()}
@@ -173,25 +371,31 @@ export default function DoctorAppointmentsPage() {
                                         </td>
                                         <td>
                                             <div className="flex gap-2">
-                                                {apt.status !== "COMPLETED" && apt.status !== "CANCELLED" && (
+                                                {apt.status !== "COMPLETED" && apt.status !== "CANCELLED" && apt.status !== "PENDING" && (
                                                     <>
-                                                        <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "COMPLETED")} className="text-xs text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Complete</motion.button>
-                                                        <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "CANCELLED")} className="text-xs text-red-500 hover:bg-red-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Cancel</motion.button>
-                                                        <motion.button onClick={() => handleReschedule(apt.appointment_id, apt.appointment_date, apt.start_time, apt.end_time)} className="text-xs text-amber-600 hover:bg-amber-50 px-2 py-1 rounded-lg font-medium transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>Reschedule</motion.button>
+                                                        <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "COMPLETED")} className="text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Complete" aria-label="Complete">
+                                                            <Check size={16} />
+                                                        </motion.button>
+                                                        <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "PENDING")} className="text-amber-600 hover:bg-amber-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Not Visited" aria-label="Not Visited">
+                                                            <UserX size={16} />
+                                                        </motion.button>
+                                                        <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "CANCELLED")} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Cancel" aria-label="Cancel">
+                                                            <X size={16} />
+                                                        </motion.button>
+                                                        <motion.button onClick={() => setRescheduleAppointment(apt)} className="text-amber-600 hover:bg-amber-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Reschedule" aria-label="Reschedule">
+                                                            <CalendarSync size={16} />
+                                                        </motion.button>
                                                     </>
                                                 )}
                                                 <motion.button
-                                                    onClick={async () => {
-                                                        if (!confirm("Are you sure you want to delete this appointment?")) return;
-                                                        const res = await fetch(`/api/appointments?appointmentId=${apt.appointment_id}`, { method: "DELETE" });
-                                                        if (res.ok) setAppointments(appointments.filter(a => a.appointment_id !== apt.appointment_id));
-                                                    }}
-                                                    className="text-xs text-gray-500 hover:bg-gray-100 px-2 py-1 rounded-lg font-medium transition-colors"
+                                                    onClick={() => setDeleteAppointment(apt)}
+                                                    className="text-gray-500 hover:bg-gray-100 p-2 rounded-lg transition-colors"
                                                     whileHover={{ scale: 1.05 }}
                                                     whileTap={{ scale: 0.95 }}
                                                     title="Delete"
+                                                    aria-label="Delete"
                                                 >
-                                                    Delete
+                                                    <Trash2 size={16} />
                                                 </motion.button>
                                             </div>
                                         </td>
