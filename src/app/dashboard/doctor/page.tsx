@@ -2,70 +2,95 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { Calendar, Clock, Activity, Loader2 } from "lucide-react";
+import { Calendar, Activity, Loader2, XCircle, CheckCircle2, Clock, UserX } from "lucide-react";
 import { StatCard } from "@/components/ui/StatCard";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { PremiumTable } from "@/components/ui/PremiumTable";
 
 interface DoctorStats {
-    totalAppointments: number;
-    todayAppointments: number;
     bookedAppointments: number;
+    cancelledAppointments: number;
+    completedAppointments: number;
+    notVisitedAppointments: number;
 }
 
-interface RecentAppointment {
+interface Appointment {
     appointment_id: number;
-    created_at: string;
+    appointment_date: string | null;
+    start_time: string | null;
     status: string;
     patient: { full_name: string; phone: string } | null;
-    slot: { slot_date: string; slot_time: string } | null;
+    clinic: { clinic_name: string } | null;
 }
+
+/** Format an appointment_date ISO string to a readable date in IST */
+function formatAppointmentDate(dateStr: string | null | undefined): string {
+    if (!dateStr) return "N/A";
+    // appointment_date is stored as DATE in MySQL → Prisma returns UTC midnight ISO string
+    // Slice just the YYYY-MM-DD part to avoid timezone shift
+    const ymd = String(dateStr).slice(0, 10);
+    const [year, month, day] = ymd.split("-").map(Number);
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${day} ${months[month - 1]} ${year}`;
+}
+
+/** Format a TIME value (stored as 1970-01-01T{HH:MM:SS}.000Z) to HH:MM AM/PM */
+function formatAppointmentTime(timeStr: string | null | undefined): string {
+    if (!timeStr) return "";
+    // Prisma returns TIME as a full ISO string anchored to 1970-01-01
+    const t = new Date(timeStr);
+    let hours = t.getUTCHours();
+    const minutes = t.getUTCMinutes();
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12 || 12;
+    return `${hours}:${String(minutes).padStart(2, "0")} ${ampm}`;
+}
+
+const STATUS_CONFIG: Record<string, { label: string; classes: string }> = {
+    BOOKED: { label: "Booked", classes: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+    PENDING: { label: "Not Visited", classes: "bg-amber-50 text-amber-700 border-amber-200" },
+    CONFIRMED: { label: "Confirmed", classes: "bg-blue-50 text-blue-700 border-blue-200" },
+    CANCELLED: { label: "Cancelled", classes: "bg-red-50 text-red-600 border-red-200" },
+    COMPLETED: { label: "Completed", classes: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+};
 
 export default function DoctorDashboard() {
     const router = useRouter();
-
     const [user, setUser] = useState({ name: "Doctor" });
     const [stats, setStats] = useState<DoctorStats | null>(null);
-    const [recentAppointments, setRecentAppointments] = useState<RecentAppointment[]>([]);
+    const [recentAppointments, setRecentAppointments] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchData = useCallback(async () => {
         try {
-            // Fetch Doctor Profile
             const doctorRes = await fetch("/api/doctors/me");
-            let doctorId = 1; // Default fallback
-
             if (doctorRes.ok) {
                 const doctorData = await doctorRes.json();
                 setUser({ name: doctorData.doctor.doctor_name });
-                doctorId = doctorData.doctor.doctor_id;
             }
 
-            const res = await fetch(`/api/appointments?doctorId=${doctorId}`);
+            // Role-based filtering is handled automatically by the API
+            const res = await fetch("/api/appointments");
             if (res.ok) {
-                const data: RecentAppointment[] = await res.json();
-                // Sort by date desc (newest first)
-                const sortedData = data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                const data: Appointment[] = await res.json();
 
-                const total = sortedData.length;
-                const booked = sortedData.filter(a => a.status === 'BOOKED').length;
-                const today = sortedData.filter(a => {
-                    if (!a.slot?.slot_date) return false;
-                    // Parse date using IST offset to avoid UTC midnight shifting the date
-                    const dateStr = String(a.slot.slot_date).slice(0, 10);
-                    const d = new Date(`${dateStr}T00:00:00+05:30`);
-                    const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-                    return d.getUTCFullYear() === nowIST.getUTCFullYear() &&
-                        d.getUTCMonth() === nowIST.getUTCMonth() &&
-                        d.getUTCDate() === nowIST.getUTCDate();
-                }).length;
+                // Compute stats from DB status values
+                const booked = data.filter(a => a.status === "BOOKED").length;
+                const cancelled = data.filter(a => a.status === "CANCELLED").length;
+                const completed = data.filter(a => a.status === "COMPLETED").length;
+                // "Not Visited" = PENDING (patient didn't show / slot passed without completion)
+                const notVisited = data.filter(a => a.status === "PENDING").length;
 
-                setStats({
-                    totalAppointments: total,
-                    bookedAppointments: booked,
-                    todayAppointments: today
+                setStats({ bookedAppointments: booked, cancelledAppointments: cancelled, completedAppointments: completed, notVisitedAppointments: notVisited });
+
+                // Sort newest appointment_date first, then by start_time
+                const sorted = [...data].sort((a, b) => {
+                    const da = a.appointment_date ? a.appointment_date.slice(0, 10) : "";
+                    const db = b.appointment_date ? b.appointment_date.slice(0, 10) : "";
+                    if (db !== da) return db.localeCompare(da);
+                    return (b.start_time || "").localeCompare(a.start_time || "");
                 });
-                setRecentAppointments(sortedData.slice(0, 5));
+                setRecentAppointments(sorted.slice(0, 6));
             }
         } catch (e) {
             console.error(e);
@@ -85,45 +110,49 @@ export default function DoctorDashboard() {
     }
 
     const statCards = [
-        { label: "Total Appointments", value: stats?.totalAppointments || 0, icon: Calendar, color: "#4f46e5" },
-        { label: "Today's Visits", value: stats?.todayAppointments || 0, icon: Activity, color: "#0891b2" },
-        { label: "Booked Appointments", value: stats?.bookedAppointments || 0, icon: Clock, color: "#4f46e5" },
+        { label: "Booked", value: stats?.bookedAppointments ?? 0, icon: Calendar, color: "#4f46e5" },
+        { label: "Cancelled", value: stats?.cancelledAppointments ?? 0, icon: XCircle, color: "#dc2626" },
+        { label: "Completed", value: stats?.completedAppointments ?? 0, icon: CheckCircle2, color: "#059669" },
+        { label: "Not Visited", value: stats?.notVisitedAppointments ?? 0, icon: UserX, color: "#d97706" },
     ];
 
     const columns = [
         {
             header: "Patient",
-            accessorKey: (item: RecentAppointment) => (
+            accessorKey: (item: Appointment) => (
                 <div>
                     <div className="font-medium text-gray-900">{item.patient?.full_name || "Unknown"}</div>
-                    <div className="text-xs text-gray-400">{item.patient?.phone}</div>
+                    <div className="text-xs text-gray-400">{item.patient?.phone || "—"}</div>
                 </div>
             )
         },
         {
             header: "Date",
-            accessorKey: (item: RecentAppointment) => (
-                <span className="text-gray-600">
-                    {item.slot?.slot_date
-                        ? new Date(`${String(item.slot.slot_date).slice(0, 10)}T00:00:00+05:30`).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Kolkata' })
-                        : 'N/A'}
-                </span>
+            accessorKey: (item: Appointment) => (
+                <div>
+                    <div className="text-gray-800 font-medium">{formatAppointmentDate(item.appointment_date)}</div>
+                    {item.start_time && (
+                        <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                            <Clock className="w-3 h-3" />
+                            {formatAppointmentTime(item.start_time)}
+                        </div>
+                    )}
+                </div>
+            )
+        },
+        {
+            header: "Clinic",
+            accessorKey: (item: Appointment) => (
+                <span className="text-gray-600 text-sm">{item.clinic?.clinic_name || "—"}</span>
             )
         },
         {
             header: "Status",
-            accessorKey: (item: RecentAppointment) => {
-                const colors: Record<string, string> = {
-                    BOOKED: "bg-indigo-50 text-indigo-600 border-indigo-200",
-                    PENDING: "bg-amber-50 text-amber-600 border-amber-200",
-                    CONFIRMED: "bg-emerald-50 text-emerald-600 border-emerald-200",
-                    CANCELLED: "bg-red-50 text-red-600 border-red-200",
-                    COMPLETED: "bg-indigo-50 text-indigo-600 border-indigo-200",
-                };
-                const statusColor = colors[item.status] || "bg-gray-50 text-gray-600";
+            accessorKey: (item: Appointment) => {
+                const cfg = STATUS_CONFIG[item.status] || { label: item.status, classes: "bg-gray-50 text-gray-600 border-gray-200" };
                 return (
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium border ${statusColor}`}>
-                        {item.status}
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${cfg.classes}`}>
+                        {cfg.label}
                     </span>
                 );
             }
@@ -138,24 +167,21 @@ export default function DoctorDashboard() {
                 <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-[100px]" />
             </div>
 
-            <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-            >
+            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
                 <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
                     Welcome Back, Dr. {user.name}
                 </h1>
-                <p className="text-gray-500 mt-2 text-lg">Here&apos;s your practice overview for today.</p>
+                <p className="text-gray-500 mt-2 text-lg">Here&apos;s your practice overview.</p>
             </motion.div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            {/* 4-column stat cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
                 {statCards.map((card, i) => (
                     <motion.div
                         key={card.label}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.1, duration: 0.4 }}
+                        transition={{ delay: i * 0.08, duration: 0.4 }}
                     >
                         <StatCard
                             title={card.label}
@@ -167,11 +193,8 @@ export default function DoctorDashboard() {
                 ))}
             </div>
 
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.35, duration: 0.5 }}
-            >
+            {/* Recent Appointments */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.5 }}>
                 <GlassCard className="p-0 overflow-hidden border border-white/20 shadow-xl bg-white/40 backdrop-blur-md">
                     <div className="flex items-center justify-between p-6 border-b border-gray-100/50">
                         <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -180,16 +203,13 @@ export default function DoctorDashboard() {
                         </h2>
                         <button
                             className="px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-all hover:shadow-md"
-                            onClick={() => router.push('/dashboard/doctor/appointments')}
+                            onClick={() => router.push("/dashboard/doctor/appointments")}
                         >
                             View All
                         </button>
                     </div>
                     <div className="p-2">
-                        <PremiumTable
-                            columns={columns}
-                            data={recentAppointments}
-                        />
+                        <PremiumTable columns={columns} data={recentAppointments} />
                     </div>
                 </GlassCard>
             </motion.div>

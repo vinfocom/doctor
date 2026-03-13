@@ -47,29 +47,24 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
                 },
             });
 
-            // If schedule is provided, replace existing schedules for this clinic
-            if (schedule && Array.isArray(schedule)) {
-                await tx.doctor_clinic_schedule.deleteMany({
-                    where: { clinic_id: clinicId }
+            // If new schedule entries are provided, APPEND them (individual edits/deletes
+            // are handled via /api/schedule endpoints directly, not here)
+            if (schedule && Array.isArray(schedule) && schedule.length > 0) {
+                const scheduleData = schedule.map((s: any) => ({
+                    doctor_id: existingClinic.doctor_id,
+                    clinic_id: clinicId,
+                    admin_id: existingClinic.admin_id,
+                    day_of_week: Number(s.day_of_week),
+                    start_time: s.start_time,
+                    end_time: s.end_time,
+                    slot_duration: Number(s.slot_duration),
+                    effective_from: new Date(),
+                    effective_to: new Date(new Date().setFullYear(new Date().getFullYear() + 1))
+                }));
+
+                await tx.doctor_clinic_schedule.createMany({
+                    data: scheduleData
                 });
-
-                if (schedule.length > 0) {
-                    const scheduleData = schedule.map((s: any) => ({
-                        doctor_id: existingClinic.doctor_id,
-                        clinic_id: clinicId,
-                        admin_id: existingClinic.admin_id,
-                        day_of_week: s.day_of_week,
-                        start_time: s.start_time,
-                        end_time: s.end_time,
-                        slot_duration: Number(s.slot_duration),
-                        effective_from: new Date(),
-                        effective_to: new Date(new Date().setFullYear(new Date().getFullYear() + 1))
-                    }));
-
-                    await tx.doctor_clinic_schedule.createMany({
-                        data: scheduleData
-                    });
-                }
             }
 
             return clinic;

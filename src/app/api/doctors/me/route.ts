@@ -87,7 +87,22 @@ export async function PATCH(req: Request) {
 
     try {
         const body = await req.json();
-        const { doctor_name, phone, whatsapp_number, status, specialization, whatsapp_numbers } = body;
+        const {
+            doctor_name,
+            phone,
+            whatsapp_number,
+            specialization,
+            whatsapp_numbers,
+            chat_id,
+            gst_number,
+            pan_number,
+            address,
+            registration_no,
+            education,
+            document_url,
+            profile_pic_url,
+            barcode_url,
+        } = body;
 
         // Ensure doctor exists for this user
         const doctor = await prisma.doctors.findUnique({
@@ -98,33 +113,58 @@ export async function PATCH(req: Request) {
             return NextResponse.json({ error: "Doctor profile not found" }, { status: 404 });
         }
 
+        // Safely convert chat_id to BigInt – empty / non-numeric strings become null
+        let chatIdValue: bigint | null | undefined = undefined;
+        if (chat_id !== undefined) {
+            const trimmed = String(chat_id).trim();
+            if (trimmed === "" || trimmed === "null") {
+                chatIdValue = null;
+            } else if (/^-?\d+$/.test(trimmed)) {
+                chatIdValue = BigInt(trimmed);
+            } else {
+                // non-numeric – keep existing value untouched
+                chatIdValue = undefined;
+            }
+        }
+
+        // Build update payload – only include fields that were sent in the request
+        // so we never accidentally overwrite DB values with undefined
+        const updateData: Record<string, unknown> = {};
+        if (doctor_name !== undefined) updateData.doctor_name = doctor_name;
+        if (phone !== undefined) updateData.phone = phone;
+        if (whatsapp_number !== undefined) updateData.whatsapp_number = whatsapp_number;
+        if (specialization !== undefined) updateData.specialization = specialization;
+        if (gst_number !== undefined) updateData.gst_number = gst_number;
+        if (pan_number !== undefined) updateData.pan_number = pan_number;
+        if (address !== undefined) updateData.address = address;
+        if (registration_no !== undefined) updateData.registration_no = registration_no;
+        if (education !== undefined) updateData.education = education;
+        if (document_url !== undefined) updateData.document_url = document_url;
+        if (profile_pic_url !== undefined) updateData.profile_pic_url = profile_pic_url;
+        if (barcode_url !== undefined) updateData.barcode_url = barcode_url;
+        if (chatIdValue !== undefined) updateData.chat_id = chatIdValue;
+
         const result = await prisma.$transaction(async (tx) => {
             const updatedDoctor = await tx.doctors.update({
                 where: { doctor_id: doctor.doctor_id },
-                data: {
-                    doctor_name,
-                    phone,
-                    whatsapp_number, // Legacy support
-                    status,
-                    specialization,
-                }
+                data: updateData,
             });
 
             // Handle multiple whatsapp numbers
             if (Array.isArray(whatsapp_numbers)) {
-                // Remove all existing
                 await tx.doctor_whatsapp_numbers.deleteMany({
                     where: { doctor_id: doctor.doctor_id }
                 });
 
-                // Create new ones
                 if (whatsapp_numbers.length > 0) {
                     await tx.doctor_whatsapp_numbers.createMany({
-                        data: whatsapp_numbers.map((w: any) => ({
-                            doctor_id: doctor.doctor_id,
-                            whatsapp_number: w.whatsapp_number,
-                            is_primary: w.is_primary || false
-                        }))
+                        data: whatsapp_numbers
+                            .filter((w: any) => w.whatsapp_number?.trim())
+                            .map((w: any) => ({
+                                doctor_id: doctor.doctor_id,
+                                whatsapp_number: w.whatsapp_number.trim(),
+                                is_primary: w.is_primary || false
+                            }))
                     });
                 }
             }
