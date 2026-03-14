@@ -430,9 +430,10 @@ export default function ClinicsPage() {
             {/* Filters */}
             <div className="flex flex-col md:flex-row gap-4">
                 <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                     <input type="text" placeholder="Search clinics..." value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)} className="input-field pl-10" />
+                        onChange={e => setSearchTerm(e.target.value)} className="input-field input-field-with-icon pr-4"
+                        style={{ paddingLeft: "3rem" }} />
                 </div>
                 <div className="flex items-center gap-2">
                     <Filter className="w-4 h-4 text-gray-500" />

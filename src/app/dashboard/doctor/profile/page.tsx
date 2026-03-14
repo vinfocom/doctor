@@ -55,7 +55,7 @@ interface DoctorProfile {
     num_clinics?: number | null;
 }
 
-const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 type UploadType = "profile_pic" | "barcode" | "document";
 
@@ -350,12 +350,13 @@ export default function DoctorProfilePage() {
                                 <div className="space-y-1.5">
                                     <label className="text-sm font-medium text-gray-700">Full Name <span className="text-red-500">*</span></label>
                                     <div className="relative">
-                                        <User className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                                        <User className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                                         <input
                                             type="text"
                                             value={profile?.doctor_name || ""}
                                             onChange={(e) => setProp("doctor_name", e.target.value)}
-                                            className="input-field pl-10"
+                                            className="input-field input-field-with-icon"
+                                            style={{ paddingLeft: "3rem" }}
                                             placeholder="Dr. John Doe"
                                             required
                                         />
@@ -366,12 +367,13 @@ export default function DoctorProfilePage() {
                                 <div className="space-y-1.5">
                                     <label className="text-sm font-medium text-gray-700">Appointment Phone Number</label>
                                     <div className="relative">
-                                        <Phone className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                                        <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                                         <input
                                             type="tel"
                                             value={profile?.phone || ""}
                                             onChange={(e) => setProp("phone", e.target.value)}
-                                            className="input-field pl-10"
+                                            className="input-field input-field-with-icon"
+                                            style={{ paddingLeft: "3rem" }}
                                             placeholder="+91 9876543210"
                                         />
                                     </div>
@@ -381,12 +383,13 @@ export default function DoctorProfilePage() {
                                 <div className="space-y-1.5">
                                     <label className="text-sm font-medium text-gray-700">Telegram Chat ID</label>
                                     <div className="relative">
-                                        <Send className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                                        <Send className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                                         <input
                                             type="text"
                                             value={profile?.chat_id || ""}
                                             onChange={(e) => setProp("chat_id", e.target.value)}
-                                            className="input-field pl-10"
+                                            className="input-field input-field-with-icon"
+                                            style={{ paddingLeft: "3rem" }}
                                             placeholder="e.g. 123456789"
                                         />
                                     </div>
@@ -396,12 +399,13 @@ export default function DoctorProfilePage() {
                                 <div className="space-y-1.5">
                                     <label className="text-sm font-medium text-gray-700">Specialization</label>
                                     <div className="relative">
-                                        <BadgeCheck className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                                        <BadgeCheck className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                                         <input
                                             type="text"
                                             value={profile?.specialization || ""}
                                             onChange={(e) => setProp("specialization", e.target.value)}
-                                            className="input-field pl-10"
+                                            className="input-field input-field-with-icon"
+                                            style={{ paddingLeft: "3rem" }}
                                             placeholder="e.g. Cardiologist"
                                         />
                                     </div>
@@ -411,12 +415,13 @@ export default function DoctorProfilePage() {
                                 <div className="space-y-1.5 sm:col-span-2">
                                     <label className="text-sm font-medium text-gray-700">Education / Qualification</label>
                                     <div className="relative">
-                                        <GraduationCap className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                                        <GraduationCap className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                                         <input
                                             type="text"
                                             value={profile?.education || ""}
                                             onChange={(e) => setProp("education", e.target.value)}
-                                            className="input-field pl-10"
+                                            className="input-field input-field-with-icon"
+                                            style={{ paddingLeft: "3rem" }}
                                             placeholder="e.g. MBBS, MD (Cardiology)"
                                         />
                                     </div>
@@ -426,11 +431,12 @@ export default function DoctorProfilePage() {
                                 <div className="space-y-1.5 sm:col-span-2">
                                     <label className="text-sm font-medium text-gray-700">Address</label>
                                     <div className="relative">
-                                        <MapPin className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                                        <MapPin className="pointer-events-none absolute left-4 top-4 h-4 w-4 text-gray-400" />
                                         <textarea
                                             value={profile?.address || ""}
                                             onChange={(e) => setProp("address", e.target.value)}
-                                            className="input-field pl-10 min-h-[80px] resize-none"
+                                            className="input-field textarea-field-with-icon min-h-[80px] resize-none"
+                                            style={{ paddingLeft: "3rem", paddingTop: "0.875rem" }}
                                             placeholder="Clinic / Residence address"
                                             rows={3}
                                         />
@@ -449,12 +455,13 @@ export default function DoctorProfilePage() {
                                 <div className="space-y-1.5">
                                     <label className="text-sm font-medium text-gray-700">Doctor Registration No.</label>
                                     <div className="relative">
-                                        <Hash className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                                        <Hash className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                                         <input
                                             type="text"
                                             value={profile?.registration_no || ""}
                                             onChange={(e) => setProp("registration_no", e.target.value)}
-                                            className="input-field pl-10"
+                                            className="input-field input-field-with-icon"
+                                            style={{ paddingLeft: "3rem" }}
                                             placeholder="Reg. number"
                                         />
                                     </div>
@@ -464,12 +471,13 @@ export default function DoctorProfilePage() {
                                 <div className="space-y-1.5">
                                     <label className="text-sm font-medium text-gray-700">GST Number <span className="text-gray-400 text-xs">(optional)</span></label>
                                     <div className="relative">
-                                        <Hash className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                                        <Hash className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                                         <input
                                             type="text"
                                             value={profile?.gst_number || ""}
                                             onChange={(e) => setProp("gst_number", e.target.value)}
-                                            className="input-field pl-10"
+                                            className="input-field input-field-with-icon"
+                                            style={{ paddingLeft: "3rem" }}
                                             placeholder="GST number"
                                         />
                                     </div>
@@ -479,14 +487,14 @@ export default function DoctorProfilePage() {
                                 <div className="space-y-1.5">
                                     <label className="text-sm font-medium text-gray-700">PAN Number <span className="text-gray-400 text-xs">(optional)</span></label>
                                     <div className="relative">
-                                        <Hash className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                                        <Hash className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                                         <input
                                             type="text"
                                             value={profile?.pan_number || ""}
                                             onChange={(e) => setProp("pan_number", e.target.value)}
-                                            className="input-field pl-10"
+                                            className="input-field input-field-with-icon"
                                             placeholder="PAN number"
-                                            style={{ textTransform: "uppercase" }}
+                                            style={{ paddingLeft: "3rem", textTransform: "uppercase" }}
                                         />
                                     </div>
                                 </div>
@@ -517,7 +525,7 @@ export default function DoctorProfilePage() {
                                 {profile?.whatsapp_numbers?.map((num, idx) => (
                                     <div key={idx} className="flex gap-2 items-center">
                                         <div className="relative flex-1">
-                                            <MessageCircle className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                                            <MessageCircle className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                                             <input
                                                 type="tel"
                                                 value={num.whatsapp_number}
@@ -526,7 +534,8 @@ export default function DoctorProfilePage() {
                                                     newS[idx] = { ...newS[idx], whatsapp_number: e.target.value };
                                                     setProfile({ ...profile, whatsapp_numbers: newS });
                                                 }}
-                                                className="input-field pl-10 text-sm"
+                                                className="input-field input-field-with-icon text-sm"
+                                                style={{ paddingLeft: "3rem" }}
                                                 placeholder="+91 9876543210"
                                             />
                                         </div>
@@ -615,10 +624,17 @@ export default function DoctorProfilePage() {
                                     <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Schedule</h4>
                                     <div className="space-y-2">
                                         {clinic.schedules && clinic.schedules.length > 0 ? (
-                                            clinic.schedules.map((sch, i) => (
+                                            [...clinic.schedules]
+                                                .sort((a, b) => {
+                                                    if (a.day_of_week !== b.day_of_week) {
+                                                        return a.day_of_week - b.day_of_week;
+                                                    }
+                                                    return String(a.start_time).localeCompare(String(b.start_time));
+                                                })
+                                                .map((sch, i) => (
                                                 <div key={i} className="flex justify-between items-center text-sm">
                                                     <span className="font-medium text-gray-700 w-8">
-                                                        {dayNames[sch.day_of_week === 0 ? 0 : sch.day_of_week] || dayNames[sch.day_of_week % 7]}
+                                                        {dayNames[((sch.day_of_week % 7) + 7) % 7] || "N/A"}
                                                     </span>
                                                     <div className="flex items-center gap-1 text-gray-500 bg-gray-50 px-2 py-1 rounded-md">
                                                         <Clock className="w-3 h-3" />

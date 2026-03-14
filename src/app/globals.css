@@ -164,6 +164,15 @@ textarea:focus {
   color: var(--text-muted);
 }
 
+.input-field-with-icon {
+  padding-left: 3rem !important;
+}
+
+.textarea-field-with-icon {
+  padding-top: 0.875rem !important;
+  padding-left: 3rem !important;
+}
+
 /* Button styles */
 .btn-primary {
   background: linear-gradient(135deg, var(--primary), var(--primary-dark));

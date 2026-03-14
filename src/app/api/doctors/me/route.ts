@@ -47,8 +47,14 @@ export async function GET(req: Request) {
                 },
                 clinics: {
                     include: {
-                        schedules: true
-                    }
+                        schedules: {
+                            orderBy: [
+                                { day_of_week: "asc" },
+                                { start_time: "asc" },
+                            ],
+                        },
+                    },
+                    orderBy: { clinic_name: "asc" },
                 },
                 whatsapp_numbers: true
             }
