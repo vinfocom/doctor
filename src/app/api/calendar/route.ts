@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 import { cookies } from "next/headers";
+import { formatDateToISTYMD, formatISTTimeLabel, getISTDateParts } from "@/lib/appointmentDateTime";
 
 export async function GET(req: Request) {
     try {
@@ -26,8 +27,9 @@ export async function GET(req: Request) {
 
         const { searchParams } = new URL(req.url);
         const now = new Date();
-        const year = parseInt(searchParams.get("year") || String(now.getUTCFullYear()));
-        const month = parseInt(searchParams.get("month") || String(now.getUTCMonth() + 1));
+        const istNow = getISTDateParts(now);
+        const year = parseInt(searchParams.get("year") || String(istNow.year));
+        const month = parseInt(searchParams.get("month") || String(istNow.month));
 
         // UTC midnight boundaries for the whole month
         const monthStart = new Date(Date.UTC(year, month - 1, 1));
@@ -74,7 +76,7 @@ export async function GET(req: Request) {
 
         for (const apt of appointments) {
             if (!apt.appointment_date) continue;
-            const dateKey = new Date(apt.appointment_date).toISOString().slice(0, 10);
+            const dateKey = formatDateToISTYMD(apt.appointment_date);
             if (!dayMap[dateKey]) {
                 dayMap[dateKey] = { date: dateKey, total: 0, arrived: 0, upcoming: 0, appointments: [] };
             }
@@ -86,13 +88,7 @@ export async function GET(req: Request) {
             }
 
             // Format start_time for display
-            let startDisplay = "";
-            if (apt.start_time) {
-                const t = new Date(apt.start_time as unknown as string);
-                const h = t.getUTCHours(), m2 = t.getUTCMinutes();
-                const ampm = h >= 12 ? "PM" : "AM";
-                startDisplay = `${h % 12 || 12}:${String(m2).padStart(2, "0")} ${ampm}`;
-            }
+            const startDisplay = formatISTTimeLabel(apt.start_time as unknown as string);
 
             dayMap[dateKey].appointments.push({
                 appointment_id: apt.appointment_id,
@@ -112,7 +108,7 @@ export async function GET(req: Request) {
         }
 
         const leaveDays = leaves.map(l => ({
-            date: new Date(l.leave_date).toISOString().slice(0, 10),
+            date: formatDateToISTYMD(l.leave_date),
             reason: l.reason || "",
         }));
 

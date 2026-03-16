@@ -4,6 +4,15 @@ export const formatTime = (date: Date | string | null | undefined): string => {
     // If it's already a time string like "09:00" or "09:00:00" or "09:00 AM"
     if (typeof date === "string") {
         if (date.includes("T")) {
+            const parsed = new Date(date);
+            if (!Number.isNaN(parsed.getTime())) {
+                return parsed.toLocaleTimeString("en-GB", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                    timeZone: "Asia/Kolkata"
+                });
+            }
             return date.split("T")[1].slice(0, 5);
         }
         if (date.match(/AM|PM/i)) {
@@ -18,7 +27,7 @@ export const formatTime = (date: Date | string | null | undefined): string => {
             hour: "2-digit",
             minute: "2-digit",
             hour12: false,
-            timeZone: "UTC"
+            timeZone: "Asia/Kolkata"
         });
     }
 
@@ -26,8 +35,8 @@ export const formatTime = (date: Date | string | null | undefined): string => {
 };
 
 export const parseTime = (timeStr: string): Date => {
-    // Returns a Date object for 1970-01-01 at the specified time (UTC)
-    if (!timeStr) return new Date("1970-01-01T09:00:00Z");
+    // Returns a Date object representing the supplied IST time.
+    if (!timeStr) return new Date("1970-01-01T03:30:00Z");
 
     let hours = 0;
     let minutes = 0;
@@ -39,10 +48,7 @@ export const parseTime = (timeStr: string): Date => {
         [hours, minutes] = timeStr.split(":").map(Number);
     }
 
-    const date = new Date(0); // 1970-01-01T00:00:00.000Z
-    date.setUTCHours(hours || 0, minutes || 0, 0, 0);
-
-    return date;
+    return new Date(Date.UTC(1970, 0, 1, hours || 0, minutes || 0) - 5.5 * 60 * 60 * 1000);
 };
 
 export const convertTo12Hour = (time24: string): string => {

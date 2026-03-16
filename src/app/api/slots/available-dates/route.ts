@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/request-auth";
+import { formatDateToISTYMD, getISTDateParts, getISTDayOfWeek, parseISTDate } from "@/lib/appointmentDateTime";
 
 export async function GET(req: Request) {
     try {
@@ -24,22 +25,18 @@ export async function GET(req: Request) {
         const days = Math.min(Number(daysParam) || 60, 120); // cap at 120 days
 
         // Build "today" in IST
-        const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-        const todayYear = nowIST.getUTCFullYear();
-        const todayMonth = nowIST.getUTCMonth(); // 0-indexed
-        const todayDay = nowIST.getUTCDate();
+        const today = getISTDateParts(new Date());
 
         // Start date — either fromDate param or today
         let startDate: Date;
         if (fromDateStr) {
-            const [y, m, d] = fromDateStr.split("-").map(Number);
-            startDate = new Date(y, m - 1, d);
+            startDate = parseISTDate(fromDateStr);
         } else {
-            startDate = new Date(todayYear, todayMonth, todayDay);
+            startDate = parseISTDate(`${today.year}-${String(today.month).padStart(2, "0")}-${String(today.day).padStart(2, "0")}`);
         }
 
         const endDate = new Date(startDate);
-        endDate.setDate(endDate.getDate() + days);
+        endDate.setUTCDate(endDate.getUTCDate() + days);
 
         // 1. Fetch all schedules for this doctor+clinic combination
         const schedules = await prisma.doctor_clinic_schedule.findMany({
@@ -63,8 +60,8 @@ export async function GET(req: Request) {
             where: {
                 doctor_id: Number(doctorId),
                 leave_date: {
-                    gte: new Date(`${formatDate(startDate)}T00:00:00.000Z`),
-                    lte: new Date(`${formatDate(endDate)}T00:00:00.000Z`),
+                    gte: parseISTDate(formatDate(startDate)),
+                    lte: parseISTDate(formatDate(endDate)),
                 },
             },
             select: {
@@ -80,9 +77,7 @@ export async function GET(req: Request) {
         for (const leave of leaves) {
             if (!leave.start_time && !leave.end_time) {
                 const d = new Date(leave.leave_date);
-                fullDayLeaves.add(
-                    `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`
-                );
+                fullDayLeaves.add(formatDateToISTYMD(d));
             }
         }
 
@@ -92,7 +87,7 @@ export async function GET(req: Request) {
 
         while (cursor < endDate) {
             const dateStr = formatDate(cursor);
-            const dow = cursor.getDay(); // 0=Sun ... 6=Sat
+            const dow = getISTDayOfWeek(dateStr);
 
             // Skip full-day leaves
             if (!fullDayLeaves.has(dateStr)) {
@@ -102,9 +97,9 @@ export async function GET(req: Request) {
                     const effFrom = new Date(s.effective_from);
                     const effTo = new Date(s.effective_to);
                     // Normalize to date-only comparison
-                    const cursorOnly = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
-                    const fromOnly = new Date(effFrom.getUTCFullYear(), effFrom.getUTCMonth(), effFrom.getUTCDate());
-                    const toOnly = new Date(effTo.getUTCFullYear(), effTo.getUTCMonth(), effTo.getUTCDate());
+                    const cursorOnly = parseISTDate(dateStr);
+                    const fromOnly = parseISTDate(formatDateToISTYMD(effFrom));
+                    const toOnly = parseISTDate(formatDateToISTYMD(effTo));
                     return cursorOnly >= fromOnly && cursorOnly <= toOnly;
                 });
                 if (hasSchedule) {
@@ -112,7 +107,7 @@ export async function GET(req: Request) {
                 }
             }
 
-            cursor.setDate(cursor.getDate() + 1);
+            cursor.setUTCDate(cursor.getUTCDate() + 1);
         }
 
         return NextResponse.json({ availableDates });
@@ -123,8 +118,5 @@ export async function GET(req: Request) {
 }
 
 function formatDate(d: Date): string {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
+    return formatDateToISTYMD(d);
 }

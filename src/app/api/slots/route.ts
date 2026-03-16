@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { verifyToken } from '@/lib/jwt';
 import { cookies } from 'next/headers';
+import { formatUTCDateToISTTime, getISTDayOfWeek, getISTNowYMD, parseISTDate } from '@/lib/appointmentDateTime';
 
 export async function GET(request: Request) {
     try {
@@ -34,8 +35,7 @@ export async function GET(request: Request) {
 
         // 1. Get ALL Schedules for the specific day
         const [year, month, day] = date.split('-').map(Number);
-        const queryDate = new Date(year, month - 1, day);
-        const dayOfWeek = queryDate.getDay(); // 0-6
+        const dayOfWeek = getISTDayOfWeek(date);
 
         const schedules = await prisma.doctor_clinic_schedule.findMany({
             where: {
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
         });
 
         console.log("=== SLOTS API DEBUG ===");
-        console.log("queryDate:", queryDate, "dayOfWeek:", dayOfWeek);
+        console.log("queryDate:", date, "dayOfWeek:", dayOfWeek);
         console.log("clinicId:", clinicId, "doctorId:", doctorId);
         console.log("Found Schedules:", schedules);
 
@@ -58,8 +58,8 @@ export async function GET(request: Request) {
         // (MariaDB DATE columns store dates as UTC midnight when read back via Prisma)
         const [yr, mo, dy] = [year, month, day].map(n => String(n).padStart(2, '0'));
         const dateKey = `${yr}-${mo}-${dy}`;
-        const apptStart = new Date(`${dateKey}T00:00:00.000Z`);
-        const apptEnd = new Date(`${dateKey}T00:00:00.000Z`);
+        const apptStart = parseISTDate(dateKey);
+        const apptEnd = parseISTDate(dateKey);
         apptEnd.setUTCDate(apptEnd.getUTCDate() + 1);
 
         const appointments = await prisma.appointment.findMany({
@@ -77,8 +77,7 @@ export async function GET(request: Request) {
 
         const bookedTimes = new Set(appointments.map(apt => {
             if (!apt.start_time) return '';
-            const d = new Date(apt.start_time);
-            return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+            return formatUTCDateToISTTime(apt.start_time);
         }));
 
         // 3. Generate Slots
@@ -111,17 +110,18 @@ export async function GET(request: Request) {
         };
 
         // Compute "now" in IST for "isToday" / past slot logic
-        const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-        const currentYear = nowIST.getUTCFullYear();
-        const currentMonth = nowIST.getUTCMonth() + 1;
-        const currentDay = nowIST.getUTCDate();
-        const currentTotalMinutes = nowIST.getUTCHours() * 60 + nowIST.getUTCMinutes();
+        const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+        const todayYmd = getISTNowYMD();
+        const currentYear = Number(todayYmd.slice(0, 4));
+        const currentMonth = Number(todayYmd.slice(5, 7));
+        const currentDay = Number(todayYmd.slice(8, 10));
+        const currentTotalMinutes = nowIST.getHours() * 60 + nowIST.getMinutes();
 
         const isToday = year === currentYear && month === currentMonth && day === currentDay;
 
         // Check if the requested date is strictly in the past (before today)
-        const requestDate = new Date(year, month - 1, day);
-        const todayDate = new Date(currentYear, currentMonth - 1, currentDay);
+        const requestDate = parseISTDate(dateKey);
+        const todayDate = parseISTDate(todayYmd);
         const isPastDate = requestDate < todayDate;
 
         for (const schedule of schedules) {

@@ -3,19 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/request-auth";
-
-const toTimeDate = (hhmm: string) => {
-    const [h, m] = String(hhmm).split(":").map(Number);
-    const d = new Date("1970-01-01T00:00:00Z");
-    d.setUTCHours(h || 0, m || 0, 0, 0);
-    return d;
-};
-
-const addMinutes = (base: Date, mins: number) => {
-    const d = new Date(base);
-    d.setUTCMinutes(d.getUTCMinutes() + mins);
-    return d;
-};
+import { addMinutesToTimeString, getISTDayOfWeek, parseISTDate, parseISTTimeToUTCDate } from "@/lib/appointmentDateTime";
 
 export async function GET(req: Request) {
     try {
@@ -95,9 +83,8 @@ export async function POST(req: Request) {
         }
 
         // MariaDB DATE column stores calendar date from UTC — use UTC midnight so Mar 27 stays Mar 27
-        const apptDate = new Date(`${appointment_date}T00:00:00.000Z`);
-        // dayOfWeek: add 12h to stay safely within the UTC calendar day
-        const dayOfWeek = new Date(`${appointment_date}T12:00:00.000Z`).getUTCDay();
+        const apptDate = parseISTDate(appointment_date);
+        const dayOfWeek = getISTDayOfWeek(appointment_date);
         const schedule = await prisma.doctor_clinic_schedule.findFirst({
             where: {
                 doctor_id,
@@ -109,8 +96,8 @@ export async function POST(req: Request) {
         });
         const slotDuration = schedule?.slot_duration || 30;
 
-        const startTimeObj = toTimeDate(start_time);
-        const endTimeObj = addMinutes(startTimeObj, slotDuration);
+        const startTimeObj = parseISTTimeToUTCDate(start_time);
+        const endTimeObj = parseISTTimeToUTCDate(addMinutesToTimeString(start_time, slotDuration));
 
         const appointment = await prisma.appointment.create({
             data: {

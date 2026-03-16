@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { verifyToken } from '@/lib/jwt';
 import { cookies } from 'next/headers';
 import { Prisma } from '@/generated/prisma/client';
+import { parseISTDate, parseISTTimeToUTCDate } from '@/lib/appointmentDateTime';
 
 const VALID_APPOINTMENT_STATUSES = new Set([
     'BOOKED',
@@ -15,13 +16,6 @@ function jsonSafe<T>(value: T): T {
     return JSON.parse(
         JSON.stringify(value, (_key, v) => (typeof v === 'bigint' ? v.toString() : v))
     ) as T;
-}
-
-// For MariaDB DATE columns, Prisma requires UTC midnight so the stored calendar date matches
-// the input string. Do NOT use +05:30 offset — that shifts the UTC value to the previous day.
-function parseISTDate(dateStr: string): Date {
-    const ymd = String(dateStr).slice(0, 10);
-    return new Date(`${ymd}T00:00:00.000Z`);
 }
 
 export async function GET(request: Request) {
@@ -220,8 +214,8 @@ export async function POST(request: Request) {
 
         // Construct Date objects
         const dateObj = parseISTDate(appointment_date);
-        const startTimeObj = new Date(`1970-01-01T${start_time}:00Z`);
-        const endTimeObj = new Date(`1970-01-01T${end_time}:00Z`);
+        const startTimeObj = parseISTTimeToUTCDate(start_time);
+        const endTimeObj = parseISTTimeToUTCDate(end_time);
 
         const existingAppointmentsCount = await prisma.appointment.count({
             where: {
@@ -438,8 +432,8 @@ export async function PATCH(request: Request) {
         const updateData: Record<string, unknown> = {};
         if (status) updateData.status = status;
         if (appointment_date) updateData.appointment_date = parseISTDate(appointment_date);
-        if (start_time) updateData.start_time = new Date(`1970-01-01T${start_time}:00Z`);
-        if (end_time) updateData.end_time = new Date(`1970-01-01T${end_time}:00Z`);
+        if (start_time) updateData.start_time = parseISTTimeToUTCDate(start_time);
+        if (end_time) updateData.end_time = parseISTTimeToUTCDate(end_time);
         if (cancelled_by) updateData.cancelled_by = cancelled_by;
         if (rescheduled_by) updateData.rescheduled_by = rescheduled_by;
         if (hasRescheduleFields && !status) {
