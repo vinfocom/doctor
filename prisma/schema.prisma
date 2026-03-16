@@ -81,6 +81,8 @@ model doctors {
   education              String?                   @db.VarChar(500)
   document_url           String?                   @db.VarChar(500)
   profile_pic_url        String?                   @db.VarChar(500)
+  active_from            DateTime?                 @db.Date
+  active_to              DateTime?                 @db.Date
   num_clinics            Int?                      @default(0)
   announcement_campaigns announcement_campaigns[]
   appointments           appointment[]

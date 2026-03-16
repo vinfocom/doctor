@@ -32,6 +32,13 @@ export async function GET() {
                         status: true,
                     },
                 },
+                doctor: {
+                    select: {
+                        status: true,
+                        active_from: true,
+                        active_to: true,
+                    },
+                },
             },
         });
 
@@ -46,6 +53,27 @@ export async function GET() {
             staff_clinic_id: user.clinic_staff?.clinic_id || null,
             staff_doctor_id: user.clinic_staff?.doctor_id || null,
         };
+
+        // Block inactive/expired doctors (token might be old)
+        if (responseUser.role === "DOCTOR") {
+            const doctor = responseUser.doctor;
+            if (doctor?.status === "INACTIVE") {
+                return NextResponse.json({ error: "Your account has been deactivated. Please contact the administrator." }, { status: 403 });
+            }
+            const todayStr = new Date().toISOString().split("T")[0];
+            if (doctor?.active_from) {
+                const fromStr = new Date(doctor.active_from).toISOString().split("T")[0];
+                if (fromStr > todayStr) {
+                    return NextResponse.json({ error: "Your account access has not started yet." }, { status: 403 });
+                }
+            }
+            if (doctor?.active_to) {
+                const toStr = new Date(doctor.active_to).toISOString().split("T")[0];
+                if (toStr < todayStr) {
+                    return NextResponse.json({ error: "Your account access has expired." }, { status: 403 });
+                }
+            }
+        }
 
         return NextResponse.json({ user: responseUser });
     } catch (error) {

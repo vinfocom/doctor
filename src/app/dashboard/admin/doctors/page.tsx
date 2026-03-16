@@ -23,6 +23,8 @@ interface Doctor {
     document_url?: string | null;
     chat_id?: string | null;
     profile_pic_url?: string | null;
+    active_from?: string | null;
+    active_to?: string | null;
     num_clinics?: number | null;
     status?: string | null;
     whatsapp_numbers?: WhatsAppNum[];
@@ -31,7 +33,28 @@ interface Doctor {
 const INITIAL_FORM = {
     name: "", email: "", password: "", role: "DOCTOR", phone: "", whatsapp_number: "",
     gst_number: "", pan_number: "", address: "", registration_no: "", education: "", specialization: "",
-    chat_id: "", num_clinics: "0",
+    chat_id: "", num_clinics: "0", active_from: "", active_to: "",
+};
+
+const toDateInput = (value?: string | null) => {
+    if (!value) return "";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toISOString().split("T")[0];
+};
+
+const getEffectiveStatus = (doc: Doctor) => {
+    if (doc.status === "INACTIVE") return "INACTIVE";
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (doc.active_from) {
+        const fromStr = toDateInput(doc.active_from);
+        if (fromStr && fromStr > todayStr) return "INACTIVE";
+    }
+    if (doc.active_to) {
+        const toStr = toDateInput(doc.active_to);
+        if (toStr && toStr < todayStr) return "INACTIVE";
+    }
+    return "ACTIVE";
 };
 
 /* ───────────── Reusable upload component ───────────── */
@@ -158,7 +181,7 @@ export default function AdminDoctorsPage() {
     const [editForm, setEditForm] = useState({
         doctor_name: "", phone: "", whatsapp_number: "", specialization: "",
         gst_number: "", pan_number: "", address: "", registration_no: "", education: "",
-        chat_id: "", num_clinics: "0",
+        chat_id: "", num_clinics: "0", active_from: "", active_to: "",
     });
     const [editError, setEditError] = useState("");
     const [editSubmitting, setEditSubmitting] = useState(false);
@@ -187,6 +210,8 @@ export default function AdminDoctorsPage() {
     // ── Status toggle confirm
     const [statusToggleDoc, setStatusToggleDoc] = useState<Doctor | null>(null);
     const [statusToggling, setStatusToggling] = useState(false);
+    const [statusToggleActiveTo, setStatusToggleActiveTo] = useState("");
+    const [statusToggleError, setStatusToggleError] = useState("");
 
     /* ────── Generic cloudinary upload helper ────── */
     const uploadFile = async (
@@ -235,16 +260,30 @@ export default function AdminDoctorsPage() {
     const handleStatusToggle = async () => {
         if (!statusToggleDoc) return;
         setStatusToggling(true);
+        setStatusToggleError("");
         try {
-            const newStatus = statusToggleDoc.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+            const effectiveStatus = getEffectiveStatus(statusToggleDoc);
+            const newStatus = effectiveStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+            const todayStr = new Date().toISOString().split("T")[0];
+            if (newStatus === "ACTIVE" && !statusToggleActiveTo) {
+                setStatusToggleError("Active To date is required to activate.");
+                return;
+            }
             const res = await fetch("/api/doctors", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ doctor_id: statusToggleDoc.doctor_id, status: newStatus }),
+                body: JSON.stringify({
+                    doctor_id: statusToggleDoc.doctor_id,
+                    status: newStatus,
+                    ...(newStatus === "ACTIVE"
+                        ? { active_from: todayStr, active_to: statusToggleActiveTo }
+                        : {}),
+                }),
             });
             if (res.ok) {
                 await fetchData();
                 setStatusToggleDoc(null);
+                setStatusToggleActiveTo("");
             }
         } catch { /* ignore */ }
         finally { setStatusToggling(false); }
@@ -265,6 +304,8 @@ export default function AdminDoctorsPage() {
             education: doc.education || "",
             chat_id: doc.chat_id || "",
             num_clinics: String(doc.num_clinics ?? 0),
+            active_from: toDateInput(doc.active_from),
+            active_to: toDateInput(doc.active_to),
         });
         setEditDocUrl(doc.document_url || ""); setEditDocFile(null); setEditUploadError("");
         setEditProfilePicUrl(doc.profile_pic_url || ""); setEditProfilePicFile(null); setEditProfilePicError("");
@@ -290,6 +331,8 @@ export default function AdminDoctorsPage() {
                     ...editForm,
                     document_url: editDocUrl || null,
                     profile_pic_url: editProfilePicUrl || null,
+                    active_from: editForm.active_from || null,
+                    active_to: editForm.active_to || null,
                     whatsapp_numbers: editWaNums.filter(n => n.trim()).map(n => ({ whatsapp_number: n.trim() })),
                 }),
             });
@@ -339,6 +382,8 @@ export default function AdminDoctorsPage() {
                         specialization: formData.specialization || null,
                         chat_id: formData.chat_id || null,
                         profile_pic_url: profilePicUrl || null,
+                        active_from: formData.active_from || null,
+                        active_to: formData.active_to || null,
                         num_clinics: Number(formData.num_clinics) || 0,
                         whatsapp_numbers: createWaNums.filter(n => n.trim()).map(n => ({ whatsapp_number: n.trim() })),
                     }
@@ -443,10 +488,17 @@ export default function AdminDoctorsPage() {
                                             </td>
                                             <td>
                                                 <div className="flex items-center gap-2">
-                                                    <span className={`inline-block w-2.5 h-2.5 rounded-full ${doc.status === "INACTIVE" ? "bg-red-500" : "bg-green-500"}`} />
-                                                    <span className={`text-xs font-semibold ${doc.status === "INACTIVE" ? "text-red-600" : "text-green-600"}`}>
-                                                        {doc.status === "INACTIVE" ? "Inactive" : "Active"}
-                                                    </span>
+                                            {(() => {
+                                                const effectiveStatus = getEffectiveStatus(doc);
+                                                return (
+                                                    <>
+                                                        <span className={`inline-block w-2.5 h-2.5 rounded-full ${effectiveStatus === "INACTIVE" ? "bg-red-500" : "bg-green-500"}`} />
+                                                        <span className={`text-xs font-semibold ${effectiveStatus === "INACTIVE" ? "text-red-600" : "text-green-600"}`}>
+                                                            {effectiveStatus === "INACTIVE" ? "Inactive" : "Active"}
+                                                        </span>
+                                                    </>
+                                                );
+                                            })()}
                                                 </div>
                                             </td>
                                             <td className="text-gray-500">{doc.phone || "—"}</td>
@@ -475,12 +527,16 @@ export default function AdminDoctorsPage() {
                                                         <Pencil size={15} />
                                                     </motion.button>
                                                     <motion.button
-                                                        onClick={() => setStatusToggleDoc(doc)}
-                                                        className={`p-2 rounded-lg transition-colors ${doc.status === "INACTIVE"
+                                                        onClick={() => {
+                                                            setStatusToggleDoc({ ...doc, status: getEffectiveStatus(doc) });
+                                                            setStatusToggleActiveTo(toDateInput(doc.active_to));
+                                                            setStatusToggleError("");
+                                                        }}
+                                                        className={`p-2 rounded-lg transition-colors ${getEffectiveStatus(doc) === "INACTIVE"
                                                             ? "bg-green-50 text-green-600 hover:bg-green-100"
                                                             : "bg-orange-50 text-orange-600 hover:bg-orange-100"
                                                             }`}
-                                                        title={doc.status === "INACTIVE" ? "Activate" : "Deactivate"}
+                                                        title={getEffectiveStatus(doc) === "INACTIVE" ? "Activate" : "Deactivate"}
                                                         whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
                                                     >
                                                         <Power size={15} />
@@ -524,10 +580,17 @@ export default function AdminDoctorsPage() {
                                     <div>
                                         <h2 className="text-xl font-bold text-gray-900">Dr. {viewDoc.doctor_name}</h2>
                                         <div className="flex items-center gap-2 mt-1">
-                                            <span className={`inline-block w-2 h-2 rounded-full ${viewDoc.status === "INACTIVE" ? "bg-red-500" : "bg-green-500"}`} />
-                                            <span className={`text-xs font-semibold ${viewDoc.status === "INACTIVE" ? "text-red-600" : "text-green-600"}`}>
-                                                {viewDoc.status === "INACTIVE" ? "Inactive" : "Active"}
-                                            </span>
+                                            {(() => {
+                                                const effectiveStatus = getEffectiveStatus(viewDoc);
+                                                return (
+                                                    <>
+                                                        <span className={`inline-block w-2 h-2 rounded-full ${effectiveStatus === "INACTIVE" ? "bg-red-500" : "bg-green-500"}`} />
+                                                        <span className={`text-xs font-semibold ${effectiveStatus === "INACTIVE" ? "text-red-600" : "text-green-600"}`}>
+                                                            {effectiveStatus === "INACTIVE" ? "Inactive" : "Active"}
+                                                        </span>
+                                                    </>
+                                                );
+                                            })()}
                                             {viewDoc.specialization && (
                                                 <span className="badge badge-confirmed ml-1">{viewDoc.specialization}</span>
                                             )}
@@ -551,6 +614,18 @@ export default function AdminDoctorsPage() {
                                                 <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
                                                     <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">Telegram ID</p>
                                                     <p className="text-sm font-medium text-gray-800">{viewDoc.chat_id}</p>
+                                                </div>
+                                            )}
+                                            {viewDoc.active_from && (
+                                                <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
+                                                    <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">Active From</p>
+                                                    <p className="text-sm font-medium text-gray-800">{toDateInput(viewDoc.active_from)}</p>
+                                                </div>
+                                            )}
+                                            {viewDoc.active_to && (
+                                                <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
+                                                    <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">Active To</p>
+                                                    <p className="text-sm font-medium text-gray-800">{toDateInput(viewDoc.active_to)}</p>
                                                 </div>
                                             )}
                                             {(viewDoc.num_clinics !== null && viewDoc.num_clinics !== undefined) && (
@@ -663,24 +738,36 @@ export default function AdminDoctorsPage() {
                         <motion.div className="fixed inset-0 bg-black/40 z-40 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setStatusToggleDoc(null)} />
                         <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                             <motion.div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-7 text-center relative" initial={{ scale: 0.88, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 20 }} onClick={(e) => e.stopPropagation()}>
-                                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${statusToggleDoc.status === "INACTIVE" ? "bg-green-50" : "bg-orange-50"
+                                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${getEffectiveStatus(statusToggleDoc) === "INACTIVE" ? "bg-green-50" : "bg-orange-50"
                                     }`}>
-                                    <Power size={26} className={statusToggleDoc.status === "INACTIVE" ? "text-green-500" : "text-orange-500"} />
+                                    <Power size={26} className={getEffectiveStatus(statusToggleDoc) === "INACTIVE" ? "text-green-500" : "text-orange-500"} />
                                 </div>
                                 <h3 className="text-lg font-bold text-gray-900 mb-2">
-                                    {statusToggleDoc.status === "INACTIVE" ? "Activate" : "Deactivate"} Doctor?
+                                    {getEffectiveStatus(statusToggleDoc) === "INACTIVE" ? "Activate" : "Deactivate"} Doctor?
                                 </h3>
                                 <p className="text-sm text-gray-500 mb-6">
-                                    Are you sure you want to {statusToggleDoc.status === "INACTIVE" ? "activate" : "deactivate"}{" "}
+                                    Are you sure you want to {getEffectiveStatus(statusToggleDoc) === "INACTIVE" ? "activate" : "deactivate"}{" "}
                                     <span className="font-semibold text-gray-700">Dr. {statusToggleDoc.doctor_name}</span>?
-                                    {statusToggleDoc.status !== "INACTIVE" && (
+                                    {getEffectiveStatus(statusToggleDoc) !== "INACTIVE" && (
                                         <span className="block mt-1 text-orange-500 font-medium">The doctor will not be able to log in while deactivated.</span>
                                     )}
                                 </p>
+                                {getEffectiveStatus(statusToggleDoc) === "INACTIVE" && (
+                                    <div className="mb-4 text-left">
+                                        <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Active To</label>
+                                        <input
+                                            type="date"
+                                            value={statusToggleActiveTo}
+                                            onChange={(e) => setStatusToggleActiveTo(e.target.value)}
+                                            className="input-field mt-1"
+                                        />
+                                        {statusToggleError && <p className="text-xs text-red-500 mt-1">{statusToggleError}</p>}
+                                    </div>
+                                )}
                                 <div className="flex gap-3">
                                     <button onClick={() => setStatusToggleDoc(null)} className="flex-1 btn-secondary">Cancel</button>
                                     <button onClick={handleStatusToggle} disabled={statusToggling}
-                                        className={`flex-1 font-semibold rounded-xl py-2.5 transition-colors text-white ${statusToggleDoc.status === "INACTIVE"
+                                        className={`flex-1 font-semibold rounded-xl py-2.5 transition-colors text-white ${getEffectiveStatus(statusToggleDoc) === "INACTIVE"
                                             ? "bg-green-500 hover:bg-green-600"
                                             : "bg-orange-500 hover:bg-orange-600"
                                             }`}
@@ -737,6 +824,14 @@ export default function AdminDoctorsPage() {
                                             <div className="space-y-1">
                                                 <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Building2 size={14} className="text-indigo-500" /> No. of Clinics</label>
                                                 <input type="number" min="0" value={editForm.num_clinics} onChange={(e) => setEditForm({ ...editForm, num_clinics: e.target.value })} className="input-field" placeholder="0" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-sm font-medium text-gray-700">Active From</label>
+                                                <input type="date" value={editForm.active_from} onChange={(e) => setEditForm({ ...editForm, active_from: e.target.value })} className="input-field" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-sm font-medium text-gray-700">Active To</label>
+                                                <input type="date" value={editForm.active_to} onChange={(e) => setEditForm({ ...editForm, active_to: e.target.value })} className="input-field" />
                                             </div>
                                         </div>
                                     </div>
@@ -891,6 +986,14 @@ export default function AdminDoctorsPage() {
                                                 <div className="space-y-1">
                                                     <label className="text-sm font-medium text-gray-700">PAN Number <span className="text-gray-400 text-xs font-normal">(optional)</span></label>
                                                     <input type="text" name="pan_number" value={formData.pan_number} onChange={handleInputChange} className="input-field" placeholder="e.g. ABCDE1234F" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-sm font-medium text-gray-700">Active From</label>
+                                                    <input type="date" name="active_from" value={formData.active_from} onChange={handleInputChange} className="input-field" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-sm font-medium text-gray-700">Active To</label>
+                                                    <input type="date" name="active_to" value={formData.active_to} onChange={handleInputChange} className="input-field" />
                                                 </div>
                                             </div>
 

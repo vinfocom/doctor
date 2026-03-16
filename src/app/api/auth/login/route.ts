@@ -39,13 +39,27 @@ export async function POST(req: NextRequest) {
         if (user.role === "DOCTOR") {
             const doctor = await prisma.doctors.findUnique({
                 where: { user_id: user.user_id },
-                select: { status: true },
+                select: { status: true, active_from: true, active_to: true },
             });
             if (doctor?.status === "INACTIVE") {
                 return NextResponse.json(
                     { error: "Your account has been deactivated. Please contact the administrator." },
                     { status: 403 }
                 );
+            }
+
+            const todayStr = new Date().toISOString().split("T")[0];
+            if (doctor?.active_from) {
+                const fromStr = new Date(doctor.active_from).toISOString().split("T")[0];
+                if (fromStr > todayStr) {
+                    return NextResponse.json({ error: "Your account access has not started yet." }, { status: 403 });
+                }
+            }
+            if (doctor?.active_to) {
+                const toStr = new Date(doctor.active_to).toISOString().split("T")[0];
+                if (toStr < todayStr) {
+                    return NextResponse.json({ error: "Your account access has expired." }, { status: 403 });
+                }
             }
         }
 
