@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { verifyToken } from "@/lib/jwt";
+import { cookies } from "next/headers";
 import { v2 as cloudinary } from "cloudinary";
 
 cloudinary.config({
@@ -10,7 +11,21 @@ cloudinary.config({
 
 export async function POST(req: NextRequest) {
     try {
-        const session = await getSession();
+        const cookieStore = await cookies();
+        let token = cookieStore.get("token")?.value;
+
+        if (!token) {
+            const authHeader = req.headers.get("Authorization");
+            if (authHeader && authHeader.startsWith("Bearer ")) {
+                token = authHeader.split(" ")[1];
+            }
+        }
+
+        if (!token) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const session = verifyToken(token);
         if (!session || (session.role !== "SUPER_ADMIN" && session.role !== "ADMIN" && session.role !== "DOCTOR")) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
