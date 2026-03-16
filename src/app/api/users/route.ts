@@ -101,7 +101,6 @@ export async function POST(req: Request) {
                         document_url: specific_details?.document_url || null,
                         specialization: specific_details?.specialization || null,
                         profile_pic_url: specific_details?.profile_pic_url || null,
-                        barcode_url: specific_details?.barcode_url || null,
                         num_clinics: specific_details?.num_clinics ? Number(specific_details.num_clinics) : 0,
                     }
                 });

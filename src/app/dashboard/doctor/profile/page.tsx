@@ -25,6 +25,7 @@ interface Clinic {
     phone: string;
     status: string;
     schedules: Schedule[];
+    barcode_url?: string | null;
 }
 
 interface DoctorWhatsappNumber {
@@ -51,13 +52,12 @@ interface DoctorProfile {
     pan_number?: string | null;
     profile_pic_url?: string | null;
     document_url?: string | null;
-    barcode_url?: string | null;
     num_clinics?: number | null;
 }
 
 const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-type UploadType = "profile_pic" | "barcode" | "document";
+type UploadType = "profile_pic" | "document";
 
 async function uploadFile(file: File, type: UploadType): Promise<string> {
     const fd = new FormData();
@@ -325,14 +325,6 @@ export default function DoctorProfilePage() {
                                 accept="image/*,application/pdf"
                                 icon={GraduationCap}
                                 onUploaded={(url) => setProp("document_url", url)}
-                            />
-                            <FileUploadWidget
-                                label="Barcode Image"
-                                value={profile?.barcode_url}
-                                uploadType="barcode"
-                                accept="image/*"
-                                icon={QrCode}
-                                onUploaded={(url) => setProp("barcode_url", url)}
                             />
                         </GlassCard>
                     </motion.div>
@@ -618,6 +610,17 @@ export default function DoctorProfilePage() {
                                             <MapPin className="w-3 h-3" />
                                             <span>{clinic.location}</span>
                                         </div>
+                                        {clinic.barcode_url && (
+                                            <a
+                                                href={clinic.barcode_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 mt-2 hover:text-indigo-800"
+                                            >
+                                                <QrCode className="w-3.5 h-3.5" />
+                                                View Barcode
+                                            </a>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="border-t border-gray-100 pt-4 mt-4">

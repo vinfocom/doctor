@@ -107,7 +107,6 @@ export async function PATCH(req: Request) {
             education,
             document_url,
             profile_pic_url,
-            barcode_url,
         } = body;
 
         // Ensure doctor exists for this user
@@ -147,7 +146,6 @@ export async function PATCH(req: Request) {
         if (education !== undefined) updateData.education = education;
         if (document_url !== undefined) updateData.document_url = document_url;
         if (profile_pic_url !== undefined) updateData.profile_pic_url = profile_pic_url;
-        if (barcode_url !== undefined) updateData.barcode_url = barcode_url;
         if (chatIdValue !== undefined) updateData.chat_id = chatIdValue;
 
         const result = await prisma.$transaction(async (tx) => {

@@ -104,7 +104,7 @@ export async function POST(req: Request) {
 
     try {
         const body = await req.json();
-        const { clinic_name, location, phone, status, schedule } = body;
+        const { clinic_name, location, phone, status, schedule, barcode_url } = body;
 
         let doctor_id: number | null = null;
         let admin_id: number | null = null;
@@ -138,6 +138,7 @@ export async function POST(req: Request) {
                     status: status || "ACTIVE",
                     admin_id,
                     doctor_id,
+                    barcode_url: barcode_url || null,
                 }
             });
 

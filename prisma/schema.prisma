@@ -81,7 +81,6 @@ model doctors {
   education              String?                   @db.VarChar(500)
   document_url           String?                   @db.VarChar(500)
   profile_pic_url        String?                   @db.VarChar(500)
-  barcode_url            String?                   @db.VarChar(500)
   num_clinics            Int?                      @default(0)
   announcement_campaigns announcement_campaigns[]
   appointments           appointment[]
@@ -120,6 +119,7 @@ model clinics {
   admin_id     Int
   doctor_id    Int?
   location     String?                  @db.VarChar(255)
+  barcode_url  String?                  @db.VarChar(500)
   created_at   DateTime?                @default(now()) @db.Timestamp(0)
   appointments appointment[]
   admin        admins                   @relation(fields: [admin_id], references: [admin_id])

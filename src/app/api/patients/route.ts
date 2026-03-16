@@ -107,12 +107,14 @@ export async function GET(req: Request) {
         });
 
         const seen = new Set<number>();
-        const patients: Array<(typeof appointments)[number]["patient"]> = [];
+        type PatientRow = NonNullable<(typeof appointments)[number]["patient"]>;
+        const patients: PatientRow[] = [];
 
         for (const row of appointments) {
-            if (!row.patient_id || !row.patient || seen.has(row.patient_id)) continue;
+            const p = row.patient;
+            if (!row.patient_id || !p || seen.has(row.patient_id)) continue;
             seen.add(row.patient_id);
-            patients.push(row.patient);
+            patients.push(p);
         }
 
         // Keep direct-assigned patients even if they have no appointment rows yet.

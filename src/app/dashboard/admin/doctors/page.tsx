@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { PremiumButton } from "@/components/ui/PremiumButton";
-import { Shield, UserPlus, X, Pencil, Trash2, AlertTriangle, UploadCloud, FileText, CheckCircle2, Plus, CircleMinus, Image as ImageIcon, Power, Smartphone, User, Bot, Building2, Stethoscope, GraduationCap, MapPin, BarChart3, Eye, Phone, Hash, FileDigit, ExternalLink } from "lucide-react";
+import { Shield, UserPlus, X, Pencil, Trash2, AlertTriangle, UploadCloud, FileText, CheckCircle2, Plus, CircleMinus, Power, Smartphone, User, Bot, Building2, Stethoscope, GraduationCap, MapPin, BarChart3, Eye, Phone, Hash, FileDigit, ExternalLink } from "lucide-react";
 
 /* ───────────────── Types ───────────────── */
 interface WhatsAppNum { id?: number; whatsapp_number: string }
@@ -23,7 +23,6 @@ interface Doctor {
     document_url?: string | null;
     chat_id?: string | null;
     profile_pic_url?: string | null;
-    barcode_url?: string | null;
     num_clinics?: number | null;
     status?: string | null;
     whatsapp_numbers?: WhatsAppNum[];
@@ -123,7 +122,6 @@ function getPendingFields(doc: Doctor): string[] {
     if (!doc.address) pending.push("Address");
     if (!doc.document_url) pending.push("Document");
     if (!doc.profile_pic_url) pending.push("Profile Pic");
-    if (!doc.barcode_url) pending.push("Barcode");
     return pending;
 }
 
@@ -155,12 +153,6 @@ export default function AdminDoctorsPage() {
     const [profilePicUploading, setProfilePicUploading] = useState(false);
     const [profilePicError, setProfilePicError] = useState("");
 
-    const barcodeRef = useRef<HTMLInputElement>(null);
-    const [barcodeFile, setBarcodeFile] = useState<File | null>(null);
-    const [barcodeUrl, setBarcodeUrl] = useState("");
-    const [barcodeUploading, setBarcodeUploading] = useState(false);
-    const [barcodeError, setBarcodeError] = useState("");
-
     // ── Edit modal
     const [editDoc, setEditDoc] = useState<Doctor | null>(null);
     const [editForm, setEditForm] = useState({
@@ -184,12 +176,6 @@ export default function AdminDoctorsPage() {
     const [editProfilePicUrl, setEditProfilePicUrl] = useState("");
     const [editProfilePicUploading, setEditProfilePicUploading] = useState(false);
     const [editProfilePicError, setEditProfilePicError] = useState("");
-
-    const editBarcodeRef = useRef<HTMLInputElement>(null);
-    const [editBarcodeFile, setEditBarcodeFile] = useState<File | null>(null);
-    const [editBarcodeUrl, setEditBarcodeUrl] = useState("");
-    const [editBarcodeUploading, setEditBarcodeUploading] = useState(false);
-    const [editBarcodeError, setEditBarcodeError] = useState("");
 
     // ── Delete confirm
     const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -282,7 +268,6 @@ export default function AdminDoctorsPage() {
         });
         setEditDocUrl(doc.document_url || ""); setEditDocFile(null); setEditUploadError("");
         setEditProfilePicUrl(doc.profile_pic_url || ""); setEditProfilePicFile(null); setEditProfilePicError("");
-        setEditBarcodeUrl(doc.barcode_url || ""); setEditBarcodeFile(null); setEditBarcodeError("");
         setEditWaNums(doc.whatsapp_numbers && doc.whatsapp_numbers.length > 0
             ? doc.whatsapp_numbers.map(w => w.whatsapp_number)
             : (doc.whatsapp_number ? [doc.whatsapp_number] : [""])
@@ -305,7 +290,6 @@ export default function AdminDoctorsPage() {
                     ...editForm,
                     document_url: editDocUrl || null,
                     profile_pic_url: editProfilePicUrl || null,
-                    barcode_url: editBarcodeUrl || null,
                     whatsapp_numbers: editWaNums.filter(n => n.trim()).map(n => ({ whatsapp_number: n.trim() })),
                 }),
             });
@@ -329,12 +313,10 @@ export default function AdminDoctorsPage() {
         setFormData(INITIAL_FORM);
         setDocFile(null); setDocUrl(""); setUploadError("");
         setProfilePicFile(null); setProfilePicUrl(""); setProfilePicError("");
-        setBarcodeFile(null); setBarcodeUrl(""); setBarcodeError("");
         setCreateWaNums([""]);
         setError("");
         if (fileRef.current) fileRef.current.value = "";
         if (profilePicRef.current) profilePicRef.current.value = "";
-        if (barcodeRef.current) barcodeRef.current.value = "";
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -357,7 +339,6 @@ export default function AdminDoctorsPage() {
                         specialization: formData.specialization || null,
                         chat_id: formData.chat_id || null,
                         profile_pic_url: profilePicUrl || null,
-                        barcode_url: barcodeUrl || null,
                         num_clinics: Number(formData.num_clinics) || 0,
                         whatsapp_numbers: createWaNums.filter(n => n.trim()).map(n => ({ whatsapp_number: n.trim() })),
                     }
@@ -381,8 +362,8 @@ export default function AdminDoctorsPage() {
         } catch { setError("An error occurred"); } finally { setSubmitting(false); }
     };
 
-    const anyCreateUploading = uploading || profilePicUploading || barcodeUploading;
-    const anyEditUploading = editUploading || editProfilePicUploading || editBarcodeUploading;
+    const anyCreateUploading = uploading || profilePicUploading;
+    const anyEditUploading = editUploading || editProfilePicUploading;
 
     /* ────── Loading state ────── */
     if (loading) {
@@ -627,7 +608,7 @@ export default function AdminDoctorsPage() {
                                     )}
 
                                     {/* Documents */}
-                                    {(viewDoc.document_url || viewDoc.barcode_url) && (
+                                    {viewDoc.document_url && (
                                         <div>
                                             <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-2.5 flex items-center gap-1.5"><FileText size={13} /> Documents</p>
                                             <div className="flex flex-wrap gap-2">
@@ -635,12 +616,6 @@ export default function AdminDoctorsPage() {
                                                     <a href={viewDoc.document_url} target="_blank" rel="noopener noreferrer"
                                                         className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-100 transition-colors">
                                                         <FileText size={12} /> Education Document <ExternalLink size={10} />
-                                                    </a>
-                                                )}
-                                                {viewDoc.barcode_url && (
-                                                    <a href={viewDoc.barcode_url} target="_blank" rel="noopener noreferrer"
-                                                        className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-100 transition-colors">
-                                                        <ImageIcon size={12} /> Barcode <ExternalLink size={10} />
                                                     </a>
                                                 )}
                                             </div>
@@ -802,14 +777,6 @@ export default function AdminDoctorsPage() {
                                                 onClear={() => { setEditDocFile(null); setEditDocUrl(""); if (editFileRef.current) editFileRef.current.value = ""; }}
                                             />
                                         </div>
-
-                                        {/* ── Barcode Upload ── */}
-                                        <div className="mt-4">
-                                            <FileUploadBox id="edit-barcode-upload" label="Barcode Image" fileRef={editBarcodeRef} file={editBarcodeFile} url={editBarcodeUrl} uploading={editBarcodeUploading} uploadError={editBarcodeError}
-                                                onFileChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f, setEditBarcodeFile, setEditBarcodeUrl, setEditBarcodeUploading, setEditBarcodeError); }}
-                                                onClear={() => { setEditBarcodeFile(null); setEditBarcodeUrl(""); if (editBarcodeRef.current) editBarcodeRef.current.value = ""; }}
-                                            />
-                                        </div>
                                     </div>
 
                                     {editError && <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{editError}</p>}
@@ -932,14 +899,6 @@ export default function AdminDoctorsPage() {
                                                 <FileUploadBox id="doc-upload" label="Education / Degree Document" fileRef={fileRef} file={docFile} url={docUrl} uploading={uploading} uploadError={uploadError}
                                                     onFileChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f, setDocFile, setDocUrl, setUploading, setUploadError); }}
                                                     onClear={() => { setDocFile(null); setDocUrl(""); if (fileRef.current) fileRef.current.value = ""; }}
-                                                />
-                                            </div>
-
-                                            {/* ── Barcode Upload ── */}
-                                            <div className="mt-4">
-                                                <FileUploadBox id="barcode-upload" label="Barcode Image" fileRef={barcodeRef} file={barcodeFile} url={barcodeUrl} uploading={barcodeUploading} uploadError={barcodeError}
-                                                    onFileChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f, setBarcodeFile, setBarcodeUrl, setBarcodeUploading, setBarcodeError); }}
-                                                    onClear={() => { setBarcodeFile(null); setBarcodeUrl(""); if (barcodeRef.current) barcodeRef.current.value = ""; }}
                                                 />
                                             </div>
                                         </div>

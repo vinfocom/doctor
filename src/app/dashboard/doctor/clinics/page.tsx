@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
     Plus, Trash2, MapPin, Phone, Building2, Pencil,
     Search, Filter, Calendar, Clock, ChevronDown, ChevronUp,
@@ -17,6 +17,7 @@ interface Clinic {
     location: string;
     phone: string;
     status: string;
+    barcode_url?: string | null;
 }
 
 interface ScheduleEntry {
@@ -68,6 +69,9 @@ export default function ClinicsPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [showForm, setShowForm] = useState(false);
+    const barcodeFileRef = useRef<HTMLInputElement | null>(null);
+    const [barcodeUploading, setBarcodeUploading] = useState(false);
+    const [barcodeUploadError, setBarcodeUploadError] = useState("");
 
     // UI State
     const [searchTerm, setSearchTerm] = useState("");
@@ -80,6 +84,7 @@ export default function ClinicsPage() {
         location: "",
         phone: "",
         status: "ACTIVE",
+        barcode_url: "",
         schedule: [] as { day_of_week: number; start_time: string; end_time: string; slot_duration: number }[]
     });
 
@@ -173,8 +178,16 @@ export default function ClinicsPage() {
 
     const handleEditClinic = async (clinic: Clinic) => {
         setEditingClinicId(clinic.clinic_id);
-        setFormData({ clinic_name: clinic.clinic_name, location: clinic.location, phone: clinic.phone || "", status: clinic.status || "ACTIVE", schedule: [] });
+        setFormData({
+            clinic_name: clinic.clinic_name,
+            location: clinic.location,
+            phone: clinic.phone || "",
+            status: clinic.status || "ACTIVE",
+            barcode_url: clinic.barcode_url || "",
+            schedule: []
+        });
         resetScheduleForm();
+        setBarcodeUploadError("");
 
         // Fetch fresh schedules for this clinic
         const cached = clinicSchedules[clinic.clinic_id];
@@ -187,6 +200,24 @@ export default function ClinicsPage() {
         setShowForm(true);
         setError("");
         window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const uploadClinicBarcode = async (file: File) => {
+        setBarcodeUploadError("");
+        setBarcodeUploading(true);
+        try {
+            const fd = new FormData();
+            fd.append("file", file);
+            const res = await fetch("/api/clinics/upload", { method: "POST", body: fd });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || "Upload failed");
+            setFormData(prev => ({ ...prev, barcode_url: data.url || "" }));
+        } catch (e: any) {
+            setBarcodeUploadError(e?.message || "Upload failed");
+        } finally {
+            setBarcodeUploading(false);
+            if (barcodeFileRef.current) barcodeFileRef.current.value = "";
+        }
     };
 
     // --- Inline edit of existing DB schedule ---
@@ -304,6 +335,7 @@ export default function ClinicsPage() {
             location: formData.location,
             phone: formData.phone,
             status: formData.status,
+            barcode_url: formData.barcode_url || null,
             schedule: formData.schedule  // only new blocks
         };
 
@@ -324,11 +356,12 @@ export default function ClinicsPage() {
             }
 
             if (res.ok) {
-                setFormData({ clinic_name: "", location: "", phone: "", status: "ACTIVE", schedule: [] });
+                setFormData({ clinic_name: "", location: "", phone: "", status: "ACTIVE", barcode_url: "", schedule: [] });
                 resetScheduleForm();
                 setShowForm(false);
                 setEditingClinicId(null);
                 setExistingSchedules([]);
+                setBarcodeUploadError("");
                 fetchClinics();
             } else {
                 const data = await res.json();
@@ -399,9 +432,10 @@ export default function ClinicsPage() {
                 </div>
                 <PremiumButton onClick={() => {
                     setEditingClinicId(null);
-                    setFormData({ clinic_name: "", location: "", phone: "", status: "ACTIVE", schedule: [] });
+                    setFormData({ clinic_name: "", location: "", phone: "", status: "ACTIVE", barcode_url: "", schedule: [] });
                     resetScheduleForm();
                     setExistingSchedules([]);
+                    setBarcodeUploadError("");
                     setShowForm(!showForm);
                 }} icon={Plus}>
                     {showForm && !editingClinicId ? "Close Form" : "Add New Clinic"}
@@ -493,6 +527,63 @@ export default function ClinicsPage() {
                                     <option value="INACTIVE">Inactive</option>
                                 </select>
                             </div>
+                        </div>
+
+                        {/* Barcode (optional) */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-gray-600">Clinic Barcode (optional)</label>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="url"
+                                    name="barcode_url"
+                                    value={formData.barcode_url}
+                                    onChange={handleInputChange}
+                                    className="input-field flex-1"
+                                    placeholder="Paste barcode image URL (https://...)"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => barcodeFileRef.current?.click()}
+                                    disabled={barcodeUploading}
+                                    className="shrink-0 px-3 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-semibold hover:bg-indigo-100 disabled:opacity-60"
+                                    title="Upload barcode image (file/camera)"
+                                >
+                                    {barcodeUploading ? "Uploading…" : "Upload"}
+                                </button>
+                            </div>
+                            <input
+                                ref={barcodeFileRef}
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                className="hidden"
+                                onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f) uploadClinicBarcode(f);
+                                }}
+                            />
+                            {formData.barcode_url && (
+                                <div className="flex items-center justify-between">
+                                    <a
+                                        href={formData.barcode_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-indigo-600 hover:text-indigo-800 underline"
+                                    >
+                                        View current barcode
+                                    </a>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData(prev => ({ ...prev, barcode_url: "" }))}
+                                        className="text-xs text-gray-400 hover:text-red-500"
+                                    >
+                                        Clear
+                                    </button>
+                                </div>
+                            )}
+                            {barcodeUploadError && (
+                                <p className="text-xs text-red-500">{barcodeUploadError}</p>
+                            )}
                         </div>
 
                         {/* ===== SCHEDULES SECTION ===== */}
@@ -718,10 +809,11 @@ export default function ClinicsPage() {
                                 setShowForm(false);
                                 setEditingClinicId(null);
                                 setExistingSchedules([]);
-                                setFormData({ clinic_name: "", location: "", phone: "", status: "ACTIVE", schedule: [] });
+                                setFormData({ clinic_name: "", location: "", phone: "", status: "ACTIVE", barcode_url: "", schedule: [] });
                                 resetScheduleForm();
+                                setBarcodeUploadError("");
                             }}>Cancel</PremiumButton>
-                            <PremiumButton type="submit">
+                            <PremiumButton type="submit" disabled={barcodeUploading}>
                                 {editingClinicId ? "Update Clinic" : "Save Clinic"}
                             </PremiumButton>
                         </div>
@@ -774,6 +866,21 @@ export default function ClinicsPage() {
                                     <div className="flex items-center gap-3 text-gray-500">
                                         <Phone className="w-4 h-4 text-indigo-400 shrink-0" />
                                         <span className="text-sm">{clinic.phone}</span>
+                                    </div>
+                                )}
+                                {clinic.barcode_url && (
+                                    <div className="flex items-center gap-3 text-gray-500">
+                                        <span className="w-4 h-4 rounded bg-indigo-100 border border-indigo-200 text-indigo-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                            B
+                                        </span>
+                                        <a
+                                            href={clinic.barcode_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-sm text-indigo-600 hover:text-indigo-800 underline"
+                                        >
+                                            View Barcode
+                                        </a>
                                     </div>
                                 )}
                             </div>

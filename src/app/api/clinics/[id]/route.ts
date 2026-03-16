@@ -26,7 +26,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     try {
         const { id } = await params;
         const clinicId = parseInt(id);
-        const { clinic_name, location, phone, status, schedule } = await req.json();
+        const { clinic_name, location, phone, status, schedule, barcode_url } = await req.json();
 
         const existingClinic = await prisma.clinics.findUnique({
             where: { clinic_id: clinicId },
@@ -44,6 +44,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
                     ...(location !== undefined && { location }),
                     ...(phone !== undefined && { phone }),
                     ...(status !== undefined && { status }),
+                    ...(barcode_url !== undefined && { barcode_url: barcode_url || null }),
                 },
             });
 
