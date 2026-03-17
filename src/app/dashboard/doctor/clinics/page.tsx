@@ -516,7 +516,8 @@ export default function ClinicsPage() {
                                 <div className="relative">
                                     <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                     <input type="text" name="location" value={formData.location}
-                                        onChange={handleInputChange} required className="input-field pl-10"
+                                        onChange={handleInputChange} required className="input-field"
+                                        style={{ paddingLeft: '2.5rem' }}
                                         placeholder="Full address of the clinic" />
                                 </div>
                             </div>

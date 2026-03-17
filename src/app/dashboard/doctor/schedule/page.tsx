@@ -582,21 +582,7 @@ export default function DoctorSchedulePage() {
                                     </div>
                                 )}
 
-                                {/* Validity */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Validity Period</label>
-                                    <div className="flex gap-3">
-                                        <input type="number" min={1} className="input-field w-1/3" value={scheduleForm.durationValue}
-                                            onChange={e => setScheduleForm({ ...scheduleForm, durationValue: parseInt(e.target.value) || 1 })} />
-                                        <select className="input-field flex-1" value={scheduleForm.durationUnit}
-                                            onChange={e => setScheduleForm({ ...scheduleForm, durationUnit: e.target.value })}>
-                                            <option value="Days">Days</option>
-                                            <option value="Months">Months</option>
-                                            <option value="Years">Years</option>
-                                        </select>
-                                    </div>
                                 </div>
-                            </div>
 
                             {message && showAddModal && (
                                 <div className={`mt-4 px-3 py-2 rounded-lg text-sm ${message.type === "error" ? "bg-red-50 text-red-600" : "bg-green-50 text-green-700"}`}>
