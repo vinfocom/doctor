@@ -27,8 +27,9 @@ interface Clinic {
     clinic_name: string;
 }
 
-const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// Keep day ids aligned with backend: Monday=0 ... Sunday=6
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // ─── Period helper ──────────────────────────────────────────────────────────
 function getHour(timeStr: string): number {
