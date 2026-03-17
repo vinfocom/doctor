@@ -29,6 +29,7 @@ interface Doctor {
     num_clinics?: number | null;
     status?: string | null;
     whatsapp_numbers?: WhatsAppNum[];
+    user?: { email: string | null } | null;
 }
 
 const INITIAL_FORM = {
@@ -184,6 +185,7 @@ export default function AdminDoctorsPage() {
         doctor_name: "", phone: "", whatsapp_number: "", specialization: "",
         gst_number: "", pan_number: "", address: "", registration_no: "", education: "",
         chat_id: "", telegram_userid: "", num_clinics: "0", active_from: "", active_to: "",
+        email: "", password: "",
     });
     const [editError, setEditError] = useState("");
     const [editSubmitting, setEditSubmitting] = useState(false);
@@ -309,6 +311,8 @@ export default function AdminDoctorsPage() {
             num_clinics: String(doc.num_clinics ?? 0),
             active_from: toDateInput(doc.active_from),
             active_to: toDateInput(doc.active_to),
+            email: doc.user?.email || "",
+            password: "", // Password is blank by default for security
         });
         setEditDocUrl(doc.document_url || ""); setEditDocFile(null); setEditUploadError("");
         setEditProfilePicUrl(doc.profile_pic_url || ""); setEditProfilePicFile(null); setEditProfilePicError("");
@@ -822,6 +826,14 @@ export default function AdminDoctorsPage() {
                                             <div className="space-y-1">
                                                 <label className="text-sm font-medium text-gray-700">Specialization</label>
                                                 <input type="text" value={editForm.specialization} onChange={(e) => setEditForm({ ...editForm, specialization: e.target.value })} className="input-field" placeholder="e.g. Cardiologist" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-sm font-medium text-gray-700">Email Address (Login)</label>
+                                                <input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} className="input-field" placeholder="doctor@example.com" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-sm font-medium text-gray-700">Password <span className="text-gray-400 text-xs font-normal">(Leave blank to keep unchanged)</span></label>
+                                                <input type="text" value={editForm.password} onChange={(e) => setEditForm({ ...editForm, password: e.target.value })} className="input-field" placeholder="New Password" />
                                             </div>
                                             <div className="space-y-1">
                                                 <label className="text-sm font-medium text-gray-700">Appointment Phone Number</label>

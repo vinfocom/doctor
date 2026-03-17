@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import bcrypt from "bcryptjs";
 
 // GET: List doctors
 export async function GET(req: NextRequest) {
@@ -23,6 +24,9 @@ export async function GET(req: NextRequest) {
                             select: { user_id: true, name: true, email: true },
                         },
                     },
+                },
+                user: {
+                    select: { email: true },
                 },
                 schedules: true,
                 whatsapp_numbers: true,
@@ -110,6 +114,7 @@ export async function PATCH(req: NextRequest) {
             gst_number, pan_number, address, registration_no, education, document_url,
             chat_id, telegram_userid, profile_pic_url, num_clinics, status, active_from, active_to,
             whatsapp_numbers, // array of { whatsapp_number: string }
+            email, password, // newly added user credentials
         } = body;
 
         if (!doctor_id) {
@@ -151,6 +156,25 @@ export async function PATCH(req: NextRequest) {
                 },
             });
 
+            // Handle user credentials update using the doctor's user_id reference
+            if (doc.user_id && (email !== undefined || (password !== undefined && password.trim() !== ""))) {
+                const userUpdateData: Record<string, any> = {};
+                // If email is explicitly provided and not empty
+                if (email !== undefined && email.trim() !== "") {
+                    userUpdateData.email = email;
+                }
+                // If password is provided and not empty
+                if (password !== undefined && password.trim() !== "") {
+                    userUpdateData.password = await bcrypt.hash(password, 10);
+                }
+                if (Object.keys(userUpdateData).length > 0) {
+                    await tx.users.update({
+                        where: { user_id: doc.user_id },
+                        data: userUpdateData,
+                    });
+                }
+            }
+
             // Replace whatsapp_numbers if provided
             if (Array.isArray(whatsapp_numbers)) {
                 await tx.doctor_whatsapp_numbers.deleteMany({ where: { doctor_id: Number(doctor_id) } });
@@ -175,10 +199,13 @@ export async function PATCH(req: NextRequest) {
             return doc;
         });
 
-        // Re-fetch with whatsapp_numbers included
+        // Re-fetch with whatsapp_numbers and user email included
         const full = await prisma.doctors.findUnique({
             where: { doctor_id: Number(doctor_id) },
-            include: { whatsapp_numbers: true },
+            include: {
+                whatsapp_numbers: true,
+                user: { select: { email: true } },
+            },
         });
 
         const jsonSafe = <T,>(value: T): T =>
