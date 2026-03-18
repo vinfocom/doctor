@@ -49,9 +49,10 @@ export const getISTNowYMD = () => formatDateToISTYMD(new Date());
 
 export const getISTDayOfWeek = (dateStr: string): number => {
     const [year, month, day] = String(dateStr).slice(0, 10).split("-").map(Number);
-    // Normalize to IST day-of-week with Sunday=0, Saturday=6 (matches UI day ids)
-    const dow = new Date(Date.UTC(year, (month || 1) - 1, day || 1, 12, 0, 0)).getUTCDay();
-    return dow;
+    // Use UTC noon so timezone conversion cannot push the date into the previous/next day.
+    const jsDay = new Date(Date.UTC(year, (month || 1) - 1, day || 1, 12, 0, 0)).getUTCDay();
+    const sundayFirstMap = [0, 1, 2, 3, 4, 5, 6];
+    return sundayFirstMap[jsDay] ?? 0;
 };
 
 export const addMinutesToTimeString = (timeStr: string, minutesToAdd: number): string => {

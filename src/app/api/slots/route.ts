@@ -54,6 +54,7 @@ export async function GET(request: Request) {
             return NextResponse.json({ slots: [] });
         }
 
+
         // Fetch booked appointments for that calendar day using UTC midnight boundaries
         // (MariaDB DATE columns store dates as UTC midnight when read back via Prisma)
         const [yr, mo, dy] = [year, month, day].map(n => String(n).padStart(2, '0'));
