@@ -31,6 +31,8 @@ export async function GET(req: Request) {
                 select: {
                     created_at: true,
                     content: true,
+                    attachment_url: true,
+                    attachment_type: true,
                     patient_id: true,
                     doctor_id: true,
                 },
@@ -59,6 +61,14 @@ export async function GET(req: Request) {
                 doctorId: incoming.find((m) => m.patient_id === p.patient_id)?.doctor_id ?? 0,
             }));
 
+            const latestPreview = latest
+                ? (latest.content
+                    ? latest.content
+                    : latest.attachment_type === "image"
+                        ? "Photo"
+                        : "Attachment")
+                : "";
+
             return NextResponse.json({
                 count: incoming.length,
                 announcementCount: 0,
@@ -68,7 +78,7 @@ export async function GET(req: Request) {
                     ? {
                         senderName: latestSender?.full_name || "Patient",
                         senderRole: "PATIENT",
-                        preview: latest.content,
+                        preview: latestPreview,
                         isAnnouncement: false,
                         createdAt: latest.created_at,
                         patientId: latest.patient_id,
@@ -90,6 +100,8 @@ export async function GET(req: Request) {
             select: {
                 created_at: true,
                 content: true,
+                attachment_url: true,
+                attachment_type: true,
                 patient_id: true,
                 doctor_id: true,
             },
@@ -105,6 +117,14 @@ export async function GET(req: Request) {
             })
             : null;
 
+        const latestPreview = latest
+            ? (latest.content
+                ? latest.content
+                : latest.attachment_type === "image"
+                    ? "Photo"
+                    : "Attachment")
+            : "";
+
         return NextResponse.json({
             count: messageCount,
             announcementCount,
@@ -113,7 +133,7 @@ export async function GET(req: Request) {
                 ? {
                     senderName: latestSender?.doctor_name || "Doctor",
                     senderRole: "DOCTOR",
-                    preview: latest.content,
+                    preview: latestPreview,
                     isAnnouncement: latest.content?.startsWith("Announcement:") ?? false,
                     createdAt: latest.created_at,
                     patientId: latest.patient_id,

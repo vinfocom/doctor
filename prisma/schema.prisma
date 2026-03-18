@@ -323,6 +323,11 @@ model chat_messages {
   doctor_id  Int
   sender     String   @db.VarChar(50)
   content    String   @db.Text
+  attachment_url  String?  @db.VarChar(1000)
+  attachment_type String?  @db.VarChar(20)
+  attachment_name String?  @db.VarChar(255)
+  attachment_mime String?  @db.VarChar(100)
+  attachment_size Int?
   is_read    Boolean  @default(false)
   created_at DateTime @default(now()) @db.Timestamp(0)
   doctor     doctors  @relation(fields: [doctor_id], references: [doctor_id])

@@ -88,9 +88,9 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
-        const { patient_id, doctor_id, sender, content } = body;
+        const { patient_id, doctor_id, sender, content, attachment_url, attachment_type, attachment_name, attachment_mime, attachment_size } = body;
 
-        if (!patient_id || !doctor_id || !sender || !content) {
+        if (!patient_id || !doctor_id || !sender) {
             return NextResponse.json(
                 { error: "Missing required fields" },
                 { status: 400 }
@@ -134,12 +134,29 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
+        const safeContent = typeof content === "string" ? content : "";
+        if (!safeContent.trim() && !attachment_url) {
+            return NextResponse.json(
+                { error: "Message content or attachment is required" },
+                { status: 400 }
+            );
+        }
+
+        if (attachment_type && attachment_type !== "image" && attachment_type !== "file") {
+            return NextResponse.json({ error: "Invalid attachment_type" }, { status: 400 });
+        }
+
         const message = await prisma.chat_messages.create({
             data: {
                 patient_id: patientIdNum,
                 doctor_id: doctorIdNum,
                 sender,
-                content,
+                content: safeContent,
+                attachment_url: attachment_url || null,
+                attachment_type: attachment_type || null,
+                attachment_name: attachment_name || null,
+                attachment_mime: attachment_mime || null,
+                attachment_size: Number.isFinite(Number(attachment_size)) ? Number(attachment_size) : null,
             },
         });
         const room = `chat_patient_${patientIdNum}_doctor_${doctorIdNum}`;
@@ -151,6 +168,11 @@ export async function POST(request: NextRequest) {
                 doctor_id: doctorIdNum,
                 sender: message.sender,
                 content: message.content,
+                attachment_url: message.attachment_url,
+                attachment_type: message.attachment_type,
+                attachment_name: message.attachment_name,
+                attachment_mime: message.attachment_mime,
+                attachment_size: message.attachment_size,
                 created_at: message.created_at,
             });
         }
@@ -180,7 +202,9 @@ export async function POST(request: NextRequest) {
                     await sendExpoPushNotification({
                         to: pushTokens,
                         title: `New message from ${senderName}`,
-                        body: content.length > 100 ? content.substring(0, 97) + '...' : content,
+                        body: safeContent
+                            ? (safeContent.length > 100 ? safeContent.substring(0, 97) + '...' : safeContent)
+                            : "Sent an attachment",
                         sound: 'default'
                     });
                 }
