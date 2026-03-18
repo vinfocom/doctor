@@ -6,7 +6,8 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import {
     User, Phone, MessageCircle, Loader2, Save, MapPin, Building2, Clock,
     Plus, Trash2, Camera, FileText, QrCode, Hash, BadgeCheck, GraduationCap,
-    Send, Upload, X, Eye, Shield
+    Send, Upload, X, Eye, Shield,
+    Sun
 } from "lucide-react";
 import Link from "next/link";
 import { formatTime, convertTo12Hour } from "@/lib/timeUtils";
@@ -56,7 +57,7 @@ interface DoctorProfile {
     num_clinics?: number | null;
 }
 
-const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type UploadType = "profile_pic" | "document";
 

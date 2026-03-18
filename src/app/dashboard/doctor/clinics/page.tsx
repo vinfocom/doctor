@@ -37,13 +37,14 @@ interface ScheduleFormState {
 }
 
 const DAYS = [
-    { id: 0, label: "Mon" },
-    { id: 1, label: "Tue" },
-    { id: 2, label: "Wed" },
-    { id: 3, label: "Thu" },
-    { id: 4, label: "Fri" },
-    { id: 5, label: "Sat" },
-    { id: 6, label: "Sun" },
+    { id: 0, label: "Sun" },
+    { id: 1, label: "Mon" },
+    { id: 2, label: "Tue" },
+    { id: 3, label: "Wed" },
+    { id: 4, label: "Thu" },
+    { id: 5, label: "Fri" },
+    { id: 6, label: "Sat" },
+    
 ];
 
 function getHour(timeStr: string): number {
