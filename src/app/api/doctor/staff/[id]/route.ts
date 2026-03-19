@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/request-auth";
+import bcrypt from "bcryptjs";
 
 export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
     try {
@@ -23,7 +24,18 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
         const resolvedParams = await props.params;
         const staffId = parseInt(resolvedParams.id);
         const body = await req.json();
-        const { username, role, status, is_limited, valid_from, valid_to, clinic_id, doctor_whatsapp_number } = body;
+        const {
+            username,
+            email,
+            password,
+            role,
+            status,
+            is_limited,
+            valid_from,
+            valid_to,
+            clinic_id,
+            doctor_whatsapp_number,
+        } = body;
 
         const existingStaff = await prisma.clinic_staff.findUnique({
             where: { staff_id: staffId },
@@ -38,10 +50,20 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
         const toDate = is_limited && valid_to ? new Date(valid_to) : null;
 
         await prisma.$transaction(async (tx) => {
+            const userUpdateData: Record<string, any> = {};
             if (username && existingStaff.users.name !== username) {
+                userUpdateData.name = username;
+            }
+            if (email && existingStaff.users.email !== email) {
+                userUpdateData.email = email;
+            }
+            if (password && String(password).trim() !== "") {
+                userUpdateData.password = await bcrypt.hash(String(password), 10);
+            }
+            if (Object.keys(userUpdateData).length > 0) {
                 await tx.users.update({
                     where: { user_id: existingStaff.user_id },
-                    data: { name: username }
+                    data: userUpdateData,
                 });
             }
 

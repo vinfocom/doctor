@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Users, UserPlus, Search, Edit2, Trash2, MapPin, X, Save, Loader2 } from "lucide-react";
+import { Users, UserPlus, Search, Edit2, Trash2, MapPin, X, Save, Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { PremiumTable } from "@/components/ui/PremiumTable";
 
@@ -36,6 +36,8 @@ export default function UsersViewPage() {
     const [editingUser, setEditingUser] = useState<StaffUser | null>(null);
     const [editForm, setEditForm] = useState({
         username: "",
+        email: "",
+        password: "",
         role: "VIEWER",
         status: "ACTIVE",
         clinic_id: "",
@@ -44,6 +46,7 @@ export default function UsersViewPage() {
         valid_to: "",
         doctor_whatsapp_number: "",
     });
+    const [showEditPassword, setShowEditPassword] = useState(false);
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState("");
 
@@ -101,6 +104,8 @@ export default function UsersViewPage() {
         setSaveError("");
         setEditForm({
             username: user.name || "",
+            email: user.email || "",
+            password: "",
             role: user.role || "VIEWER",
             status: user.status || "ACTIVE",
             clinic_id: user.clinic_id ? String(user.clinic_id) : "",
@@ -294,6 +299,40 @@ export default function UsersViewPage() {
                                     onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
                                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
                                 />
+                            </div>
+
+                            {/* Email */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                <input
+                                    type="email"
+                                    value={editForm.email}
+                                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                                />
+                            </div>
+
+                            {/* Password */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                <div className="relative">
+                                    <input
+                                        type={showEditPassword ? "text" : "password"}
+                                        value={editForm.password}
+                                        onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                                        placeholder="Leave blank to keep current"
+                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowEditPassword((v) => !v)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-purple-600 transition-colors"
+                                        aria-label={showEditPassword ? "Hide password" : "Show password"}
+                                    >
+                                        {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-1">Leave blank to keep existing password.</p>
                             </div>
 
                             {/* Role */}
