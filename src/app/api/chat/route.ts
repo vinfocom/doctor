@@ -180,32 +180,46 @@ export async function POST(request: NextRequest) {
         // Send Expo Push Notification in the background
         (async () => {
             try {
-                let pushTokens: string[] = [];
-                let senderName = "Someone";
+                const [patient, doc] = await Promise.all([
+                    prisma.patients.findUnique({
+                        where: { patient_id: patientIdNum },
+                        select: { push_token: true, full_name: true },
+                    }),
+                    prisma.doctors.findUnique({
+                        where: { doctor_id: doctorIdNum },
+                        select: { push_token: true, doctor_name: true },
+                    }),
+                ]);
+
+                const tokens = new Set<string>();
                 if (sender === "DOCTOR") {
-                    const [patient, doc] = await Promise.all([
-                        prisma.patients.findUnique({ where: { patient_id: patientIdNum }, select: { push_token: true } }),
-                        prisma.doctors.findUnique({ where: { doctor_id: doctorIdNum }, select: { doctor_name: true } })
-                    ]);
-                    if (patient?.push_token) pushTokens.push(patient.push_token);
-                    if (doc?.doctor_name) senderName = `Dr. ${doc.doctor_name}`;
+                    if (patient?.push_token) tokens.add(patient.push_token);
                 } else {
-                    const [doc, patient] = await Promise.all([
-                        prisma.doctors.findUnique({ where: { doctor_id: doctorIdNum }, select: { push_token: true } }),
-                        prisma.patients.findUnique({ where: { patient_id: patientIdNum }, select: { full_name: true } })
-                    ]);
-                    if (doc?.push_token) pushTokens.push(doc.push_token);
-                    if (patient?.full_name) senderName = patient.full_name;
+                    if (doc?.push_token) tokens.add(doc.push_token);
                 }
 
-                if (pushTokens.length > 0) {
+                const senderName =
+                    sender === "DOCTOR"
+                        ? `Dr. ${doc?.doctor_name || "Doctor"}`
+                        : patient?.full_name || "Patient";
+
+                const bodyText = safeContent
+                    ? (safeContent.length > 100 ? safeContent.substring(0, 97) + "..." : safeContent)
+                    : "Sent an attachment";
+
+                if (tokens.size > 0) {
                     await sendExpoPushNotification({
-                        to: pushTokens,
+                        to: Array.from(tokens),
                         title: `New message from ${senderName}`,
-                        body: safeContent
-                            ? (safeContent.length > 100 ? safeContent.substring(0, 97) + '...' : safeContent)
-                            : "Sent an attachment",
-                        sound: 'default'
+                        body: bodyText,
+                        data: {
+                            type: "chat",
+                            patientId: patientIdNum,
+                            doctorId: doctorIdNum,
+                            senderRole: sender,
+                            senderName,
+                        },
+                        sound: "default",
                     });
                 }
             } catch (err) {

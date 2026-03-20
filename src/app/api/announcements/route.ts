@@ -194,22 +194,37 @@ function emitAnnouncementEvents(params: {
         try {
             const doc = await prisma.doctors.findUnique({
                 where: { doctor_id: params.doctorId },
-                select: { doctor_name: true }
+                select: { doctor_name: true, push_token: true },
             });
             const patients = await prisma.patients.findMany({
                 where: { patient_id: { in: params.recipientIds } },
-                select: { push_token: true }
+                select: { push_token: true },
             });
-            const tokens = patients.map(p => p.push_token).filter((t): t is string => Boolean(t));
-            if (tokens.length > 0) {
+
+            // Exclude sender (doctor) from announcement pushes
+            const tokens = new Set<string>();
+            patients.forEach((p) => {
+                if (p.push_token) tokens.add(p.push_token);
+            });
+
+            const title = `Announcement from Dr. ${doc?.doctor_name || "Doctor"}`;
+            const body = params.message.length > 100 ? params.message.substring(0, 97) + "..." : params.message;
+
+            if (tokens.size > 0) {
+                const tokenList = Array.from(tokens);
                 // Chunk to 100 recipients max per request (Expo API limits)
-                for (let i = 0; i < tokens.length; i += 100) {
-                    const chunk = tokens.slice(i, i + 100);
+                for (let i = 0; i < tokenList.length; i += 100) {
+                    const chunk = tokenList.slice(i, i + 100);
                     await sendExpoPushNotification({
                         to: chunk,
-                        title: `Announcement from Dr. ${doc?.doctor_name || 'Doctor'}`,
-                        body: params.message.length > 100 ? params.message.substring(0, 97) + '...' : params.message,
-                        sound: 'default'
+                        title,
+                        body,
+                        data: {
+                            type: "announcement",
+                            doctorId: params.doctorId,
+                            campaignId: params.campaignId,
+                        },
+                        sound: "default",
                     });
                 }
             }
