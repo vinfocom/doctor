@@ -461,17 +461,21 @@ export default function DoctorAppointmentsPage() {
                                         <td>
                                             <div className="flex gap-2">
                                                 {/* Only show action buttons for DOCTOR or HAVE_ACCESS staff */}
-                                                {(userRole === "DOCTOR" || staffRole === "HAVE_ACCESS") && apt.status !== "COMPLETED" && apt.status !== "CANCELLED" && apt.status !== "PENDING" && (
+                                                {(userRole === "DOCTOR" || staffRole === "HAVE_ACCESS") && (
                                                     <>
-                                                        <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "COMPLETED")} className="text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Complete" aria-label="Complete">
-                                                            <Check size={16} />
-                                                        </motion.button>
-                                                        <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "PENDING")} className="text-amber-600 hover:bg-amber-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Not Visited" aria-label="Not Visited">
-                                                            <UserX size={16} />
-                                                        </motion.button>
-                                                        <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "CANCELLED")} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Cancel" aria-label="Cancel">
-                                                            <X size={16} />
-                                                        </motion.button>
+                                                        {apt.status !== "COMPLETED" && apt.status !== "CANCELLED" && apt.status !== "PENDING" && (
+                                                            <>
+                                                                <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "COMPLETED")} className="text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Complete" aria-label="Complete">
+                                                                    <Check size={16} />
+                                                                </motion.button>
+                                                                <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "PENDING")} className="text-amber-600 hover:bg-amber-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Not Visited" aria-label="Not Visited">
+                                                                    <UserX size={16} />
+                                                                </motion.button>
+                                                                <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "CANCELLED")} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Cancel" aria-label="Cancel">
+                                                                    <X size={16} />
+                                                                </motion.button>
+                                                            </>
+                                                        )}
                                                         <motion.button onClick={() => setRescheduleAppointment(apt)} className="text-amber-600 hover:bg-amber-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Reschedule" aria-label="Reschedule">
                                                             <CalendarSync size={16} />
                                                         </motion.button>
