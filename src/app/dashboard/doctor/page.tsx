@@ -19,8 +19,14 @@ interface Appointment {
     appointment_date: string | null;
     start_time: string | null;
     status: string;
-    patient: { full_name: string; phone: string } | null;
+    patient: { full_name: string; phone: string; booking_id?: number | null } | null;
     clinic: { clinic_name: string } | null;
+}
+
+function getTodayYMDInIST(): string {
+    const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${nowIST.getUTCFullYear()}-${pad(nowIST.getUTCMonth() + 1)}-${pad(nowIST.getUTCDate())}`;
 }
 
 /** Format an appointment_date ISO string to a readable date in IST */
@@ -97,14 +103,27 @@ export default function DoctorDashboard() {
 
                 setStats({ bookedAppointments: booked, cancelledAppointments: cancelled, completedAppointments: completed, notVisitedAppointments: notVisited });
 
-                // Sort newest appointment_date first, then by start_time
-                const sorted = [...data].sort((a, b) => {
-                    const da = a.appointment_date ? a.appointment_date.slice(0, 10) : "";
-                    const db = b.appointment_date ? b.appointment_date.slice(0, 10) : "";
-                    if (db !== da) return db.localeCompare(da);
-                    return (b.start_time || "").localeCompare(a.start_time || "");
-                });
-                setRecentAppointments(sorted.slice(0, 6));
+                const todayYMD = getTodayYMDInIST();
+                const normalizeYMD = (d: string | null) => (d ? d.slice(0, 10) : "");
+
+                const todayAppointments = data
+                    .filter(a => normalizeYMD(a.appointment_date) === todayYMD)
+                    .sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
+
+                const futureAppointments = data
+                    .filter(a => {
+                        const ymd = normalizeYMD(a.appointment_date);
+                        return ymd && ymd > todayYMD;
+                    })
+                    .sort((a, b) => {
+                        const da = normalizeYMD(a.appointment_date);
+                        const db = normalizeYMD(b.appointment_date);
+                        if (da !== db) return da.localeCompare(db);
+                        return (a.start_time || "").localeCompare(b.start_time || "");
+                    });
+
+                const ordered = [...todayAppointments, ...futureAppointments];
+                setRecentAppointments(ordered.slice(0, 6));
             }
         } catch (e) {
             console.error(e);
@@ -124,10 +143,10 @@ export default function DoctorDashboard() {
     }
 
     const statCards = [
-        { label: "Booked", value: stats?.bookedAppointments ?? 0, icon: Calendar, color: "#4f46e5" },
-        { label: "Cancelled", value: stats?.cancelledAppointments ?? 0, icon: XCircle, color: "#dc2626" },
-        { label: "Completed", value: stats?.completedAppointments ?? 0, icon: CheckCircle2, color: "#059669" },
-        { label: "Not Visited", value: stats?.notVisitedAppointments ?? 0, icon: UserX, color: "#d97706" },
+        { label: "Total Booked", value: stats?.bookedAppointments ?? 0, icon: Calendar, color: "#4f46e5" },
+        { label: "Total Cancelled", value: stats?.cancelledAppointments ?? 0, icon: XCircle, color: "#dc2626" },
+        { label: "Total Completed", value: stats?.completedAppointments ?? 0, icon: CheckCircle2, color: "#059669" },
+        { label: "Total Not Visited", value: stats?.notVisitedAppointments ?? 0, icon: UserX, color: "#d97706" },
     ];
 
     const columns = [
@@ -138,6 +157,12 @@ export default function DoctorDashboard() {
                     <div className="font-medium text-gray-900">{item.patient?.full_name || "Unknown"}</div>
                     <div className="text-xs text-gray-400">{item.patient?.phone || "—"}</div>
                 </div>
+            )
+        },
+        {
+            header: "Appt No.",
+            accessorKey: (item: Appointment) => (
+                <span className="text-gray-700 text-sm">{item.patient?.booking_id ?? "—"}</span>
             )
         },
         {

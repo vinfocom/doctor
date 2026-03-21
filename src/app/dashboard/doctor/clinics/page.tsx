@@ -438,8 +438,8 @@ export default function ClinicsPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {[
                     { label: "Total Clinics", value: stats.total, color: "bg-indigo-50 text-indigo-600", icon: Building2 },
-                    { label: "Active Locations", value: stats.active, color: "bg-emerald-50 text-emerald-600", icon: MapPin },
-                    { label: "Inactive", value: stats.inactive, color: "bg-gray-50 text-gray-600", icon: Trash2 },
+                    { label: "Active Clinics", value: stats.active, color: "bg-emerald-50 text-emerald-600", icon: MapPin },
+                    { label: "Inactive Clinics", value: stats.inactive, color: "bg-gray-50 text-gray-600", icon: Trash2 },
                 ].map((stat, idx) => (
                     <GlassCard key={idx} className="flex items-center gap-4 p-4">
                         <div className={`p-3 rounded-xl ${stat.color}`}>
