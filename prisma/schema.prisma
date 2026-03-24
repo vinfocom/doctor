@@ -140,6 +140,7 @@ model patients {
   full_name               String?                            @db.VarChar(255)
   admin_id                Int
   doctor_id               Int?
+  status                  PatientStatus?
   phone                   String?                            @db.VarChar(255)
   booking_id              Int?
   telegram_chat_id        String?                            @unique @db.VarChar(255)
@@ -463,6 +464,11 @@ enum ClinicStatus {
 enum DoctorStatus {
   ACTIVE
   INACTIVE
+}
+
+enum PatientStatus {
+  BLOCKED   @map("Blocked")
+  UNBLOCKED @map("Unblocked")
 }
 
 enum users_role {

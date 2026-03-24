@@ -19,6 +19,21 @@ function jsonSafe<T>(value: T): T {
     ) as T;
 }
 
+function normalizePhone(value: string | null | undefined) {
+    return String(value || '').replace(/\D/g, '');
+}
+
+function phonesMatch(left: string | null | undefined, right: string | null | undefined) {
+    const normalizedLeft = normalizePhone(left);
+    const normalizedRight = normalizePhone(right);
+    if (!normalizedLeft || !normalizedRight) return false;
+    if (normalizedLeft === normalizedRight) return true;
+    if (normalizedLeft.length >= 10 && normalizedRight.length >= 10) {
+        return normalizedLeft.slice(-10) === normalizedRight.slice(-10);
+    }
+    return false;
+}
+
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -237,36 +252,34 @@ export async function POST(request: Request) {
         });
         const booking_id = existingAppointmentsCount + 1;
 
-        // Find exact same patient first in the same admin/doctor scope.
-        let patient = await prisma.patients.findFirst({
-            where: {
-                phone: patient_phone,
-                full_name: patient_name,
-                admin_id: Number(admin_id),
-                doctor_id: Number(doctor_id),
-            },
-            orderBy: {
-                patient_id: 'desc'
-            }
-        });
-
         const existingPatientsOnPhone = await prisma.patients.findMany({
             where: {
-                phone: patient_phone,
                 admin_id: Number(admin_id),
-                doctor_id: Number(doctor_id),
             },
             select: {
                 patient_id: true,
                 full_name: true,
+                phone: true,
+                doctor_id: true,
             },
             orderBy: {
                 patient_id: 'desc'
             }
         });
 
+        const matchingPatientsOnPhone = existingPatientsOnPhone.filter((p) => phonesMatch(p.phone, patient_phone));
         const normalizedPatientName = patient_name.trim().toLowerCase();
-        const hasDifferentExistingName = existingPatientsOnPhone.some((p) => {
+        let patient =
+            matchingPatientsOnPhone.find((p) =>
+                String(p.full_name || '').trim().toLowerCase() === normalizedPatientName &&
+                Number(p.doctor_id || 0) === Number(doctor_id)
+            ) ||
+            matchingPatientsOnPhone.find((p) =>
+                String(p.full_name || '').trim().toLowerCase() === normalizedPatientName
+            ) ||
+            null;
+
+        const hasDifferentExistingName = matchingPatientsOnPhone.some((p) => {
             const existingName = String(p.full_name || '').trim().toLowerCase();
             return Boolean(existingName) && existingName !== normalizedPatientName;
         });
