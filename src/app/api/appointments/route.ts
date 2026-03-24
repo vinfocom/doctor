@@ -137,8 +137,16 @@ export async function GET(request: Request) {
             }
         });
 
-
-        const appointmentsWithBookingIds = await attachBookingIds(appointments);
+        let appointmentsWithBookingIds;
+        try {
+            appointmentsWithBookingIds = await attachBookingIds(appointments);
+        } catch (bookingError) {
+            console.error("Error attaching booking IDs:", bookingError);
+            appointmentsWithBookingIds = appointments.map((appointment) => ({
+                ...appointment,
+                booking_id: appointment.booking_id ?? null,
+            }));
+        }
 
         return NextResponse.json(jsonSafe(appointmentsWithBookingIds));
     } catch (error) {

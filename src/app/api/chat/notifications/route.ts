@@ -46,7 +46,11 @@ export async function GET(req: Request) {
                 : null;
 
             // Collect unique patient senders
-            const patientIds = [...new Set(incoming.map((m) => m.patient_id))];
+            const patientIds = [...new Set(
+                incoming
+                    .map((m) => m.patient_id)
+                    .filter((value): value is number => typeof value === "number")
+            )];
             const senderPatients = patientIds.length
                 ? await prisma.patients.findMany({
                     where: { patient_id: { in: patientIds } },

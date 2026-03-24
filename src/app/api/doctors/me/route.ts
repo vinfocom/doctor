@@ -45,18 +45,6 @@ export async function GET(req: Request) {
                         }
                     }
                 },
-                clinics: {
-                    include: {
-                        schedules: {
-                            orderBy: [
-                                { day_of_week: "asc" },
-                                { start_time: "asc" },
-                            ],
-                        },
-                    },
-                    orderBy: { clinic_name: "asc" },
-                },
-                whatsapp_numbers: true
             }
         });
 
@@ -64,7 +52,32 @@ export async function GET(req: Request) {
             return NextResponse.json({ error: "Doctor profile not found" }, { status: 404 });
         }
 
-        return NextResponse.json({ doctor: jsonSafe(doctor) });
+        const [clinics, whatsappNumbers] = await Promise.all([
+            prisma.clinics.findMany({
+                where: { doctor_id: doctor.doctor_id },
+                include: {
+                    schedules: {
+                        orderBy: [
+                            { day_of_week: "asc" },
+                            { start_time: "asc" },
+                        ],
+                    },
+                },
+                orderBy: { clinic_name: "asc" },
+            }),
+            prisma.doctor_whatsapp_numbers.findMany({
+                where: { doctor_id: doctor.doctor_id },
+                orderBy: [{ is_primary: "desc" }, { id: "asc" }],
+            }),
+        ]);
+
+        return NextResponse.json({
+            doctor: jsonSafe({
+                ...doctor,
+                clinics,
+                whatsapp_numbers: whatsappNumbers,
+            }),
+        });
     } catch (error) {
         console.error("Error fetching doctor profile:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
     Plus, Trash2, MapPin, Phone, Building2, Pencil,
     Search, Filter, Calendar, Clock, ChevronDown, ChevronUp,
-    Sun, Sunset, Moon, Check, X, QrCode
+    Sun, Sunset, Moon, Check, X, QrCode, Eye
 } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { PremiumButton } from "@/components/ui/PremiumButton";
@@ -19,6 +19,7 @@ interface Clinic {
     status: string;
     doctor_id: number;
     barcode_url?: string | null;
+    qr_storage_url?: string | null;
 }
 
 interface ScheduleEntry {
@@ -109,6 +110,12 @@ export default function ClinicsPage() {
 
     const [savingSchedule, setSavingSchedule] = useState(false);
     const [deletingScheduleId, setDeletingScheduleId] = useState<number | null>(null);
+    const [qrPreviewOpen, setQrPreviewOpen] = useState(false);
+    const [qrPreviewLoading, setQrPreviewLoading] = useState(false);
+    const [qrPreviewError, setQrPreviewError] = useState("");
+    const [qrPreviewImage, setQrPreviewImage] = useState("");
+    const [qrPreviewClinic, setQrPreviewClinic] = useState<Clinic | null>(null);
+    const [qrPreviewMode, setQrPreviewMode] = useState<"generate" | "view">("generate");
 
     useEffect(() => {
         fetchClinics();
@@ -360,18 +367,55 @@ export default function ClinicsPage() {
     };
 
     const handleGenerateBarcode = async (clinic: Clinic) => {
+        setQrPreviewMode("generate");
+        setQrPreviewClinic(clinic);
+        setQrPreviewOpen(true);
+        setQrPreviewLoading(true);
+        setQrPreviewError("");
+        setQrPreviewImage("");
+
         try {
+            const previewRes = await fetch("/api/qr/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    doctor_id: clinic.doctor_id,
+                    clinic_id: clinic.clinic_id,
+                }),
+            });
+
+            const previewData = await previewRes.json();
+            if (!previewRes.ok) {
+                throw new Error(previewData.error || "Failed to load QR preview");
+            }
+
+            setQrPreviewImage(previewData.dataUrl || "");
+
             const url = `https://msgbot.duckdns.org/qr/generate/download?doctor_id=${clinic.doctor_id}&clinic_id=${clinic.clinic_id}`;
             await fetch(`/api/clinics/${clinic.clinic_id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ barcode_url: url }) // this will update just barcode_url
+                body: JSON.stringify({
+                    barcode_url: url,
+                    qr_storage_url: previewData.qrStorageUrl || null,
+                })
             });
-            window.open(url, "_blank");
             fetchClinics(); // Refresh state so button reflects success (if needed, though we just open url)
         } catch (e) {
             console.error("Error generating barcode", e);
+            setQrPreviewError(e instanceof Error ? e.message : "Failed to load QR preview");
+        } finally {
+            setQrPreviewLoading(false);
         }
+    };
+
+    const handleViewBarcode = (clinic: Clinic) => {
+        setQrPreviewMode("view");
+        setQrPreviewClinic(clinic);
+        setQrPreviewOpen(true);
+        setQrPreviewLoading(false);
+        setQrPreviewError(clinic.qr_storage_url ? "" : "Stored barcode not found");
+        setQrPreviewImage(clinic.qr_storage_url || "");
     };
 
     // Grouping helper
@@ -463,7 +507,11 @@ export default function ClinicsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                     <Filter className="w-4 h-4 text-gray-500" />
-                    <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)} className="input-field w-auto">
+                    <select
+                        value={filterStatus}
+                        onChange={e => setFilterStatus(e.target.value as "ALL" | "ACTIVE" | "INACTIVE")}
+                        className="input-field w-auto"
+                    >
                         <option value="ALL">All Status</option>
                         <option value="ACTIVE">Active</option>
                         <option value="INACTIVE">Inactive</option>
@@ -803,13 +851,21 @@ export default function ClinicsPage() {
                                         <span className="text-sm">{clinic.phone}</span>
                                     </div>
                                 )}
-                                <div className="flex items-center mt-2">
+                                <div className="mt-2 flex flex-col gap-2">
                                     <button
                                         onClick={() => handleGenerateBarcode(clinic)}
                                         className="inline-flex items-center justify-center w-full gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-sm rounded-lg transition-colors border border-indigo-200"
                                     >
                                         <QrCode className="w-4 h-4" />
                                         Generate Bar Code
+                                    </button>
+                                    <button
+                                        onClick={() => handleViewBarcode(clinic)}
+                                        disabled={!clinic.qr_storage_url}
+                                        className={`inline-flex items-center justify-center w-full gap-2 px-4 py-2 font-semibold text-sm rounded-lg transition-colors border ${clinic.qr_storage_url ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"}`}
+                                    >
+                                        <Eye className="w-4 h-4" />
+                                        View Bar Code
                                     </button>
                                 </div>
                             </div>
@@ -869,6 +925,79 @@ export default function ClinicsPage() {
                     </div>
                 )}
             </div>
+
+            {qrPreviewOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-sm rounded-3xl border border-indigo-100 bg-white p-6 shadow-2xl">
+                        <div className="mb-4 flex items-start justify-between gap-4">
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900">QR Preview</h3>
+                                <p className="mt-1 text-sm text-gray-500">
+                                    {qrPreviewClinic?.clinic_name || "Clinic QR code"}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setQrPreviewOpen(false);
+                                    setQrPreviewClinic(null);
+                                    setQrPreviewImage("");
+                                    setQrPreviewError("");
+                                }}
+                                className="rounded-full bg-gray-100 p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700"
+                                aria-label="Close QR preview"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        <div className="flex min-h-72 items-center justify-center rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 p-4">
+                            {qrPreviewLoading ? (
+                                <div className="flex flex-col items-center gap-3 text-sm text-gray-500">
+                                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" />
+                                    Loading preview...
+                                </div>
+                            ) : qrPreviewError ? (
+                                <p className="text-center text-sm font-medium text-red-500">{qrPreviewError}</p>
+                            ) : qrPreviewImage ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={qrPreviewImage}
+                                    alt={`${qrPreviewClinic?.clinic_name || "Clinic"} QR code preview`}
+                                    className="h-auto max-h-64 w-full rounded-xl object-contain"
+                                />
+                            ) : (
+                                <p className="text-sm text-gray-500">Preview unavailable.</p>
+                            )}
+                        </div>
+
+                        <div className="mt-5 flex justify-end gap-3">
+                            <button
+                                onClick={() => {
+                                    setQrPreviewOpen(false);
+                                    setQrPreviewClinic(null);
+                                    setQrPreviewImage("");
+                                    setQrPreviewError("");
+                                }}
+                                className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+                            >
+                                Close
+                            </button>
+                            {qrPreviewMode === "generate" && (
+                                <a
+                                    href={
+                                        qrPreviewClinic
+                                            ? `/api/qr/generate/download?doctor_id=${qrPreviewClinic.doctor_id}&clinic_id=${qrPreviewClinic.clinic_id}`
+                                            : "#"
+                                    }
+                                    className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition-colors ${qrPreviewClinic ? "bg-indigo-600 hover:bg-indigo-700" : "pointer-events-none bg-indigo-300"}`}
+                                >
+                                    Download
+                                </a>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

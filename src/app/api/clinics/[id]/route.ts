@@ -26,7 +26,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     try {
         const { id } = await params;
         const clinicId = parseInt(id);
-        const { clinic_name, location, phone, status, schedule, barcode_url } = await req.json();
+        const { clinic_name, location, phone, status, schedule, barcode_url, qr_storage_url } = await req.json();
 
         const existingClinic = await prisma.clinics.findUnique({
             where: { clinic_id: clinicId },
@@ -47,6 +47,14 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
                     ...(barcode_url !== undefined && { barcode_url: barcode_url || null }),
                 },
             });
+
+            if (qr_storage_url !== undefined) {
+                await tx.$executeRaw`
+                    UPDATE clinics
+                    SET qr_storage_url = ${qr_storage_url || null}
+                    WHERE clinic_id = ${clinicId}
+                `;
+            }
 
             // If new schedule entries are provided, APPEND them (individual edits/deletes
             // are handled via /api/schedule endpoints directly, not here)

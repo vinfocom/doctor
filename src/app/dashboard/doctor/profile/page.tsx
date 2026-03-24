@@ -168,6 +168,11 @@ export default function DoctorProfilePage() {
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
     const [avatarUploading, setAvatarUploading] = useState(false);
+    const [qrPreviewOpen, setQrPreviewOpen] = useState(false);
+    const [qrPreviewLoading, setQrPreviewLoading] = useState(false);
+    const [qrPreviewError, setQrPreviewError] = useState("");
+    const [qrPreviewImage, setQrPreviewImage] = useState("");
+    const [qrPreviewClinic, setQrPreviewClinic] = useState<Clinic | null>(null);
     const avatarRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => { fetchProfile(); }, []);
@@ -212,6 +217,39 @@ export default function DoctorProfilePage() {
 
     const setProp = <K extends keyof DoctorProfile>(key: K, value: DoctorProfile[K]) =>
         setProfile(prev => prev ? { ...prev, [key]: value } : null);
+
+    const handleOpenQrPreview = async (clinic: Clinic) => {
+        if (!profile?.doctor_id) return;
+
+        setQrPreviewClinic(clinic);
+        setQrPreviewOpen(true);
+        setQrPreviewLoading(true);
+        setQrPreviewError("");
+        setQrPreviewImage("");
+
+        try {
+            const previewRes = await fetch("/api/qr/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    doctor_id: profile.doctor_id,
+                    clinic_id: clinic.clinic_id,
+                }),
+            });
+
+            const previewData = await previewRes.json();
+            if (!previewRes.ok) {
+                throw new Error(previewData.error || "Failed to load QR preview");
+            }
+
+            setQrPreviewImage(previewData.dataUrl || "");
+        } catch (e) {
+            console.error("Error loading barcode preview", e);
+            setQrPreviewError(e instanceof Error ? e.message : "Failed to load QR preview");
+        } finally {
+            setQrPreviewLoading(false);
+        }
+    };
 
     const handleUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -638,16 +676,15 @@ export default function DoctorProfilePage() {
                                             <MapPin className="w-3 h-3" />
                                             <span>{clinic.location}</span>
                                         </div>
-                                        {clinic.barcode_url && (
-                                            <a
-                                                href={clinic.barcode_url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
+                                        {profile?.doctor_id && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenQrPreview(clinic)}
                                                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 mt-2 hover:text-indigo-800"
                                             >
                                                 <QrCode className="w-3.5 h-3.5" />
                                                 View Barcode
-                                            </a>
+                                            </button>
                                         )}
                                     </div>
                                 </div>
@@ -692,6 +729,102 @@ export default function DoctorProfilePage() {
                     </div>
                 )}
             </motion.div>
+
+            <AnimatePresence>
+                {qrPreviewOpen && (
+                    <>
+                        <motion.div
+                            className="fixed inset-0 z-40 bg-black/45 backdrop-blur-sm"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => {
+                                setQrPreviewOpen(false);
+                                setQrPreviewClinic(null);
+                                setQrPreviewImage("");
+                                setQrPreviewError("");
+                            }}
+                        />
+                        <motion.div
+                            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                            initial={{ opacity: 0, scale: 0.96 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.96 }}
+                        >
+                            <div className="w-full max-w-sm rounded-3xl border border-indigo-100 bg-white p-6 shadow-2xl">
+                                <div className="mb-4 flex items-start justify-between gap-4">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-gray-900">QR Preview</h3>
+                                        <p className="mt-1 text-sm text-gray-500">
+                                            {qrPreviewClinic?.clinic_name || "Clinic QR code"}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setQrPreviewOpen(false);
+                                            setQrPreviewClinic(null);
+                                            setQrPreviewImage("");
+                                            setQrPreviewError("");
+                                        }}
+                                        className="rounded-full bg-gray-100 p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700"
+                                        aria-label="Close QR preview"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+                                </div>
+
+                                <div className="flex min-h-72 items-center justify-center rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 p-4">
+                                    {qrPreviewLoading ? (
+                                        <div className="flex flex-col items-center gap-3 text-sm text-gray-500">
+                                            <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                                            Loading preview...
+                                        </div>
+                                    ) : qrPreviewError ? (
+                                        <p className="text-center text-sm font-medium text-red-500">{qrPreviewError}</p>
+                                    ) : qrPreviewImage ? (
+                                        <Image
+                                            src={qrPreviewImage}
+                                            alt={`${qrPreviewClinic?.clinic_name || "Clinic"} QR code preview`}
+                                            width={320}
+                                            height={320}
+                                            unoptimized
+                                            className="h-auto max-h-64 w-full rounded-xl object-contain"
+                                        />
+                                    ) : (
+                                        <p className="text-sm text-gray-500">Preview unavailable.</p>
+                                    )}
+                                </div>
+
+                                <div className="mt-5 flex justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setQrPreviewOpen(false);
+                                            setQrPreviewClinic(null);
+                                            setQrPreviewImage("");
+                                            setQrPreviewError("");
+                                        }}
+                                        className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+                                    >
+                                        Close
+                                    </button>
+                                    <a
+                                        href={
+                                            profile?.doctor_id && qrPreviewClinic
+                                                ? `/api/qr/generate/download?doctor_id=${profile.doctor_id}&clinic_id=${qrPreviewClinic.clinic_id}`
+                                                : "#"
+                                        }
+                                        className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition-colors ${profile?.doctor_id && qrPreviewClinic ? "bg-indigo-600 hover:bg-indigo-700" : "pointer-events-none bg-indigo-300"}`}
+                                    >
+                                        Download
+                                    </a>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

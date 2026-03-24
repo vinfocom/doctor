@@ -124,6 +124,7 @@ model clinics {
   doctor_id    Int?
   location     String?                  @db.VarChar(255)
   barcode_url  String?                  @db.VarChar(500)
+  qr_storage_url String?                @db.VarChar(500)
   created_at   DateTime?                @default(now()) @db.Timestamp(0)
   appointments appointment[]
   admin        admins                   @relation(fields: [admin_id], references: [admin_id])

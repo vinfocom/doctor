@@ -3,6 +3,26 @@ import prisma from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 import { cookies } from "next/headers";
 
+async function attachClinicQrStorageUrls<T extends { clinic_id: number }>(clinics: T[]) {
+    if (clinics.length === 0) return clinics;
+
+    const clinicIds = clinics
+        .map((clinic) => Number(clinic.clinic_id))
+        .filter((value) => Number.isFinite(value));
+
+    if (clinicIds.length === 0) return clinics;
+
+    const rows = await prisma.$queryRawUnsafe<Array<{ clinic_id: number; qr_storage_url: string | null }>>(
+        `SELECT clinic_id, qr_storage_url FROM clinics WHERE clinic_id IN (${clinicIds.join(",")})`
+    );
+
+    const urlMap = new Map(rows.map((row) => [Number(row.clinic_id), row.qr_storage_url || null]));
+    return clinics.map((clinic) => ({
+        ...clinic,
+        qr_storage_url: urlMap.get(Number(clinic.clinic_id)) ?? null,
+    }));
+}
+
 export async function GET(req: Request) {
     const cookieStore = await cookies();
     let token = cookieStore.get("token")?.value;
@@ -40,7 +60,7 @@ export async function GET(req: Request) {
                     },
                     orderBy: { clinic_name: 'asc' }
                 });
-                return NextResponse.json({ clinics: doctorClinics });
+                return NextResponse.json({ clinics: await attachClinicQrStorageUrls(doctorClinics) });
             }
         }
 
@@ -57,7 +77,10 @@ export async function GET(req: Request) {
                     ...staff.clinics,
                     doctor: staff.doctors
                 };
-                return NextResponse.json({ clinics: [assignedClinic], doctors: staff.doctors ? [staff.doctors] : [] });
+                return NextResponse.json({
+                    clinics: await attachClinicQrStorageUrls([assignedClinic]),
+                    doctors: staff.doctors ? [staff.doctors] : [],
+                });
             } else {
                 return NextResponse.json({ clinics: [], doctors: [] });
             }
@@ -94,7 +117,7 @@ export async function GET(req: Request) {
             orderBy: { doctor_name: 'asc' }
         });
 
-        return NextResponse.json({ clinics, doctors });
+        return NextResponse.json({ clinics: await attachClinicQrStorageUrls(clinics), doctors });
     } catch (error) {
         console.error("Error fetching clinics:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -123,7 +146,7 @@ export async function POST(req: Request) {
 
     try {
         const body = await req.json();
-        const { clinic_name, location, phone, status, schedule, barcode_url } = body;
+        const { clinic_name, location, phone, status, schedule } = body;
 
         let doctor_id: number | null = null;
         let admin_id: number | null = null;
@@ -162,7 +185,7 @@ export async function POST(req: Request) {
             });
 
             if (schedule && Array.isArray(schedule) && schedule.length > 0) {
-                const scheduleData = schedule.map((s: any) => ({
+                const scheduleData = schedule.map((s: { day_of_week: number | string; start_time: string; end_time: string; slot_duration: number | string }) => ({
                     doctor_id: doctor_id,
                     clinic_id: newClinic.clinic_id,
                     admin_id: admin_id,
