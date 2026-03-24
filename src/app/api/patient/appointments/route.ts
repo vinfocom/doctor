@@ -145,14 +145,22 @@ export async function POST(req: Request) {
 
         const appointment = await prisma.appointment.create({
             data: {
-                patient_id: patient.patient_id,
-                doctor_id,
-                clinic_id,
-                admin_id: patient.admin_id,
                 appointment_date: apptDate,
                 start_time: startTimeObj,
                 end_time: endTimeObj,
                 status: "BOOKED",
+                patient: {
+                    connect: { patient_id: patient.patient_id },
+                },
+                doctor: {
+                    connect: { doctor_id },
+                },
+                clinic: {
+                    connect: { clinic_id },
+                },
+                admin: {
+                    connect: { admin_id: patient.admin_id },
+                },
                 ...(appointmentBookingId != null ? { booking_id: appointmentBookingId } : {}),
             },
         });

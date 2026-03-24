@@ -156,7 +156,7 @@ export async function POST(request: Request) {
         let doctor_id = body.doctor_id;
         const clinic_id = body.clinic_id;
         let admin_id = body.admin_id;
-        const booking_for = String(body.booking_for || "SELF").toUpperCase();
+        const booking_for = String(body.booked_for || body.booking_for || "SELF").trim().toUpperCase();
         const appointment_date = body.appointment_date;
         const start_time = body.start_time;
         const end_time = body.end_time;
@@ -342,6 +342,7 @@ export async function POST(request: Request) {
                     start_time: startTimeObj,
                     end_time: endTimeObj,
                     status: "BOOKED",
+                    booked_for: booking_for,
                     rescheduled_by: String(sessionUser?.role || "DOCTOR"),
                     ...(appointmentBookingId != null ? { booking_id: appointmentBookingId } : {}),
                 },
@@ -359,14 +360,23 @@ export async function POST(request: Request) {
 
         const appointment = await prisma.appointment.create({
             data: {
-                patient_id: patient.patient_id,
-                doctor_id: Number(doctor_id),
-                clinic_id: Number(clinic_id),
-                admin_id: Number(admin_id),
                 status: 'BOOKED',
+                booked_for: booking_for,
                 appointment_date: dateObj,
                 start_time: startTimeObj,
                 end_time: endTimeObj,
+                patient: {
+                    connect: { patient_id: patient.patient_id },
+                },
+                doctor: {
+                    connect: { doctor_id: Number(doctor_id) },
+                },
+                clinic: {
+                    connect: { clinic_id: Number(clinic_id) },
+                },
+                admin: {
+                    connect: { admin_id: Number(admin_id) },
+                },
                 ...(appointmentBookingId != null ? { booking_id: appointmentBookingId } : {}),
             }
         });
@@ -449,6 +459,7 @@ export async function PATCH(request: Request) {
     try {
         const body = await request.json();
         const { appointmentId, status, appointment_date, start_time, end_time, cancelled_by, rescheduled_by } = body;
+        const booking_for = body.booked_for ?? body.booking_for;
 
         if (!appointmentId) {
             return NextResponse.json({ error: "Appointment ID required" }, { status: 400 });
@@ -494,6 +505,13 @@ export async function PATCH(request: Request) {
             );
         }
 
+        if (booking_for !== undefined) {
+            const normalizedBookingFor = String(booking_for).trim().toUpperCase();
+            if (normalizedBookingFor !== "SELF" && normalizedBookingFor !== "OTHER") {
+                return NextResponse.json({ error: "Invalid booking_for value" }, { status: 400 });
+            }
+        }
+
         const updateData: Record<string, unknown> = {};
         if (status) updateData.status = status;
         if (appointment_date) updateData.appointment_date = parseISTDate(appointment_date);
@@ -501,6 +519,7 @@ export async function PATCH(request: Request) {
         if (end_time) updateData.end_time = parseISTTimeToUTCDate(end_time);
         if (cancelled_by) updateData.cancelled_by = cancelled_by;
         if (rescheduled_by) updateData.rescheduled_by = rescheduled_by;
+        if (booking_for !== undefined) updateData.booked_for = String(booking_for).trim().toUpperCase();
         if (hasRescheduleFields && !status) {
             updateData.status = "BOOKED";
         }

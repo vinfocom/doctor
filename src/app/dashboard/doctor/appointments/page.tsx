@@ -8,6 +8,7 @@ import AppointmentExportModal from "@/components/AppointmentExportModal";
 interface Appointment {
     appointment_id: number;
     booking_id?: number | null;
+    booked_for?: 'SELF' | 'OTHER' | null;
     created_at: string;
     status: string;
     cancelled_by?: string | null;
@@ -382,6 +383,7 @@ export default function DoctorAppointmentsPage() {
                     clinic_id: rescheduleAppointment.clinic?.clinic_id ? String(rescheduleAppointment.clinic.clinic_id) : '',
                     date: toISTDateInput(rescheduleAppointment.appointment_date),
                     time: formatTime(rescheduleAppointment.start_time),
+                    booking_for: rescheduleAppointment.booked_for === 'OTHER' ? 'OTHER' : 'SELF',
                 } : undefined}
             />
             {deleteAppointment && (

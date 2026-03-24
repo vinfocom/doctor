@@ -161,7 +161,7 @@ export default function DoctorDashboard() {
             )
         },
         {
-            header: "Appt No.",
+            header: "Appointment No.",
             accessorKey: (item: Appointment) => (
                 <span className="text-gray-700 text-sm">{item.booking_id ?? "—"}</span>
             )

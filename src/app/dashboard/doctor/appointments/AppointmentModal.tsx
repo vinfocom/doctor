@@ -15,6 +15,7 @@ interface AppointmentModalInitialValues {
     clinic_id?: string;
     date?: string;
     time?: string;
+    booking_for?: BookingFor;
 }
 
 interface AppointmentModalProps {
@@ -76,7 +77,7 @@ export default function AppointmentModal({
                 clinic_id: initialValues?.clinic_id || '',
                 date: initialValues?.date || '',
                 time: initialValues?.time || '',
-                booking_for: 'SELF',
+                booking_for: initialValues?.booking_for || 'SELF',
             });
         } else {
             setFormData(emptyForm);
@@ -200,6 +201,7 @@ export default function AppointmentModal({
                     appointment_date: formData.date,
                     start_time: startTime24,
                     end_time: endTime24,
+                    booking_for: formData.booking_for,
                     rescheduled_by: 'DOCTOR',
                 }
                 : {
