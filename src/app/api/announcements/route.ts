@@ -5,6 +5,25 @@ import { sendExpoPushNotification } from "@/lib/expoPush";
 
 type TargetMode = "TOMORROW" | "TODAY" | "CUSTOM";
 
+function getTodayISTYMD() {
+    const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${nowIST.getUTCFullYear()}-${pad(nowIST.getUTCMonth() + 1)}-${pad(nowIST.getUTCDate())}`;
+}
+
+function toISTYMD(value: Date | string | null | undefined) {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toISOString().slice(0, 10);
+}
+
+function isAnnouncementActive(targetDate: Date | string | null | undefined) {
+    const appointmentDate = toISTYMD(targetDate);
+    if (!appointmentDate) return true;
+    return appointmentDate >= getTodayISTYMD();
+}
+
 function isMissingAnnouncementTableError(error: unknown) {
     const e = error as { code?: string; meta?: { table?: string }; message?: string };
     if (e?.code !== "P2021") return false;
@@ -276,6 +295,7 @@ export async function GET(req: Request) {
                                 doctor_id: true,
                                 message: true,
                                 created_at: true,
+                                target_date: true,
                                 doctor: { select: { doctor_name: true } },
                             },
                         },
@@ -328,12 +348,14 @@ export async function GET(req: Request) {
                         content: String(m.content || "").replace(/^Announcement:\s*/, ""),
                         created_at: m.created_at,
                         received_at: m.created_at,
+                        appointment_date: null,
                     })),
                 });
             }
 
-            return NextResponse.json({
-                announcements: received.map((row: any) => ({
+            const announcements = received
+                .filter((row: any) => isAnnouncementActive(row?.campaign?.target_date))
+                .map((row: any) => ({
                     message_id: row.campaign_id,
                     campaign_id: row.campaign_id,
                     doctor_id: row.campaign.doctor_id,
@@ -341,7 +363,11 @@ export async function GET(req: Request) {
                     content: row.campaign.message,
                     created_at: row.campaign.created_at,
                     received_at: row.created_at,
-                })),
+                    appointment_date: toISTYMD(row.campaign.target_date),
+                }));
+
+            return NextResponse.json({
+                announcements,
             });
         }
 
