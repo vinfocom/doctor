@@ -68,6 +68,7 @@ export async function GET(req: Request) {
 export async function PATCH(req: Request) {
     try {
         const session = await getSessionFromRequest(req);
+        console.log("[patient-profile] PATCH session", session);
         if (!session || session.role !== "PATIENT") {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -76,6 +77,12 @@ export async function PATCH(req: Request) {
 
         const body = await req.json();
         const { full_name, phone, age, gender, push_token } = body;
+        console.log("[patient-profile] PATCH request body", {
+            patientId,
+            hasPushToken: push_token !== undefined,
+            pushTokenPreview: push_token ? String(push_token).slice(0, 24) : null,
+            keys: Object.keys(body || {}),
+        });
 
         const updateData: Record<string, string | number | null> = {};
         if (full_name !== undefined) updateData.full_name = String(full_name).trim();
@@ -103,6 +110,10 @@ export async function PATCH(req: Request) {
                 age: true,
                 gender: true,
             },
+        });
+        console.log("[patient-profile] PATCH updated successfully", {
+            patientId,
+            updatedFields: Object.keys(updateData),
         });
 
         return NextResponse.json({ patient: updated });

@@ -123,6 +123,12 @@ export async function PATCH(req: Request) {
             profile_pic_url,
             push_token,
         } = body;
+        console.log("[doctor-profile] PATCH request body", {
+            userId: user.userId,
+            hasPushToken: push_token !== undefined,
+            pushTokenPreview: push_token ? String(push_token).slice(0, 24) : null,
+            keys: Object.keys(body || {}),
+        });
 
         // Ensure doctor exists for this user
         const doctor = await prisma.doctors.findUnique({
@@ -198,6 +204,10 @@ export async function PATCH(req: Request) {
             }
 
             return updatedDoctor;
+        });
+        console.log("[doctor-profile] PATCH updated successfully", {
+            doctorId: doctor.doctor_id,
+            updatedFields: Object.keys(updateData),
         });
 
         return NextResponse.json({ doctor: jsonSafe(result) });
