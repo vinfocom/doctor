@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { Check, UserX, CalendarSync, Trash2, X, Filter, RotateCcw, Stethoscope, User, Download } from "lucide-react";
@@ -121,6 +121,29 @@ const addDays = (base: Date, days: number) => {
     return next;
 };
 
+const parseAppointmentStart = (appointment: Pick<Appointment, "appointment_date" | "start_time">) => {
+    const datePart = String(appointment.appointment_date || "").slice(0, 10);
+    const rawTime = String(appointment.start_time || "").trim();
+    if (!datePart || !rawTime) return null;
+
+    const plainTimeMatch = rawTime.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    let hh = "";
+    let mm = "";
+
+    if (plainTimeMatch) {
+        hh = String(Number(plainTimeMatch[1])).padStart(2, "0");
+        mm = String(Number(plainTimeMatch[2])).padStart(2, "0");
+    } else {
+        const timeDate = new Date(rawTime);
+        if (Number.isNaN(timeDate.getTime())) return null;
+        hh = String(timeDate.getUTCHours()).padStart(2, "0");
+        mm = String(timeDate.getUTCMinutes()).padStart(2, "0");
+    }
+
+    const result = new Date(`${datePart}T${hh}:${mm}:00+05:30`);
+    return Number.isNaN(result.getTime()) ? null : result;
+};
+
 export default function DoctorAppointmentsPage() {
     const router = useRouter();
     const [user, setUser] = useState<{ name: string } | null>(null);
@@ -128,7 +151,7 @@ export default function DoctorAppointmentsPage() {
     const [loading, setLoading] = useState(true);
     const [deleteAppointment, setDeleteAppointment] = useState<Appointment | null>(null);
     const [deleting, setDeleting] = useState(false);
-    const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
+    const [datePreset, setDatePreset] = useState<DatePreset>("TODAY");
     const [statusFilter, setStatusFilter] = useState("ALL");
     const [customFrom, setCustomFrom] = useState("");
     const [customTo, setCustomTo] = useState("");
@@ -208,6 +231,23 @@ export default function DoctorAppointmentsPage() {
             document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
         };
     }, [fetchData]);
+
+    const sortedAppointments = useMemo(() => {
+        return [...appointments].sort((a, b) => {
+            const aStart = parseAppointmentStart(a);
+            const bStart = parseAppointmentStart(b);
+            const aTs = aStart ? aStart.getTime() : Number.MAX_SAFE_INTEGER;
+            const bTs = bStart ? bStart.getTime() : Number.MAX_SAFE_INTEGER;
+
+            if (aTs !== bTs) return aTs - bTs;
+
+            const aBooking = Number(a.booking_id ?? a.appointment_id ?? Number.MAX_SAFE_INTEGER);
+            const bBooking = Number(b.booking_id ?? b.appointment_id ?? Number.MAX_SAFE_INTEGER);
+            if (aBooking !== bBooking) return aBooking - bBooking;
+
+            return a.appointment_id - b.appointment_id;
+        });
+    }, [appointments]);
 
     const handleStatusUpdate = async (appointmentId: number, status: string) => {
         const body: Record<string, unknown> = { appointmentId, status };
@@ -348,7 +388,7 @@ export default function DoctorAppointmentsPage() {
                         <button
                             type="button"
                             onClick={() => {
-                                setDatePreset("ALL");
+                                setDatePreset("TODAY");
                                 setStatusFilter("ALL");
                                 setCustomFrom("");
                                 setCustomTo("");
@@ -453,7 +493,7 @@ export default function DoctorAppointmentsPage() {
                         <table className="data-table">
                             <thead><tr><th>Patient</th><th>Appointment No.</th><th>Phone</th><th>Date & Time</th><th>Status</th><th>Actions</th></tr></thead>
                             <tbody>
-                                {appointments.map((apt, i) => (
+                                {sortedAppointments.map((apt, i) => (
                                     <motion.tr key={apt.appointment_id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + i * 0.05 }}>
                                         <td>
                                             <div className="flex items-center gap-3">
