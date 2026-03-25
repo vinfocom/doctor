@@ -207,6 +207,16 @@ export async function POST(request: NextRequest) {
                     ? (safeContent.length > 100 ? safeContent.substring(0, 97) + "..." : safeContent)
                     : "Sent an attachment";
 
+                console.log("[chat-push] preparing push", {
+                    sender,
+                    patientId: patientIdNum,
+                    doctorId: doctorIdNum,
+                    patientPushToken: patient?.push_token ?? null,
+                    doctorPushToken: doc?.push_token ?? null,
+                    targetTokens: Array.from(tokens),
+                    bodyText,
+                });
+
                 if (tokens.size > 0) {
                     await sendExpoPushNotification({
                         to: Array.from(tokens),
@@ -220,6 +230,12 @@ export async function POST(request: NextRequest) {
                             senderName,
                         },
                         sound: "default",
+                    });
+                } else {
+                    console.log("[chat-push] skipped because no target push token was available", {
+                        sender,
+                        patientId: patientIdNum,
+                        doctorId: doctorIdNum,
                     });
                 }
             } catch (err) {

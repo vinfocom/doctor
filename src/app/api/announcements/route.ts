@@ -210,6 +210,15 @@ function emitAnnouncementEvents(params: {
             const title = `Announcement from Dr. ${doc?.doctor_name || "Doctor"}`;
             const body = params.message.length > 100 ? params.message.substring(0, 97) + "..." : params.message;
 
+            console.log("[announcement-push] preparing push", {
+                doctorId: params.doctorId,
+                campaignId: params.campaignId,
+                recipientIds: params.recipientIds,
+                targetTokens: Array.from(tokens),
+                title,
+                body,
+            });
+
             if (tokens.size > 0) {
                 const tokenList = Array.from(tokens);
                 // Chunk to 100 recipients max per request (Expo API limits)
@@ -225,8 +234,14 @@ function emitAnnouncementEvents(params: {
                             campaignId: params.campaignId,
                         },
                         sound: "default",
-                    });
-                }
+                        });
+                    }
+            } else {
+                console.log("[announcement-push] skipped because no patient push tokens were available", {
+                    doctorId: params.doctorId,
+                    campaignId: params.campaignId,
+                    recipientIds: params.recipientIds,
+                });
             }
         } catch (err) {
             console.error("Background announcement push failed:", err);

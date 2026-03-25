@@ -15,6 +15,15 @@ interface ExpoPushMessage {
 
 export async function sendExpoPushNotification(message: ExpoPushMessage) {
     try {
+        console.log('[expo-push] sending message', {
+            to: message.to,
+            title: message.title,
+            body: message.body,
+            data: message.data,
+            sound: message.sound,
+            badge: message.badge,
+        });
+
         const response = await fetch('https://exp.host/--/api/v2/push/send', {
             method: 'POST',
             headers: {
@@ -26,15 +35,15 @@ export async function sendExpoPushNotification(message: ExpoPushMessage) {
         });
 
         if (!response.ok) {
-            console.error('Failed to send Expo push notification:', await response.text());
+            console.error('[expo-push] failed to send Expo push notification:', await response.text());
             return null;
         }
 
         const data = await response.json();
-        console.log('Successfully sent Expo push notification:', data);
+        console.log('[expo-push] successfully sent Expo push notification:', data);
         return data;
     } catch (error) {
-        console.error('Error sending Expo push notification:', error);
+        console.error('[expo-push] error sending Expo push notification:', error);
         return null;
     }
 }
