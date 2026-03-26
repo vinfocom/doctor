@@ -21,6 +21,36 @@ function phonesMatch(left: string | null | undefined, right: string | null | und
     return false;
 }
 
+async function getScopedPatientIds(patientId: number) {
+    const patient = await prisma.patients.findUnique({
+        where: { patient_id: patientId },
+        select: {
+            patient_id: true,
+            admin_id: true,
+            phone: true,
+        },
+    });
+
+    if (!patient) return [];
+
+    if (!patient.phone) {
+        return [patient.patient_id];
+    }
+
+    const relatedPatients = await prisma.patients.findMany({
+        where: { admin_id: patient.admin_id },
+        select: {
+            patient_id: true,
+            phone: true,
+        },
+        orderBy: { patient_id: "asc" },
+    });
+
+    return relatedPatients
+        .filter((item) => phonesMatch(item.phone, patient.phone))
+        .map((item) => item.patient_id);
+}
+
 async function releaseCancelledSlotReservation(appointmentId: number) {
     const existing = await prisma.appointment.findUnique({
         where: { appointment_id: appointmentId },
@@ -377,34 +407,120 @@ export async function PATCH(req: Request) {
         const patientId = session.patientId ?? session.userId;
         const body = await req.json();
         const appointmentId = Number(body?.appointmentId);
+        const status = body?.status ? String(body.status).trim().toUpperCase() : "";
+        const appointment_date = body?.appointment_date ? String(body.appointment_date) : "";
+        const start_time = body?.start_time ? String(body.start_time) : "";
+        const end_time = body?.end_time ? String(body.end_time) : "";
+        const hasRescheduleFields = Boolean(appointment_date || start_time || end_time);
 
         if (!appointmentId) {
             return NextResponse.json({ error: "appointmentId required" }, { status: 400 });
         }
 
-        // Only allow cancelling own appointments
+        const allowedPatientIds = await getScopedPatientIds(patientId);
+        if (allowedPatientIds.length === 0) {
+            return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+        }
+
         const existing = await prisma.appointment.findFirst({
-            where: { appointment_id: appointmentId, patient_id: patientId },
-            select: { appointment_id: true, status: true },
+            where: {
+                appointment_id: appointmentId,
+                patient_id: { in: allowedPatientIds },
+            },
+            select: {
+                appointment_id: true,
+                doctor_id: true,
+                clinic_id: true,
+                patient_id: true,
+                appointment_date: true,
+                start_time: true,
+                end_time: true,
+                status: true,
+                booked_for: true,
+            },
         });
 
         if (!existing) {
             return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
         }
 
-        if (existing.status === "CANCELLED" || existing.status === "COMPLETED") {
+        if (!status && !hasRescheduleFields) {
+            return NextResponse.json({ error: "Provide status or reschedule fields" }, { status: 400 });
+        }
+
+        if (status === "CANCELLED" && (existing.status === "CANCELLED" || existing.status === "COMPLETED")) {
             return NextResponse.json({ error: "Cannot cancel a completed or already cancelled appointment" }, { status: 400 });
+        }
+
+        if (hasRescheduleFields && existing.status === "COMPLETED") {
+            return NextResponse.json({ error: "Completed appointments cannot be rescheduled" }, { status: 400 });
+        }
+
+        const updateData: Record<string, unknown> = {};
+
+        if (status) {
+            updateData.status = status;
+        }
+
+        if (hasRescheduleFields) {
+            const nextDate = appointment_date ? parseISTDate(appointment_date) : existing.appointment_date;
+            const nextStart = start_time ? parseISTTimeToUTCDate(start_time) : existing.start_time;
+
+            if (!nextDate || !nextStart) {
+                return NextResponse.json({ error: "appointment_date and start_time are required for reschedule" }, { status: 400 });
+            }
+
+            let nextEnd = existing.end_time;
+            if (end_time) {
+                nextEnd = parseISTTimeToUTCDate(end_time);
+            } else if (start_time && existing.start_time && existing.end_time) {
+                const durationMs = existing.end_time.getTime() - existing.start_time.getTime();
+                nextEnd = new Date(nextStart.getTime() + durationMs);
+            }
+
+            const exactSlotConflict = await prisma.appointment.findFirst({
+                where: {
+                    appointment_id: { not: appointmentId },
+                    doctor_id: existing.doctor_id ?? undefined,
+                    appointment_date: nextDate,
+                    start_time: nextStart,
+                    status: { not: "CANCELLED" },
+                },
+                select: {
+                    appointment_id: true,
+                },
+            });
+
+            if (exactSlotConflict) {
+                return NextResponse.json({ error: "Slot already booked" }, { status: 409 });
+            }
+
+            const bookingId = await computeBookingIdForAppointment({
+                doctor_id: existing.doctor_id,
+                clinic_id: existing.clinic_id,
+                appointment_date: nextDate,
+                start_time: nextStart,
+            });
+
+            updateData.appointment_date = nextDate;
+            updateData.start_time = nextStart;
+            if (nextEnd) updateData.end_time = nextEnd;
+            if (bookingId != null) updateData.booking_id = bookingId;
+            updateData.status = "BOOKED";
+            updateData.rescheduled_by = "PATIENT";
         }
 
         const updated = await prisma.appointment.update({
             where: { appointment_id: appointmentId },
             data: {
-                status: "CANCELLED",
-                cancelled_by: "PATIENT",
+                ...updateData,
+                ...(status === "CANCELLED" ? { cancelled_by: "PATIENT" } : {}),
             },
         });
 
-        const released = await releaseCancelledSlotReservation(appointmentId);
+        const released = status === "CANCELLED"
+            ? await releaseCancelledSlotReservation(appointmentId)
+            : null;
         const safe = JSON.parse(JSON.stringify(released || updated, (_k, v) =>
             typeof v === "bigint" ? v.toString() : v
         ));
