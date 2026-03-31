@@ -4,6 +4,13 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/request-auth";
 
+type RelatedPatient = {
+    patient_id: number;
+    full_name?: string | null;
+    phone: string | null;
+    profile_type?: "SELF" | "OTHER" | null;
+};
+
 function normalizePhone(value: string | null | undefined) {
     return String(value || "").replace(/\D/g, "");
 }
@@ -59,8 +66,10 @@ export async function GET(req: Request) {
             })
             : [patient];
 
-        const phoneLinkedPatients = relatedPatients.filter((item) => phonesMatch(item.phone, patient.phone));
-        const groupedPatientIds = phoneLinkedPatients.map((item) => item.patient_id);
+        const phoneLinkedPatients = (relatedPatients as RelatedPatient[]).filter((item: RelatedPatient) =>
+            phonesMatch(item.phone, patient.phone)
+        );
+        const groupedPatientIds = phoneLinkedPatients.map((item: RelatedPatient) => item.patient_id);
         const groupedPatientIdsSet = new Set(groupedPatientIds);
 
         const appointments = await prisma.appointment.findMany({
@@ -103,7 +112,7 @@ export async function GET(req: Request) {
             });
         }
 
-        const linked_profiles = phoneLinkedPatients.map((item) => ({
+        const linked_profiles = phoneLinkedPatients.map((item: RelatedPatient) => ({
             patient_id: item.patient_id,
             full_name: item.full_name,
             profile_type: item.profile_type === "OTHER" ? "OTHER" : "SELF",
@@ -166,7 +175,7 @@ export async function PATCH(req: Request) {
         const nextPhoneValue =
             phone !== undefined ? String(phone).trim() : currentPatient.phone;
 
-        const updated = await prisma.$transaction(async (tx) => {
+        const updated = await prisma.$transaction(async (tx: typeof prisma) => {
             const updatedPatient = await tx.patients.update({
                 where: { patient_id: patientId },
                 data: updateData,
@@ -192,9 +201,9 @@ export async function PATCH(req: Request) {
                     },
                 });
 
-                const linkedPatientIds = linkedPatients
-                    .filter((item) => phonesMatch(item.phone, nextPhoneValue))
-                    .map((item) => item.patient_id);
+                const linkedPatientIds = (linkedPatients as RelatedPatient[])
+                    .filter((item: RelatedPatient) => phonesMatch(item.phone, nextPhoneValue))
+                    .map((item: RelatedPatient) => item.patient_id);
 
                 if (linkedPatientIds.length > 1) {
                     await tx.patients.updateMany({
