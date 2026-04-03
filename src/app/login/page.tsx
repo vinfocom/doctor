@@ -1,8 +1,8 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { Calculator, Eye, EyeOff, RefreshCw } from "lucide-react";
+import { Calculator, Check, Eye, EyeOff, RefreshCw } from "lucide-react";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -12,12 +12,13 @@ export default function LoginPage() {
     const [challengeAnswer, setChallengeAnswer] = useState("");
     const [challengeVerificationToken, setChallengeVerificationToken] = useState("");
     const [challengeVerified, setChallengeVerified] = useState(false);
-    const [challengeMessage, setChallengeMessage] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [challengeLoading, setChallengeLoading] = useState(false);
     const [verifyingChallenge, setVerifyingChallenge] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const [challengeStatus, setChallengeStatus] = useState<"idle" | "success">("idle");
+    const [answerInputActive, setAnswerInputActive] = useState(false);
 
     const canSubmit = useMemo(
         () =>
@@ -35,9 +36,9 @@ export default function LoginPage() {
     const loadChallenge = async (clearAnswer = true) => {
         setChallengeLoading(true);
         setError("");
-        setChallengeMessage("");
         setChallengeVerified(false);
         setChallengeVerificationToken("");
+        setChallengeStatus("idle");
 
         try {
             const res = await fetch("/api/auth/login-challenge", { cache: "no-store" });
@@ -53,6 +54,7 @@ export default function LoginPage() {
             setChallengeQuestion(data.question || "");
             if (clearAnswer) {
                 setChallengeAnswer("");
+                setAnswerInputActive(false);
             }
         } catch {
             setError("Unable to load calculation");
@@ -68,24 +70,19 @@ export default function LoginPage() {
     }, []);
 
     useEffect(() => {
-        if (challengeVerified) {
-            setChallengeVerified(false);
-            setChallengeMessage("");
-            setChallengeVerificationToken("");
-        }
-    }, [challengeAnswer, challengeVerified]);
-
-    const handleVerifyChallenge = async () => {
-        if (!challengeId || !challengeAnswer.trim()) {
-            setError("Enter the calculation answer before verifying.");
-            return;
-        }
-
-        setVerifyingChallenge(true);
-        setError("");
-        setChallengeMessage("");
         setChallengeVerified(false);
         setChallengeVerificationToken("");
+        setChallengeStatus("idle");
+    }, [challengeAnswer]);
+
+    const handleVerifyChallenge = useCallback(async (answer: string) => {
+        if (!challengeId || !answer.trim()) return;
+        if (challengeVerified) return;
+        setVerifyingChallenge(true);
+        setError("");
+        setChallengeVerified(false);
+        setChallengeVerificationToken("");
+        setChallengeStatus("idle");
 
         try {
             const res = await fetch("/api/auth/login-challenge", {
@@ -93,32 +90,38 @@ export default function LoginPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     challengeId,
-                    answer: challengeAnswer.trim(),
+                    answer: answer.trim(),
                 }),
             });
 
             const data = await res.json();
             if (!res.ok) {
-                const message = data.error || "Wrong answer";
-                await loadChallenge();
-                setError(message);
                 return;
             }
 
             setChallengeVerificationToken(data.verificationToken || "");
             setChallengeVerified(true);
-            setChallengeMessage("Verified");
+            setChallengeStatus("success");
         } catch {
-            setError("Unable to verify calculation right now.");
+            // Keep quiet while user is typing; login submit still enforces verification.
         } finally {
             setVerifyingChallenge(false);
         }
-    };
+    }, [challengeId, challengeVerified]);
+
+    useEffect(() => {
+        if (!challengeAnswer.trim() || !challengeId || challengeLoading || challengeVerified) return;
+
+        const timer = setTimeout(() => {
+            void handleVerifyChallenge(challengeAnswer);
+        }, 250);
+
+        return () => clearTimeout(timer);
+    }, [challengeAnswer, challengeId, challengeLoading, challengeVerified, handleVerifyChallenge]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
-        setChallengeMessage("");
 
         if (!challengeVerified || !challengeId || !challengeVerificationToken) {
             setError("Please verify the calculation before signing in.");
@@ -253,44 +256,76 @@ export default function LoginPage() {
                                     type="button"
                                     onClick={() => loadChallenge()}
                                     disabled={challengeLoading || verifyingChallenge}
-                                    className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 transition hover:text-indigo-800 disabled:opacity-50"
+                                    className="inline-flex items-center text-indigo-600 transition hover:text-indigo-800 disabled:opacity-50"
                                 >
                                     <RefreshCw size={14} />
-                                    Regenerate
                                 </button>
                             </div>
-                            <div className="mb-3 flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-gray-800 shadow-sm">
-                                <Calculator size={16} className="text-indigo-600" />
+                            <div className="mb-3 flex items-center rounded-xl border border-indigo-100 bg-white px-4 py-3 shadow-sm">
+                                <div className="flex items-center pl-1">
+                                <Calculator size={20} className="text-indigo-600" />
                                 {challengeLoading ? (
-                                    <span>Loading calculation...</span>
+                                    <span className="ml-3 text-xl font-bold text-gray-800">Loading calculation...</span>
                                 ) : challengeQuestion ? (
                                     <>
-                                        <span>{challengeQuestion.replace("?", "")}</span>
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
-                                            className="w-20 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1.5 text-center text-sm font-semibold text-gray-800 outline-none"
-                                            placeholder="Ans"
-                                            value={challengeAnswer}
-                                            onChange={(e) => setChallengeAnswer(e.target.value)}
-                                            disabled={challengeVerified}
-                                        />
+                                        <span className="ml-3 mr-1 text-2xl font-bold text-gray-800">
+                                            {challengeQuestion.replace("?", "")}
+                                        </span>
+                                        {challengeAnswer === "" && !answerInputActive && !challengeVerified ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setAnswerInputActive(true)}
+                                                className="ml-4 mr-1 flex h-12 w-24 items-center justify-center rounded-2xl border border-indigo-200 bg-white px-2"
+                                            >
+                                                <span className="text-2xl font-bold text-gray-400">?</span>
+                                            </button>
+                                        ) : (
+                                            <input
+                                                autoFocus={answerInputActive && !challengeVerified}
+                                                type="text"
+                                                inputMode="numeric"
+                                                maxLength={4}
+                                                className="ml-4 mr-1 h-12 w-24 rounded-2xl border border-indigo-200 bg-white px-2 text-center text-2xl font-bold text-gray-800 outline-none"
+                                                placeholder="?"
+                                                value={challengeAnswer}
+                                                onChange={(e) => {
+                                                    const next = e.target.value.slice(0, 4);
+                                                    setChallengeAnswer(next);
+                                                    if (next === "" && !challengeVerified) {
+                                                        setAnswerInputActive(false);
+                                                    }
+                                                }}
+                                                onBlur={() => {
+                                                    if (!challengeAnswer && !challengeVerified) {
+                                                        setAnswerInputActive(false);
+                                                    }
+                                                }}
+                                                disabled={challengeVerified}
+                                            />
+                                        )}
                                     </>
                                 ) : (
-                                    <span>Calculation unavailable</span>
+                                    <span className="ml-3 text-xl font-bold text-gray-800">Calculation unavailable</span>
                                 )}
-                                <button
-                                    type="button"
-                                    onClick={handleVerifyChallenge}
-                                    disabled={challengeLoading || verifyingChallenge || challengeVerified || !challengeAnswer.trim() || !challengeId}
-                                    className="ml-auto rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                    {verifyingChallenge ? "Verifying..." : "Verify"}
-                                </button>
+                                </div>
+                                <div className="ml-1 flex h-9 w-9 items-center justify-center">
+                                    {verifyingChallenge ? (
+                                        <svg className="h-4 w-4 animate-spin text-indigo-600" viewBox="0 0 24 24" fill="none">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                                        </svg>
+                                    ) : challengeStatus === "success" ? (
+                                        <motion.div
+                                            initial={{ scale: 0.7, opacity: 0 }}
+                                            animate={{ scale: 1, opacity: 1 }}
+                                            transition={{ duration: 0.22 }}
+                                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500"
+                                        >
+                                            <Check size={18} className="text-white" />
+                                        </motion.div>
+                                    ) : null}
+                                </div>
                             </div>
-                            {challengeMessage ? (
-                                <p className="mt-1.5 text-sm font-medium text-emerald-600">{challengeMessage}</p>
-                            ) : null}
                         </div>
 
                         <motion.button
