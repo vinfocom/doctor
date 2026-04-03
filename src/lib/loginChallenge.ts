@@ -10,6 +10,7 @@ type LoginChallengeRecord = {
 };
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const MAX_ANSWER_LENGTH = 4;
 const store = new Map<string, LoginChallengeRecord>();
 const proofSecret =
     process.env.LOGIN_CHALLENGE_SECRET ||
@@ -49,27 +50,31 @@ function pickOperator(): Operator {
 }
 
 function createMathQuestion() {
-    const operator = pickOperator();
-    let left = Math.floor(Math.random() * 8) + 1;
-    let right = Math.floor(Math.random() * 8) + 1;
+    while (true) {
+        const operator = pickOperator();
+        let left = Math.floor(Math.random() * 8) + 1;
+        let right = Math.floor(Math.random() * 8) + 1;
 
-    if (operator === "-") {
-        if (right > left) {
-            [left, right] = [right, left];
+        if (operator === "-") {
+            if (right > left) {
+                [left, right] = [right, left];
+            }
+        }
+
+        const answer =
+            operator === "+"
+                ? left + right
+                : operator === "-"
+                    ? left - right
+                    : left * right;
+
+        if (String(answer).length <= MAX_ANSWER_LENGTH) {
+            return {
+                question: `${left} ${operator} ${right} = ?`,
+                answer,
+            };
         }
     }
-
-    const answer =
-        operator === "+"
-            ? left + right
-            : operator === "-"
-                ? left - right
-                : left * right;
-
-    return {
-        question: `${left} ${operator} ${right} = ?`,
-        answer,
-    };
 }
 
 export function createLoginChallenge() {

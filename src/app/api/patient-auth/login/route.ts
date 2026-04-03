@@ -3,17 +3,33 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { generateToken } from "@/lib/jwt";
+import { validateLoginChallengeProof } from "@/lib/loginChallenge";
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
         const identifier = String(body?.identifier || body?.phone || body?.telegram_chat_id || "").trim();
+        const challengeId = String(body?.challengeId || "").trim();
+        const challengeVerificationToken = String(body?.challengeVerificationToken || "").trim();
 
-        if (!identifier) {
+        if (!identifier || !challengeId || !challengeVerificationToken) {
             return NextResponse.json(
-                { error: "Identifier (phone or telegram_chat_id) is required" },
+                { error: "Identifier and verified calculation are required" },
                 { status: 400 }
             );
+        }
+
+        const challengeResult = validateLoginChallengeProof(
+            challengeId,
+            challengeVerificationToken
+        );
+        if (!challengeResult.ok) {
+            const message =
+                challengeResult.reason === "expired"
+                    ? "Calculation expired. Please generate a new one."
+                    : "Please verify the calculation before logging in.";
+
+            return NextResponse.json({ error: message }, { status: 400 });
         }
 
         let patient: {
