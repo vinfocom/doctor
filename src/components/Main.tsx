@@ -62,7 +62,7 @@ export default function Main() {
             variants={itemVariants}
             className="mt-10 flex justify-center"
           >
-            <Link href="/book-appointment" target="_blank" rel="noopener noreferrer">
+            <Link href="/book-appointment">
               <motion.button
                 className="px-14 py-5 text-lg font-semibold rounded-3xl text-white border border-cyan-300/70 bg-gradient-to-r from-cyan-500 via-sky-500 to-indigo-600 shadow-[0_18px_45px_rgba(14,165,233,0.32)] ring-4 ring-cyan-100/80"
                 whileHover={{ scale: 1.03 }}
