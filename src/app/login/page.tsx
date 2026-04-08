@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { Calculator, Check, Eye, EyeOff, RefreshCw } from "lucide-react";
+import Image from "next/image";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -165,6 +166,31 @@ export default function LoginPage() {
     return (
         <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden bg-gradient-to-br from-gray-50 to-indigo-50/30">
             <div className="page-glow" />
+
+            <div className="fixed top-6 inset-x-0 z-50 px-4 sm:px-6 lg:px-10">
+                <div className="mx-auto flex w-full max-w-[1440px] items-start justify-between gap-3 sm:gap-4 xl:gap-6">
+                    <div className="brand-logo-shell brand-logo-left shrink-0">
+                        <Image
+                            src="/vinfocom-logo.png"
+                            alt="Vinfocom logo"
+                            width={220}
+                            height={80}
+                            className="h-12 w-auto object-contain sm:h-14 lg:h-16"
+                            priority
+                        />
+                    </div>
+                    <div className="brand-logo-shell brand-logo-right shrink-0">
+                        <Image
+                            src="/dapto-logo.png"
+                            alt="Dapto logo"
+                            width={220}
+                            height={80}
+                            className="h-12 w-auto object-contain sm:h-14 lg:h-16"
+                            priority
+                        />
+                    </div>
+                </div>
+            </div>
 
             {/* Background orbs */}
             <motion.div
