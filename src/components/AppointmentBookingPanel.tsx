@@ -11,7 +11,7 @@ type DoctorRecord = {
 };
 
 const doctorLinks: Record<string, string> = {
-  "surgen|aman": "https://daptoservices.vinfocom.co.in/whatsapp/web/Dr.Aman",
+  "surgeon|aman": "https://daptoservices.vinfocom.co.in/whatsapp/web/Dr.Aman",
   "surgen|amit sethi": "https://daptoservices.vinfocom.co.in/whatsapp/web/Dr.Amit",
   "senior physican|amit sethi": "https://daptoservices.vinfocom.co.in/whatsapp/web/Dr.Amit",
   "senior consultant|sanjay vinayak": "https://daptoservices.vinfocom.co.in/whatsapp/web/Dr.SanjayVinayak",
