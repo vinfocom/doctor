@@ -16,7 +16,7 @@ export default function BookAppointmentPage() {
               Book Your Appointment
             </h1>
             <p className="mt-4 text-sm md:text-base text-gray-500 max-w-2xl mx-auto">
-              Search specialization, choose a doctor from the database, and continue on the appointment link.
+              Choose the available specialization and continue using the appointment link.
             </p>
           </div>
 

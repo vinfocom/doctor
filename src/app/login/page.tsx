@@ -218,8 +218,18 @@ export default function LoginPage() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.2, duration: 0.5 }}
                     >
-                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-600/10 flex items-center justify-center text-2xl mx-auto mb-4">
+                        <div className="hidden w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-600/10 flex items-center justify-center text-2xl mx-auto mb-4">
                             🏥
+                        </div>
+                        <div className="mx-auto mb-4 flex justify-center">
+                            <Image
+                                src="/dapto-logo.png"
+                                alt="Dapto logo"
+                                width={180}
+                                height={64}
+                                className="h-12 w-auto object-contain"
+                                priority
+                            />
                         </div>
                         <h1 className="text-3xl font-bold gradient-text">Welcome Back</h1>
                         <p className="text-gray-500 mt-2 text-sm">Sign in to your account</p>
