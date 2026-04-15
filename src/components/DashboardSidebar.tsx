@@ -1,4 +1,3 @@
-
 "use client";
 import React, { useState } from "react";
 import Image from "next/image";
@@ -10,20 +9,21 @@ import {
     UserPlus,
     Users,
     Calendar,
+    MonitorPlay,
     Clock,
     LogOut,
     Building2,
     Menu,
     X,
-    MessageCircle
 } from "lucide-react";
 
 interface SidebarProps {
     role: "SUPER_ADMIN" | "ADMIN" | "DOCTOR" | "CLINIC_STAFF";
     userName: string;
+    staffRole?: string | null;
 }
 
-export default function DashboardSidebar({ role, userName }: SidebarProps) {
+export default function DashboardSidebar({ role, userName, staffRole }: SidebarProps) {
     const pathname = usePathname();
     const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
@@ -60,6 +60,9 @@ export default function DashboardSidebar({ role, userName }: SidebarProps) {
         CLINIC_STAFF: [
             { href: "/dashboard/doctor", label: "Overview", icon: <LayoutDashboard size={20} /> },
             { href: "/dashboard/doctor/appointments", label: "Appointments", icon: <Calendar size={20} /> },
+            ...(staffRole === "HAVE_ACCESS"
+                ? [{ href: "/dashboard/doctor/live", label: "Live", icon: <MonitorPlay size={20} /> }]
+                : []),
         ],
         DOCTOR: [
             { href: "/dashboard/doctor", label: "Overview", icon: <LayoutDashboard size={20} /> },
@@ -67,6 +70,7 @@ export default function DashboardSidebar({ role, userName }: SidebarProps) {
             { href: "/dashboard/doctor/clinics", label: "My Clinics", icon: <Building2 size={20} /> },
             { href: "/dashboard/doctor/schedule", label: "Schedule", icon: <Clock size={20} /> },
             { href: "/dashboard/doctor/appointments", label: "My Appointments", icon: <Calendar size={20} /> },
+            { href: "/dashboard/doctor/live", label: "Live", icon: <MonitorPlay size={20} /> },
             { href: "/dashboard/doctor/patients", label: "Patients", icon: <Users size={20} /> },
             { href: "/dashboard/doctor/users", label: "Users", icon: <UserPlus size={20} /> },
             { href: "/dashboard/doctor/profile", label: "Profile", icon: <UserPlus size={20} /> },
@@ -76,7 +80,7 @@ export default function DashboardSidebar({ role, userName }: SidebarProps) {
 
     const currentLinks = links[role] || [];
 
-    const SidebarContent = () => (
+    const sidebarContent = (
         <div className="flex flex-col h-full">
             {/* Logo */}
             <div className="mb-7 -mt-4 px-2 flex justify-between items-center">
@@ -170,7 +174,7 @@ export default function DashboardSidebar({ role, userName }: SidebarProps) {
                 animate={{ x: 0, opacity: 1 }}
                 transition={{ duration: 0.5 }}
             >
-                <SidebarContent />
+                {sidebarContent}
             </motion.div>
 
             {/* Mobile Sidebar overlay */}
@@ -192,7 +196,7 @@ export default function DashboardSidebar({ role, userName }: SidebarProps) {
                             exit={{ x: "-100%" }}
                             className="fixed inset-y-0 left-0 w-[280px] bg-white z-50 p-6 md:hidden overflow-y-auto"
                         >
-                            <SidebarContent />
+                            {sidebarContent}
                         </motion.div>
                     </>
                 )}
