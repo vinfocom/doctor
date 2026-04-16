@@ -36,6 +36,7 @@ type LiveResponse = {
     selected_clinic_id: number | null;
     today_label: string;
     now_label: string;
+    schedule_label?: string;
     current: QueueCard | null;
     next: QueueCard | null;
     missed: QueueCard[];
@@ -57,6 +58,7 @@ const EMPTY_STATE: LiveResponse = {
     selected_clinic_id: null,
     today_label: "",
     now_label: "",
+    schedule_label: "",
     current: null,
     next: null,
     missed: [],
@@ -411,7 +413,10 @@ export default function LiveAppointmentsPage() {
         [clinics, selectedClinicId]
     );
 
-    const scheduleLabel = useMemo(() => buildScheduleLabel(selectedClinic, new Date()), [selectedClinic]);
+    const scheduleLabel = useMemo(
+        () => liveData.schedule_label || buildScheduleLabel(selectedClinic, new Date()),
+        [liveData.schedule_label, selectedClinic]
+    );
 
     const toggleFullscreen = async () => {
         try {
