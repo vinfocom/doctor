@@ -168,8 +168,8 @@ function FocusCard({
     const numberColor = label.toLowerCase() === "next" ? "text-orange-300" : "text-emerald-400";
 
     return (
-        <div className={`flex min-h-0 flex-col items-center justify-center text-center ${compact ? "gap-[clamp(0.6rem,1.1vh,1rem)] px-[clamp(1.1rem,2.1vw,2.1rem)] py-[clamp(0.6rem,1.15vh,0.95rem)]" : "min-h-[200px] gap-3 px-4 py-5 sm:min-h-[240px] sm:gap-4"}`}>
-            <p className={`${compact ? "text-[clamp(0.82rem,1.35vw,1.05rem)] tracking-[0.18em]" : "text-[1rem] tracking-[0.22em] sm:text-[1.15rem] lg:text-[1.3rem] lg:tracking-[0.28em]"} font-bold uppercase text-slate-500`}>{label}</p>
+        <div className={`flex min-h-0 flex-col items-center justify-center text-center ${compact ? "gap-[clamp(0.45rem,0.85vh,0.8rem)] px-[clamp(0.9rem,1.8vw,1.7rem)] py-[clamp(0.35rem,0.7vh,0.55rem)]" : "min-h-[200px] gap-3 px-4 py-5 sm:min-h-[240px] sm:gap-4"}`}>
+            <p className={`${compact ? "text-[clamp(0.72rem,1.15vw,0.92rem)] tracking-[0.15em]" : "text-[1rem] tracking-[0.22em] sm:text-[1.15rem] lg:text-[1.3rem] lg:tracking-[0.28em]"} font-bold uppercase text-slate-500`}>{label}</p>
             <div className={`${compact ? "text-[clamp(2.6rem,7.2vmin,4.8rem)]" : "text-[clamp(3.6rem,16vw,6.5rem)] sm:text-[clamp(4.5rem,12vw,8rem)]"} font-black leading-none ${numberColor}`}>
                 {appointment?.queue_number ?? "--"}
             </div>
@@ -227,7 +227,7 @@ function RotatingAppointmentGrid({
 
     const numberColumnClass = compact ? "grid-cols-[clamp(3.4rem,5vw,4.6rem)_minmax(0,1fr)]" : "grid-cols-[72px_minmax(0,1fr)] sm:grid-cols-[88px_minmax(0,1fr)]";
     const rowCardClass = compact
-        ? "min-h-[clamp(1.8rem,3.2vh,2.4rem)] gap-[clamp(0.3rem,0.5vw,0.45rem)] px-[clamp(0.5rem,0.8vw,0.7rem)] py-[clamp(0.15rem,0.28vh,0.24rem)]"
+        ? "min-h-[clamp(1.5rem,2.4vh,2rem)] gap-[clamp(0.3rem,0.5vw,0.45rem)] px-[clamp(0.5rem,0.8vw,0.7rem)] py-[clamp(0.15rem,0.28vh,0.24rem)]"
         : "min-h-[48px] gap-2 px-2.5 sm:min-h-[56px] sm:px-3";
     const sectionPaddingClass = compact ? "px-[clamp(1rem,2.2vmin,1.5rem)] pb-[clamp(0.55rem,1vmin,0.8rem)] pt-[clamp(0.6rem,1.15vmin,0.9rem)]" : "p-3 sm:p-4 lg:p-5";
     const sectionHeaderClass = compact ? "mb-[clamp(0.2rem,0.45vh,0.35rem)]" : "mb-4";
@@ -482,9 +482,9 @@ export default function LiveAppointmentsPage() {
                     </button>
                 </div>
 
-                <div className={`grid ${isFullscreen ? "min-h-0 flex-1 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] gap-[clamp(0.45rem,1.1vh,0.8rem)]" : "gap-4 sm:gap-5"}`}>
-                    <section className={`grid items-center rounded-[34px] bg-white ${isFullscreen ? "grid-cols-[minmax(0,1fr)_auto] gap-3 px-[clamp(0.85rem,1.7vw,1.25rem)] py-[clamp(0.5rem,1vh,0.8rem)]" : "grid-cols-1 gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-4 sm:px-6 sm:py-5"}`}>
-                        <div className="flex min-w-0 items-center gap-4">
+                <div className={`grid ${isFullscreen ? "min-h-0 flex-1 grid-rows-[auto_auto_auto_minmax(380px,2fr)_auto] gap-[clamp(0.45rem,1.1vh,0.8rem)]" : "gap-4 sm:gap-5"}`}>
+                    <section className={`grid items-center rounded-[34px] bg-white ${isFullscreen ? "grid-cols-[minmax(0,1fr)_auto] gap-2 px-[clamp(0.65rem,1.25vw,0.95rem)] py-[clamp(0.3rem,0.65vh,0.5rem)]" : "grid-cols-1 gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-4 sm:px-6 sm:py-5"}`}>
+                        <div className={`flex min-w-0 items-center ${isFullscreen ? "gap-2.5" : "gap-4"}`}>
                             <Image
                                 src="/dapto-logo.png"
                                 alt="Dapto"
@@ -495,7 +495,7 @@ export default function LiveAppointmentsPage() {
                             />
                             <div className="min-w-0">
                                 <div className={`${isFullscreen ? "text-[clamp(0.86rem,1.7vmin,1.15rem)]" : "text-[1.5rem]"} truncate font-semibold text-slate-800`}>{todayLabel}</div>
-                                <div className={`${isFullscreen ? "mt-0.5 text-[clamp(0.62rem,1.05vmin,0.82rem)]" : "mt-1 text-[1rem]"} truncate font-medium text-slate-500`}>{scheduleLabel}</div>
+                                <div className={`${isFullscreen ? "mt-[1px] text-[clamp(0.62rem,1.05vmin,0.82rem)]" : "mt-1 text-[1rem]"} truncate font-medium text-slate-500`}>{scheduleLabel}</div>
                             </div>
                         </div>
                         <div className={`${isFullscreen ? "text-[clamp(0.95rem,2vmin,1.35rem)]" : "text-[1.3rem] sm:text-[1.6rem] lg:text-[1.9rem]"} font-bold text-slate-900 sm:text-right`}>{clock}</div>
@@ -514,12 +514,12 @@ export default function LiveAppointmentsPage() {
                         </div>
                     </section>
 
-                    <section className={`grid rounded-[clamp(1.4rem,2.6vmin,2.05rem)] bg-white ${isFullscreen ? "grid-cols-2 items-start gap-[clamp(1rem,1.9vw,1.4rem)] px-[clamp(1.1rem,2vw,1.55rem)] py-[clamp(0.7rem,1.3vh,1rem)]" : "min-h-0 grid-cols-1 gap-4 px-4 py-4 sm:px-5 md:grid-cols-2 md:gap-8 md:px-6"}`}>
+                    <section className={`grid rounded-[clamp(1.3rem,2.4vmin,1.9rem)] bg-white ${isFullscreen ? "grid-cols-2 items-start gap-[clamp(0.8rem,1.6vw,1.15rem)] px-[clamp(0.9rem,1.7vw,1.25rem)] pt-[clamp(0.2rem,0.45vh,0.3rem)] pb-[clamp(0.35rem,0.7vh,0.5rem)]" : "min-h-0 grid-cols-1 gap-4 px-4 py-4 sm:px-5 md:grid-cols-2 md:gap-8 md:px-6"}`}>
                         <FocusCard label="Current" appointment={liveData.current} compact={isFullscreen} />
                         <FocusCard label="Next" appointment={liveData.next} compact={isFullscreen} />
                     </section>
 
-                    <div className={`grid min-h-0 ${isFullscreen ? "grid-rows-2 gap-[clamp(0.45rem,1.1vh,0.8rem)] overflow-hidden" : "gap-4"}`}>
+                    <div className={`grid min-h-0 ${isFullscreen ? "grid-rows-[1fr_1fr] gap-[clamp(0.45rem,1.1vh,0.8rem)] overflow-hidden" : "gap-4"}`}>
                         <RotatingAppointmentGrid title="Remaining" items={liveData.remaining} compact={isFullscreen} />
                         <RotatingAppointmentGrid title="Missed" items={liveData.missed} compact={isFullscreen} />
                     </div>
