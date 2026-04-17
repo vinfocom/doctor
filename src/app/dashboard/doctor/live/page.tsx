@@ -66,7 +66,7 @@ const EMPTY_STATE: LiveResponse = {
     total_today: 0,
 };
 
-const ROTATE_INTERVAL_MS = 3000;
+const ROTATE_INTERVAL_MS = 10000;
 const TICKER_SEPARATOR = " \u2022 ";
 const TICKER_MESSAGE =
     [
@@ -495,7 +495,7 @@ export default function LiveAppointmentsPage() {
                             />
                             <div className="min-w-0">
                                 <div className={`${isFullscreen ? "text-[clamp(0.86rem,1.7vmin,1.15rem)]" : "text-[1.5rem]"} truncate font-semibold text-slate-800`}>{todayLabel}</div>
-                                <div className={`${isFullscreen ? "mt-[1px] text-[clamp(0.62rem,1.05vmin,0.82rem)]" : "mt-1 text-[1rem]"} truncate font-medium text-slate-500`}>{scheduleLabel}</div>
+                                <div className={`${isFullscreen ? "mt-[1px] text-[clamp(0.62rem,1.05vmin,0.82rem)]" : "mt-1 text-[1rem]"} truncate font-semibold text-slate-900`}>{scheduleLabel}</div>
                             </div>
                         </div>
                         <div className={`${isFullscreen ? "text-[clamp(0.95rem,2vmin,1.35rem)]" : "text-[1.3rem] sm:text-[1.6rem] lg:text-[1.9rem]"} font-bold text-slate-900 sm:text-right`}>{clock}</div>

@@ -33,11 +33,13 @@ type ScheduleWindow = {
     day_of_week: number;
     start_time: string | null;
     end_time: string | null;
+    slot_duration: number | null;
     effective_from: Date;
     effective_to: Date;
 };
 
 const IST_TIMEZONE = "Asia/Kolkata";
+const SCHEDULE_DISPLAY_LEAD_MINUTES = 60;
 
 function normalizeScheduleTime(value?: string | null) {
     const raw = String(value || "").trim();
@@ -168,6 +170,21 @@ function toAppointmentMoment(dateYmd: string, value: Date | string | null | unde
     const minutes = String(raw.getUTCMinutes()).padStart(2, "0");
     const moment = new Date(`${dateYmd}T${hours}:${minutes}:00+05:30`);
     return Number.isNaN(moment.getTime()) ? null : moment;
+}
+
+function getAppointmentSchedule(
+    appointmentStartMinutes: number,
+    schedules: Array<ScheduleWindow & {
+        startHm: string;
+        endHm: string;
+        startMinutes: number;
+        endMinutes: number;
+    }>
+) {
+    return schedules.find((schedule) =>
+        appointmentStartMinutes >= schedule.startMinutes &&
+        appointmentStartMinutes < schedule.endMinutes
+    ) || null;
 }
 
 function getPatientDisplayName(appointment: AppointmentWithRelations) {
@@ -317,6 +334,7 @@ export async function GET(request: Request) {
                 day_of_week: true,
                 start_time: true,
                 end_time: true,
+                slot_duration: true,
                 effective_from: true,
                 effective_to: true,
             },
@@ -357,10 +375,10 @@ export async function GET(request: Request) {
 
         const scheduleDisplayWindows = eligibleSchedules.map((schedule, index) => {
             const nextSchedule = eligibleSchedules[index + 1] ?? null;
-            const displayStartMinutes = clampMinutes(schedule.startMinutes - 30);
+            const displayStartMinutes = clampMinutes(schedule.startMinutes - SCHEDULE_DISPLAY_LEAD_MINUTES);
             const queueStartMinutes = schedule.startMinutes;
             const queueEndMinutes = nextSchedule
-                ? clampMinutes(nextSchedule.startMinutes - 30)
+                ? clampMinutes(nextSchedule.startMinutes - SCHEDULE_DISPLAY_LEAD_MINUTES)
                 : 24 * 60;
 
             return {
@@ -418,9 +436,22 @@ export async function GET(request: Request) {
             .map((appointment) => {
                 const dateYmd = toYmd(appointment.appointment_date);
                 const startMoment = toAppointmentMoment(dateYmd, appointment.start_time);
-                const endMoment = toAppointmentMoment(dateYmd, appointment.end_time);
                 const startHm = formatUTCDateToISTTime(appointment.start_time);
                 const startMinutes = startHm ? timeToMinutes(startHm) : Number.MAX_SAFE_INTEGER;
+                const savedEndMoment = toAppointmentMoment(dateYmd, appointment.end_time);
+                const matchedSchedule =
+                    Number.isFinite(startMinutes) && startMinutes !== Number.MAX_SAFE_INTEGER
+                        ? getAppointmentSchedule(startMinutes, eligibleSchedules)
+                        : null;
+                const scheduleDurationMinutes = Number(matchedSchedule?.slot_duration || 0);
+                const scheduleEndMoment =
+                    startMoment && scheduleDurationMinutes > 0
+                        ? new Date(startMoment.getTime() + scheduleDurationMinutes * 60 * 1000)
+                        : null;
+                const endMoment =
+                    savedEndMoment && scheduleEndMoment
+                        ? new Date(Math.min(savedEndMoment.getTime(), scheduleEndMoment.getTime()))
+                        : savedEndMoment || scheduleEndMoment;
 
                 return {
                     ...appointment,
@@ -456,46 +487,20 @@ export async function GET(request: Request) {
                 ? []
                 : sortedAll;
 
-        const missed = sorted.filter((appointment) =>
-            appointment.status === "PENDING" &&
-            appointment.endMoment &&
-            appointment.endMoment.getTime() < now.getTime()
-        );
+        const missed = sorted.filter((appointment) => appointment.status === "PENDING");
 
-        const current = sorted.find((appointment) =>
+        const activeQueue = sorted.filter((appointment) =>
             appointment.status !== "CANCELLED" &&
             appointment.status !== "COMPLETED" &&
-            appointment.status !== "PENDING" &&
-            appointment.startMoment &&
-            appointment.endMoment &&
-            appointment.startMoment.getTime() <= now.getTime() &&
-            appointment.endMoment.getTime() >= now.getTime()
-        ) || null;
+            appointment.status !== "PENDING"
+        );
 
-        const nextCandidates = sorted.filter((appointment) => {
-            if (appointment.status === "CANCELLED" || appointment.status === "COMPLETED") return false;
-            if (missed.some((missedAppointment) => missedAppointment.appointment_id === appointment.appointment_id)) return false;
-            if (!appointment.startMoment) return false;
-            if (current) {
-                return appointment.startMoment.getTime() > (current.startMoment?.getTime() ?? 0);
-            }
-            return appointment.startMoment.getTime() > now.getTime();
-        });
-
-        const next = nextCandidates[0] ?? null;
-
-        const remaining = next
-            ? sorted.filter((appointment) =>
-                appointment.status !== "CANCELLED" &&
-                appointment.status !== "COMPLETED" &&
-                !missed.some((missedAppointment) => missedAppointment.appointment_id === appointment.appointment_id) &&
-                appointment.appointment_id !== next.appointment_id &&
-                appointment.appointment_id !== current?.appointment_id &&
-                appointment.startMoment &&
-                next.startMoment &&
-                appointment.startMoment.getTime() > next.startMoment.getTime()
-            )
-            : [];
+        // Inside the active schedule, queue progression is manual/status-driven.
+        // "Visited" and "Not Visited" remove the patient from the active queue,
+        // then the next booked appointment moves up in sorted order.
+        const current = activeQueue[0] ?? null;
+        const next = activeQueue[1] ?? null;
+        const remaining = activeQueue.slice(2);
 
         const response = {
             doctor_name: sorted[0]?.doctor?.doctor_name || sortedAll[0]?.doctor?.doctor_name || "",
