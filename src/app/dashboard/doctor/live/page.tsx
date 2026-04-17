@@ -168,13 +168,13 @@ function FocusCard({
     const numberColor = label.toLowerCase() === "next" ? "text-orange-300" : "text-emerald-400";
 
     return (
-        <div className={`flex min-h-0 flex-col items-center justify-center text-center ${compact ? "h-full gap-[clamp(0.4rem,0.9vh,0.85rem)] px-[clamp(0.9rem,1.8vw,1.8rem)] py-[clamp(0.45rem,0.9vh,0.8rem)]" : "min-h-[200px] gap-3 px-4 py-5 sm:min-h-[240px] sm:gap-4"}`}>
-            <p className={`${compact ? "text-[clamp(1rem,1.8vw,1.35rem)] tracking-[0.22em]" : "text-[1rem] tracking-[0.22em] sm:text-[1.15rem] lg:text-[1.3rem] lg:tracking-[0.28em]"} font-bold uppercase text-slate-500`}>{label}</p>
-            <div className={`${compact ? "text-[clamp(3.2rem,10vmin,7rem)]" : "text-[clamp(3.6rem,16vw,6.5rem)] sm:text-[clamp(4.5rem,12vw,8rem)]"} font-black leading-none ${numberColor}`}>
+        <div className={`flex min-h-0 flex-col items-center justify-center text-center ${compact ? "gap-[clamp(0.6rem,1.1vh,1rem)] px-[clamp(1.1rem,2.1vw,2.1rem)] py-[clamp(0.6rem,1.15vh,0.95rem)]" : "min-h-[200px] gap-3 px-4 py-5 sm:min-h-[240px] sm:gap-4"}`}>
+            <p className={`${compact ? "text-[clamp(0.82rem,1.35vw,1.05rem)] tracking-[0.18em]" : "text-[1rem] tracking-[0.22em] sm:text-[1.15rem] lg:text-[1.3rem] lg:tracking-[0.28em]"} font-bold uppercase text-slate-500`}>{label}</p>
+            <div className={`${compact ? "text-[clamp(2.6rem,7.2vmin,4.8rem)]" : "text-[clamp(3.6rem,16vw,6.5rem)] sm:text-[clamp(4.5rem,12vw,8rem)]"} font-black leading-none ${numberColor}`}>
                 {appointment?.queue_number ?? "--"}
             </div>
             <p
-                className={`font-semibold text-slate-900 ${compact ? "max-w-[min(100%,30rem)] text-[clamp(1rem,1.9vmin,1.55rem)] leading-[1.15]" : "max-w-full text-[1rem] sm:text-[1.15rem] lg:text-[clamp(1.15rem,2.5vw,2rem)]"}`}
+                className={`font-semibold text-slate-900 ${compact ? "max-w-[min(100%,32rem)] text-[clamp(0.95rem,1.65vmin,1.35rem)] leading-[1.12]" : "max-w-full text-[1rem] sm:text-[1.15rem] lg:text-[clamp(1.15rem,2.5vw,2rem)]"}`}
                 style={compact ? {
                     display: "-webkit-box",
                     WebkitLineClamp: 2,
@@ -238,7 +238,7 @@ function RotatingAppointmentGrid({
 
     const renderColumn = (columnItems: QueueCard[], columnKey: string) => (
         <div
-                className={`grid min-h-0 ${compact ? "mx-auto w-full max-w-[42rem] gap-[clamp(0.24rem,0.5vh,0.38rem)]" : "gap-2"}`}
+                className={`grid min-h-0 ${compact ? "mx-auto w-full max-w-[24rem] gap-[clamp(0.24rem,0.5vh,0.38rem)]" : "gap-2"}`}
             style={{ gridTemplateRows: "auto repeat(4, minmax(0, 1fr))" }}
         >
             <div className={`grid ${numberColumnClass} font-semibold uppercase text-slate-500 ${compact ? columnHeaderClass : `text-[clamp(0.62rem,1.15vmin,0.9rem)] tracking-[0.16em] ${columnHeaderClass}`}`}>
@@ -282,7 +282,7 @@ function RotatingAppointmentGrid({
             </div>
 
             <div
-                className={`grid min-h-0 flex-1 transition-opacity duration-300 ${compact ? "grid-cols-[repeat(2,minmax(0,42rem))] justify-center gap-[clamp(0.8rem,1.4vmin,1.2rem)]" : "grid-cols-1 gap-3 md:grid-cols-2 md:gap-4"} ${fading ? "opacity-0" : "opacity-100"}`}
+                className={`grid min-h-0 flex-1 transition-opacity duration-300 ${compact ? "grid-cols-2 justify-center gap-[clamp(0.45rem,0.9vmin,0.8rem)]" : "grid-cols-1 gap-3 md:grid-cols-2 md:gap-4"} ${fading ? "opacity-0" : "opacity-100"}`}
             >
                 {renderColumn(columns.left, "left")}
                 {renderColumn(columns.right, "right")}
@@ -482,8 +482,8 @@ export default function LiveAppointmentsPage() {
                     </button>
                 </div>
 
-                <div className={`grid ${isFullscreen ? "min-h-0 flex-1 grid-rows-[auto_auto_minmax(0,0.76fr)_minmax(0,1.28fr)_auto] gap-[clamp(0.45rem,1.1vh,0.8rem)]" : "gap-4 sm:gap-5"}`}>
-                    <section className={`grid items-center rounded-[34px] bg-white ${isFullscreen ? "grid-cols-[minmax(0,1fr)_auto] gap-4 px-[clamp(1rem,2vw,1.5rem)] py-[clamp(0.7rem,1.4vh,1.1rem)]" : "grid-cols-1 gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-4 sm:px-6 sm:py-5"}`}>
+                <div className={`grid ${isFullscreen ? "min-h-0 flex-1 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] gap-[clamp(0.45rem,1.1vh,0.8rem)]" : "gap-4 sm:gap-5"}`}>
+                    <section className={`grid items-center rounded-[34px] bg-white ${isFullscreen ? "grid-cols-[minmax(0,1fr)_auto] gap-3 px-[clamp(0.85rem,1.7vw,1.25rem)] py-[clamp(0.5rem,1vh,0.8rem)]" : "grid-cols-1 gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-4 sm:px-6 sm:py-5"}`}>
                         <div className="flex min-w-0 items-center gap-4">
                             <Image
                                 src="/dapto-logo.png"
@@ -494,27 +494,27 @@ export default function LiveAppointmentsPage() {
                                 priority
                             />
                             <div className="min-w-0">
-                                <div className={`${isFullscreen ? "text-[clamp(1rem,2.3vmin,1.5rem)]" : "text-[1.5rem]"} truncate font-semibold text-slate-800`}>{todayLabel}</div>
-                                <div className={`${isFullscreen ? "mt-0.5 text-[clamp(0.75rem,1.45vmin,1rem)]" : "mt-1 text-[1rem]"} truncate font-medium text-slate-500`}>{scheduleLabel}</div>
+                                <div className={`${isFullscreen ? "text-[clamp(0.86rem,1.7vmin,1.15rem)]" : "text-[1.5rem]"} truncate font-semibold text-slate-800`}>{todayLabel}</div>
+                                <div className={`${isFullscreen ? "mt-0.5 text-[clamp(0.62rem,1.05vmin,0.82rem)]" : "mt-1 text-[1rem]"} truncate font-medium text-slate-500`}>{scheduleLabel}</div>
                             </div>
                         </div>
-                        <div className={`${isFullscreen ? "text-[clamp(1.15rem,2.7vmin,1.9rem)]" : "text-[1.3rem] sm:text-[1.6rem] lg:text-[1.9rem]"} font-bold text-slate-900 sm:text-right`}>{clock}</div>
+                        <div className={`${isFullscreen ? "text-[clamp(0.95rem,2vmin,1.35rem)]" : "text-[1.3rem] sm:text-[1.6rem] lg:text-[1.9rem]"} font-bold text-slate-900 sm:text-right`}>{clock}</div>
                     </section>
 
                     <section className={`grid items-center ${isFullscreen ? "grid-cols-2 gap-6 px-[clamp(0.9rem,1.8vw,1.5rem)] py-0" : "grid-cols-1 gap-2 px-1 py-1 md:grid-cols-2 md:gap-6 md:px-3"}`}>
                         <div className="min-w-0">
-                            <p className={`${isFullscreen ? "text-[clamp(1.25rem,3.4vmin,2.2rem)]" : "text-[1.4rem] sm:text-[1.8rem] lg:text-[2.2rem]"} truncate font-black leading-tight text-slate-900`}>
+                            <p className={`${isFullscreen ? "text-[clamp(1rem,2.4vmin,1.5rem)]" : "text-[1.4rem] sm:text-[1.8rem] lg:text-[2.2rem]"} truncate font-black leading-tight text-slate-900`}>
                                 {formatDoctorName(liveData.doctor_name || selectedClinic?.doctor?.doctor_name || me?.name || "Doctor")}
                             </p>
                         </div>
                         <div className="min-w-0 md:text-right">
-                            <p className={`${isFullscreen ? "text-[clamp(1.25rem,3.4vmin,2.2rem)]" : "text-[1.4rem] sm:text-[1.8rem] lg:text-[2.2rem]"} truncate font-black leading-tight text-slate-900`}>
+                            <p className={`${isFullscreen ? "text-[clamp(1rem,2.4vmin,1.5rem)]" : "text-[1.4rem] sm:text-[1.8rem] lg:text-[2.2rem]"} truncate font-black leading-tight text-slate-900`}>
                                 {liveData.clinic_name || selectedClinic?.clinic_name || "Clinic"}
                             </p>
                         </div>
                     </section>
 
-                    <section className={`grid min-h-0 rounded-[clamp(1.5rem,3vmin,2.375rem)] bg-white ${isFullscreen ? "grid-cols-2 gap-[clamp(1rem,2vw,1.6rem)] px-[clamp(1.1rem,2.1vw,1.8rem)] py-[clamp(0.55rem,1.15vh,0.9rem)]" : "grid-cols-1 gap-4 px-4 py-4 sm:px-5 md:grid-cols-2 md:gap-8 md:px-6"}`}>
+                    <section className={`grid rounded-[clamp(1.4rem,2.6vmin,2.05rem)] bg-white ${isFullscreen ? "grid-cols-2 items-start gap-[clamp(1rem,1.9vw,1.4rem)] px-[clamp(1.1rem,2vw,1.55rem)] py-[clamp(0.7rem,1.3vh,1rem)]" : "min-h-0 grid-cols-1 gap-4 px-4 py-4 sm:px-5 md:grid-cols-2 md:gap-8 md:px-6"}`}>
                         <FocusCard label="Current" appointment={liveData.current} compact={isFullscreen} />
                         <FocusCard label="Next" appointment={liveData.next} compact={isFullscreen} />
                     </section>
