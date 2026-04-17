@@ -229,8 +229,8 @@ function RotatingAppointmentGrid({
     const rowCardClass = compact
         ? "min-h-[clamp(1.5rem,2.4vh,2rem)] gap-[clamp(0.3rem,0.5vw,0.45rem)] px-[clamp(0.5rem,0.8vw,0.7rem)] py-[clamp(0.15rem,0.28vh,0.24rem)]"
         : "min-h-[48px] gap-2 px-2.5 sm:min-h-[56px] sm:px-3";
-    const sectionPaddingClass = compact ? "px-[clamp(1rem,2.2vmin,1.5rem)] pb-[clamp(0.55rem,1vmin,0.8rem)] pt-[clamp(0.6rem,1.15vmin,0.9rem)]" : "p-3 sm:p-4 lg:p-5";
-    const sectionHeaderClass = compact ? "mb-[clamp(0.2rem,0.45vh,0.35rem)]" : "mb-4";
+    const sectionPaddingClass = compact ? "px-[clamp(0.8rem,1.7vmin,1.1rem)] pb-[clamp(0.35rem,0.7vmin,0.55rem)] pt-[clamp(0.35rem,0.8vmin,0.55rem)]" : "p-3 sm:p-4 lg:p-5";
+    const sectionHeaderClass = compact ? "mb-[clamp(0.1rem,0.28vh,0.2rem)]" : "mb-4";
     const sectionTitleClass = compact ? "text-[clamp(0.78rem,1.45vmin,1rem)] tracking-[0.18em]" : "text-[clamp(0.85rem,1.8vmin,1.15rem)] tracking-[0.24em]";
     const columnHeaderClass = compact
         ? "px-2 pb-0 text-[clamp(0.52rem,0.9vmin,0.72rem)] tracking-[0.11em]"
@@ -482,7 +482,7 @@ export default function LiveAppointmentsPage() {
                     </button>
                 </div>
 
-                <div className={`grid ${isFullscreen ? "min-h-0 flex-1 grid-rows-[auto_auto_auto_minmax(380px,2fr)_auto] gap-[clamp(0.45rem,1.1vh,0.8rem)]" : "gap-4 sm:gap-5"}`}>
+                <div className={`grid ${isFullscreen ? "min-h-0 flex-1 grid-rows-[auto_auto_auto_minmax(240px,1.6fr)_auto] gap-[clamp(0.3rem,0.8vh,0.6rem)]" : "gap-4 sm:gap-5"}`}>
                     <section className={`grid items-center rounded-[34px] bg-white ${isFullscreen ? "grid-cols-[minmax(0,1fr)_auto] gap-2 px-[clamp(0.65rem,1.25vw,0.95rem)] py-[clamp(0.3rem,0.65vh,0.5rem)]" : "grid-cols-1 gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-4 sm:px-6 sm:py-5"}`}>
                         <div className={`flex min-w-0 items-center ${isFullscreen ? "gap-2.5" : "gap-4"}`}>
                             <Image
@@ -519,13 +519,13 @@ export default function LiveAppointmentsPage() {
                         <FocusCard label="Next" appointment={liveData.next} compact={isFullscreen} />
                     </section>
 
-                    <div className={`grid min-h-0 ${isFullscreen ? "grid-rows-[1fr_1fr] gap-[clamp(0.45rem,1.1vh,0.8rem)] overflow-hidden" : "gap-4"}`}>
+                    <div className={`grid min-h-0 ${isFullscreen ? "grid-rows-[1fr_1fr] gap-[clamp(0.28rem,0.7vh,0.5rem)] overflow-hidden" : "gap-4"}`}>
                         <RotatingAppointmentGrid title="Remaining" items={liveData.remaining} compact={isFullscreen} />
                         <RotatingAppointmentGrid title="Missed" items={liveData.missed} compact={isFullscreen} />
                     </div>
 
-                    <section className={`overflow-hidden rounded-full bg-white/80 text-indigo-700 ${isFullscreen ? "px-4 py-[clamp(0.35rem,0.9vh,0.6rem)]" : "px-4 py-2.5 sm:px-5 sm:py-3"}`}>
-                        <div className="flex w-max animate-[liveTicker_34s_linear_infinite] whitespace-nowrap text-[0.82rem] font-medium tracking-[0.04em] sm:text-[0.95rem] lg:text-[1.05rem]">
+                    <section className={`overflow-hidden rounded-full bg-white/80 text-indigo-700 ${isFullscreen ? "px-3 py-[clamp(0.2rem,0.5vh,0.35rem)]" : "px-4 py-2.5 sm:px-5 sm:py-3"}`}>
+                        <div className={`flex w-max animate-[liveTicker_34s_linear_infinite] whitespace-nowrap font-medium tracking-[0.04em] ${isFullscreen ? "text-[0.68rem]" : "text-[0.82rem] sm:text-[0.95rem] lg:text-[1.05rem]"}`}>
                             <span className="pr-24">{TICKER_MESSAGE}</span>
                             <span className="pr-24" aria-hidden="true">
                                 {TICKER_MESSAGE}
