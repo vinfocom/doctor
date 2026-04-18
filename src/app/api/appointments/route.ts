@@ -445,6 +445,7 @@ export async function POST(request: Request) {
                     end_time: endTimeObj,
                     status: "BOOKED",
                     booked_for: booking_for,
+                    channel: "web",
                     rescheduled_by: String(sessionUser?.role || "DOCTOR"),
                     ...(appointmentBookingId != null ? { booking_id: appointmentBookingId } : {}),
                 },
@@ -475,6 +476,7 @@ export async function POST(request: Request) {
             data: {
                 status: 'BOOKED',
                 booked_for: booking_for,
+                channel: "web",
                 appointment_date: dateObj,
                 start_time: startTimeObj,
                 end_time: endTimeObj,

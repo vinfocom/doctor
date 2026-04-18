@@ -349,6 +349,7 @@ export async function POST(req: Request) {
                     end_time: endTimeObj,
                     status: "BOOKED",
                     booked_for: booking_for,
+                    channel: "app",
                     rescheduled_by: "PATIENT",
                     ...(appointmentBookingId != null ? { booking_id: appointmentBookingId } : {}),
                 },
@@ -364,6 +365,7 @@ export async function POST(req: Request) {
                 end_time: endTimeObj,
                 status: "BOOKED",
                 booked_for: booking_for,
+                channel: "app",
                 patient: {
                     connect: { patient_id: targetPatient.patient_id },
                 },
