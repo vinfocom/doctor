@@ -54,6 +54,14 @@ export async function GET(req: Request) {
                 const doctorClinics = await prisma.clinics.findMany({
                     where: { doctor_id: doctor.doctor_id },
                     include: {
+                        doctor: {
+                            select: {
+                                doctor_id: true,
+                                doctor_name: true,
+                                specialization: true,
+                                education: true,
+                            }
+                        },
                         schedules: {
                             orderBy: { day_of_week: 'asc' }
                         }
@@ -68,7 +76,7 @@ export async function GET(req: Request) {
         if (user.role === 'CLINIC_STAFF') {
             const staff = await prisma.clinic_staff.findUnique({
                 where: { user_id: user.userId },
-                include: { clinics: { include: { schedules: { orderBy: { day_of_week: 'asc' } } } }, doctors: { select: { doctor_id: true, doctor_name: true, profile_pic_url: true, num_clinics: true, specialization: true, status: true } } }
+                include: { clinics: { include: { schedules: { orderBy: { day_of_week: 'asc' } } } }, doctors: { select: { doctor_id: true, doctor_name: true, profile_pic_url: true, num_clinics: true, specialization: true, education: true, status: true } } }
             });
 
             if (staff && staff.clinics) {
@@ -97,6 +105,7 @@ export async function GET(req: Request) {
                         profile_pic_url: true,
                         num_clinics: true,
                         specialization: true,
+                        education: true,
                         status: true,
                     }
                 }
@@ -112,6 +121,7 @@ export async function GET(req: Request) {
                 profile_pic_url: true,
                 num_clinics: true,
                 specialization: true,
+                education: true,
                 status: true,
             },
             orderBy: { doctor_name: 'asc' }
@@ -216,7 +226,7 @@ export async function POST(req: Request) {
 
             return await tx.clinics.findUnique({
                 where: { clinic_id: newClinic.clinic_id },
-                include: { schedules: true, doctor: { select: { doctor_id: true, doctor_name: true, profile_pic_url: true, num_clinics: true, specialization: true, status: true } } }
+                include: { schedules: true, doctor: { select: { doctor_id: true, doctor_name: true, profile_pic_url: true, num_clinics: true, specialization: true, education: true, status: true } } }
             });
         });
 

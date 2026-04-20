@@ -5,6 +5,12 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+function hasLiveQueueAdsDelegate(client: PrismaClient) {
+  return Boolean(
+    Reflect.get(client as unknown as object, "live_queue_side_ads")
+  );
+}
+
 function createPrismaClient() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -29,7 +35,12 @@ function createPrismaClient() {
 
 function getPrismaClient() {
   if (globalForPrisma.prisma) {
-    return globalForPrisma.prisma;
+    if (hasLiveQueueAdsDelegate(globalForPrisma.prisma)) {
+      return globalForPrisma.prisma;
+    }
+
+    void globalForPrisma.prisma.$disconnect().catch(() => undefined);
+    globalForPrisma.prisma = undefined;
   }
 
   const client = createPrismaClient();

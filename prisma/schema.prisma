@@ -94,6 +94,7 @@ model doctors {
   schedules              doctor_clinic_schedule[]
   leaves                 doctor_leaves[]
   doctorRemainderQueues  doctor_remainder_queue[]
+  liveQueueAds           live_queue_side_ads[]
   whatsapp_numbers       doctor_whatsapp_numbers[]
   admin                  admins                    @relation(fields: [admin_id], references: [admin_id])
   user                   users?                    @relation(fields: [user_id], references: [user_id])
@@ -129,6 +130,7 @@ model clinics {
   appointments appointment[]
   admin        admins                   @relation(fields: [admin_id], references: [admin_id])
   doctor       doctors?                 @relation(fields: [doctor_id], references: [doctor_id])
+  liveQueueAds live_queue_side_ads[]
   schedules    doctor_clinic_schedule[]
   clinic_staff clinic_staff[]
 
@@ -453,6 +455,29 @@ model clinic_staff {
   @@index([doctor_id], map: "clinic_staff_doctor_id_fkey")
 }
 
+model live_queue_side_ads {
+  ad_id        Int                       @id @default(autoincrement())
+  doctor_id    Int
+  clinic_id    Int
+  position     QueueSideAdPosition
+  type         QueueSideAdType
+  asset_url    String                    @db.VarChar(1000)
+  mime_type    String?                   @db.VarChar(255)
+  title        String?                   @db.VarChar(255)
+  is_active    Boolean                   @default(true)
+  active_from  DateTime?                 @db.Date
+  active_to    DateTime?                 @db.Date
+  sort_order   Int                       @default(0)
+  created_at   DateTime                  @default(now()) @db.Timestamp(0)
+  updated_at   DateTime                  @default(now()) @updatedAt @db.Timestamp(0)
+  clinic       clinics                   @relation(fields: [clinic_id], references: [clinic_id], onDelete: Cascade)
+  doctor       doctors                   @relation(fields: [doctor_id], references: [doctor_id], onDelete: Cascade)
+
+  @@index([doctor_id, clinic_id, position, is_active], map: "idx_live_queue_side_ads_lookup")
+  @@index([clinic_id], map: "live_queue_side_ads_clinic_id_fkey")
+  @@index([doctor_id], map: "live_queue_side_ads_doctor_id_fkey")
+}
+
 enum AppointmentStatus {
   PENDING
   CONFIRMED
@@ -495,4 +520,14 @@ enum users_role {
   DOCTOR
   PATIENT
   CLINIC_STAFF
+}
+
+enum QueueSideAdPosition {
+  LEFT
+  RIGHT
+}
+
+enum QueueSideAdType {
+  LOGO
+  VIDEO
 }

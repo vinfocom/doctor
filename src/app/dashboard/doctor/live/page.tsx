@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { Loader2, Maximize, Minimize } from "lucide-react";
 import { convertTo12Hour, formatTime } from "@/lib/timeUtils";
+import { buildScrollingLogoSequence, resolveSideAds, type LiveQueueSideAd, type QueueSideAdPosition } from "@/lib/liveQueueAds";
 
 type ScheduleOption = {
     schedule_id: number;
@@ -18,6 +20,8 @@ type ClinicOption = {
     doctor?: {
         doctor_id: number;
         doctor_name?: string | null;
+        education?: string | null;
+        specialization?: string | null;
     } | null;
     schedules?: ScheduleOption[];
 };
@@ -32,6 +36,8 @@ type QueueCard = {
 
 type LiveResponse = {
     doctor_name: string;
+    doctor_education?: string;
+    doctor_specialization?: string;
     clinic_name: string;
     selected_clinic_id: number | null;
     today_label: string;
@@ -54,6 +60,8 @@ type MeResponse = {
 
 const EMPTY_STATE: LiveResponse = {
     doctor_name: "",
+    doctor_education: "",
+    doctor_specialization: "",
     clinic_name: "",
     selected_clinic_id: null,
     today_label: "",
@@ -67,6 +75,7 @@ const EMPTY_STATE: LiveResponse = {
 };
 
 const ROTATE_INTERVAL_MS = 10000;
+const ADS_REFRESH_INTERVAL_MS = 5000;
 const TICKER_SEPARATOR = " \u2022 ";
 const TICKER_MESSAGE =
     [
@@ -78,6 +87,12 @@ const TICKER_MESSAGE =
         "Visit reception for any assistance",
         "Thank you for your patience",
     ].join(TICKER_SEPARATOR);
+const FULLSCREEN_BOARD_WIDTH = 1020;
+const LEFT_SIDE_PANEL_WIDTH = `clamp(8.5rem, calc((100vw - ${FULLSCREEN_BOARD_WIDTH}px - 3rem) / 2), 16rem)`;
+const RIGHT_SIDE_PANEL_WIDTH = LEFT_SIDE_PANEL_WIDTH;
+const SCREEN_EDGE_GAP = "clamp(0.75rem, 1.4vw, 1.25rem)";
+const SIDE_TO_BOARD_GAP = "clamp(0.7rem, 1.2vw, 1rem)";
+const STRIP_EDGE_PULL = "clamp(1.5rem, 3vw, 2.75rem)";
 
 function formatISTClock(date: Date) {
     return new Intl.DateTimeFormat("en-IN", {
@@ -139,6 +154,21 @@ function formatDoctorName(value: string | null | undefined) {
     return /^dr\.?\s/i.test(name) ? name : `Dr. ${name}`;
 }
 
+function formatDoctorMeta(education: string | null | undefined, specialization: string | null | undefined) {
+    const cleanedEducation = String(education || "").trim();
+    const cleanedSpecialization = String(specialization || "").trim();
+
+    if (!cleanedEducation && !cleanedSpecialization) {
+        return "";
+    }
+
+    if (cleanedEducation && cleanedSpecialization) {
+        return `${cleanedEducation} (${cleanedSpecialization})`;
+    }
+
+    return cleanedEducation || `(${cleanedSpecialization})`;
+}
+
 function splitIntoPages<T>(items: T[], pageSize: number) {
     const pages: T[][] = [];
 
@@ -154,6 +184,88 @@ function splitColumns<T>(items: T[], rowsPerColumn: number) {
         left: items.slice(0, rowsPerColumn),
         right: items.slice(rowsPerColumn, rowsPerColumn * 2),
     };
+}
+
+function QueueSideAdPanel({
+    side,
+    ads,
+    className = "",
+}: {
+    side: QueueSideAdPosition;
+    ads: LiveQueueSideAd[];
+    className?: string;
+}) {
+    const sideAds = useMemo(() => resolveSideAds(ads, side), [ads, side]);
+    const [activeVideoIndex, setActiveVideoIndex] = useState(0);
+
+    if (sideAds.videos.length === 0 && sideAds.logos.length === 0) {
+        return null;
+    }
+
+    const scrollingLogos = buildScrollingLogoSequence(sideAds.logos);
+    const videoSignature = sideAds.videos.map((video) => video.ad_id).join(",");
+    const activeVideo =
+        sideAds.videos.length > 0
+            ? sideAds.videos[activeVideoIndex % sideAds.videos.length]
+            : null;
+    const handleVideoEnded = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+        if (sideAds.videos.length <= 1) {
+            event.currentTarget.currentTime = 0;
+            void event.currentTarget.play().catch(() => undefined);
+            return;
+        }
+
+        setActiveVideoIndex((current) => (current + 1) % sideAds.videos.length);
+    };
+
+    return (
+        <aside
+            key={`${side}-${videoSignature}`}
+            className={`relative flex h-full overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(237,244,255,0.94))] shadow-[0_22px_54px_-30px_rgba(15,23,42,0.4)] ${className}`}
+            style={{ width: side === "LEFT" ? LEFT_SIDE_PANEL_WIDTH : RIGHT_SIDE_PANEL_WIDTH }}
+        >
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white via-white/85 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#edf4ff] via-[#edf4ff]/90 to-transparent" />
+
+            {activeVideo ? (
+                <div className="relative z-10 flex min-h-0 flex-1 px-[clamp(0.55rem,0.9vw,0.75rem)] py-[clamp(0.55rem,0.9vw,0.75rem)]">
+                    <div className="relative h-full w-full overflow-hidden rounded-[1.6rem] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.28),rgba(15,23,42,0.08))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+                        <video
+                            key={activeVideo.ad_id}
+                            src={activeVideo.asset_url}
+                            className="absolute left-1/2 top-1/2 h-full min-h-full w-full min-w-full -translate-x-1/2 -translate-y-1/2 object-cover object-center"
+                            autoPlay
+                            muted
+                            playsInline
+                            preload="auto"
+                            onEnded={handleVideoEnded}
+                        />
+                    </div>
+                </div>
+            ) : (
+                <div className="relative z-10 min-h-0 flex-1 overflow-hidden px-3 py-3">
+                    <div className="relative h-full overflow-hidden rounded-[1.6rem] border border-white/70 bg-white/78 px-3 py-4 shadow-[0_18px_40px_-28px_rgba(37,99,235,0.4)]">
+                        <div className="flex animate-[queueAdScrollDown_20s_linear_infinite] flex-col items-center gap-4 will-change-transform">
+                            {[...scrollingLogos, ...scrollingLogos].map((logo, index) => (
+                                <div
+                                    key={`${logo.ad_id}-${index}`}
+                                    className="flex w-full items-center justify-center rounded-[1.15rem] bg-white/95 px-3 py-4 shadow-[0_12px_26px_-22px_rgba(15,23,42,0.55)]"
+                                >
+                                    <Image
+                                        src={logo.asset_url}
+                                        alt={logo.title || "Sponsor logo"}
+                                        width={150}
+                                        height={90}
+                                        className="h-auto max-h-[4.8rem] w-full object-contain"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </aside>
+    );
 }
 
 function FocusCard({
@@ -292,7 +404,10 @@ function RotatingAppointmentGrid({
 }
 
 export default function LiveAppointmentsPage() {
+    const router = useRouter();
     const fullscreenRef = useRef<HTMLDivElement | null>(null);
+    const staffExitRedirectArmedRef = useRef(false);
+    const staffAutoFullscreenAttemptedRef = useRef(false);
     const [me, setMe] = useState<MeResponse["user"] | null>(null);
     const [clinics, setClinics] = useState<ClinicOption[]>([]);
     const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
@@ -302,6 +417,7 @@ export default function LiveAppointmentsPage() {
     const [clock, setClock] = useState(() => formatISTClock(new Date()));
     const [todayLabel, setTodayLabel] = useState(() => formatISTDate(new Date()));
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [queueSideAds, setQueueSideAds] = useState<LiveQueueSideAd[]>([]);
 
     useEffect(() => {
         const timer = window.setInterval(() => {
@@ -315,14 +431,42 @@ export default function LiveAppointmentsPage() {
 
     useEffect(() => {
         const syncFullscreenState = () => {
-            setIsFullscreen(Boolean(document.fullscreenElement));
+            const isCurrentlyFullscreen = Boolean(document.fullscreenElement);
+            setIsFullscreen(isCurrentlyFullscreen);
+
+            if (me?.role === "CLINIC_STAFF") {
+                if (isCurrentlyFullscreen) {
+                    staffExitRedirectArmedRef.current = true;
+                } else if (staffExitRedirectArmedRef.current) {
+                    staffExitRedirectArmedRef.current = false;
+                    router.push("/dashboard/doctor");
+                }
+            }
         };
 
         syncFullscreenState();
         document.addEventListener("fullscreenchange", syncFullscreenState);
 
         return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
-    }, []);
+    }, [me?.role, router]);
+
+    useEffect(() => {
+        if (me?.role !== "CLINIC_STAFF" || loading || isFullscreen || staffAutoFullscreenAttemptedRef.current) {
+            return;
+        }
+
+        staffAutoFullscreenAttemptedRef.current = true;
+
+        const enterFullscreenForStaff = async () => {
+            try {
+                await fullscreenRef.current?.requestFullscreen();
+            } catch {
+                setError("");
+            }
+        };
+
+        void enterFullscreenForStaff();
+    }, [isFullscreen, loading, me?.role]);
 
     useEffect(() => {
         let cancelled = false;
@@ -376,6 +520,7 @@ export default function LiveAppointmentsPage() {
     useEffect(() => {
         if (!selectedClinicId) {
             setLiveData(EMPTY_STATE);
+            setQueueSideAds([]);
             return;
         }
 
@@ -417,6 +562,56 @@ export default function LiveAppointmentsPage() {
         };
     }, [selectedClinicId]);
 
+    useEffect(() => {
+        if (!selectedClinicId) {
+            setQueueSideAds([]);
+            return;
+        }
+
+        let cancelled = false;
+
+        const loadQueueAds = async () => {
+            try {
+                const searchParams = new URLSearchParams({
+                    clinicId: String(selectedClinicId),
+                    t: String(Date.now()),
+                });
+
+                const res = await fetch(`/api/live-queue-ads?${searchParams.toString()}`, {
+                    cache: "no-store",
+                });
+
+                if (!res.ok) {
+                    const body = await res.json().catch(() => null);
+                    throw new Error(body?.error || "Failed to load queue ads.");
+                }
+
+                const data = await res.json();
+                if (!cancelled) {
+                    setQueueSideAds(Array.isArray(data.ads) ? data.ads : []);
+                }
+            } catch (caughtError) {
+                if (!cancelled) {
+                    console.error("Failed to load queue ads:", caughtError);
+                    setQueueSideAds([]);
+                }
+            }
+        };
+
+        loadQueueAds();
+
+        const interval = window.setInterval(() => {
+            if (document.visibilityState === "visible") {
+                loadQueueAds();
+            }
+        }, ADS_REFRESH_INTERVAL_MS);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [selectedClinicId]);
+
     const selectedClinic = useMemo(
         () => clinics.find((clinic) => clinic.clinic_id === selectedClinicId) || null,
         [clinics, selectedClinicId]
@@ -426,6 +621,29 @@ export default function LiveAppointmentsPage() {
         () => liveData.schedule_label || buildScheduleLabel(selectedClinic, new Date()),
         [liveData.schedule_label, selectedClinic]
     );
+    const doctorDisplayName = useMemo(
+        () => formatDoctorName(liveData.doctor_name || selectedClinic?.doctor?.doctor_name || me?.name || "Doctor"),
+        [liveData.doctor_name, selectedClinic?.doctor?.doctor_name, me?.name]
+    );
+    const doctorMeta = useMemo(
+        () =>
+            formatDoctorMeta(
+                liveData.doctor_education || selectedClinic?.doctor?.education,
+                liveData.doctor_specialization || selectedClinic?.doctor?.specialization
+            ),
+        [
+            liveData.doctor_education,
+            liveData.doctor_specialization,
+            selectedClinic?.doctor?.education,
+            selectedClinic?.doctor?.specialization,
+        ]
+    );
+    const leftSideAds = useMemo(() => resolveSideAds(queueSideAds, "LEFT"), [queueSideAds]);
+    const rightSideAds = useMemo(() => resolveSideAds(queueSideAds, "RIGHT"), [queueSideAds]);
+    const hasFullscreenSideAds = Boolean(
+        leftSideAds.videos.length > 0 || leftSideAds.logos.length > 0 || rightSideAds.videos.length > 0 || rightSideAds.logos.length > 0
+    );
+    const showFullscreenSideAds = isFullscreen && hasFullscreenSideAds;
 
     const toggleFullscreen = async () => {
         try {
@@ -448,90 +666,205 @@ export default function LiveAppointmentsPage() {
         );
     }
 
-    return (
-        <div
-            ref={fullscreenRef}
-            className={`bg-[#f4f7fb] text-slate-900 ${isFullscreen ? "h-[100dvh] overflow-hidden px-[clamp(8.5rem,17vw,18rem)] py-[clamp(0.85rem,1.8vh,1.5rem)]" : "min-h-screen p-4 sm:p-6 md:p-8 lg:p-10"}`}
-        >
-            <div className={`mx-auto ${isFullscreen ? "flex h-full w-full max-w-[1020px] flex-col" : "max-w-7xl"}`}>
-                <div className={`flex gap-3 ${isFullscreen ? "mb-2 items-center justify-end" : "mb-4 flex-col items-stretch sm:flex-row sm:items-center sm:justify-end"}`}>
-                    {!isFullscreen && me?.role === "DOCTOR" && clinics.length > 1 ? (
-                        <select
-                            value={selectedClinicId ?? ""}
-                            onChange={(event) => setSelectedClinicId(event.target.value ? Number(event.target.value) : null)}
-                            className="w-full rounded-2xl bg-white px-4 py-3 text-sm font-medium text-slate-700 outline-none sm:w-auto"
+    if (isFullscreen) {
+        return (
+            <div
+                ref={fullscreenRef}
+                className="relative h-[100dvh] overflow-hidden bg-[#f4f7fb] py-[clamp(0.85rem,1.8vh,1.5rem)] text-slate-900"
+                style={{ paddingInline: SCREEN_EDGE_GAP }}
+            >
+                <div className="mx-auto flex h-full w-full max-w-[1020px] flex-col">
+                    <div className="mx-auto mb-2 flex w-full max-w-[1020px] items-center justify-end gap-3">
+                        <button
+                            type="button"
+                            onClick={toggleFullscreen}
+                            className="inline-flex items-center justify-center gap-1 rounded-full bg-indigo-400 px-2 py-1 text-[10px] font-semibold text-white"
                         >
-                            {clinics.map((clinic) => (
-                                <option key={clinic.clinic_id} value={clinic.clinic_id}>
-                                    {clinic.clinic_name || `Clinic ${clinic.clinic_id}`}
-                                </option>
-                            ))}
-                        </select>
-                    ) : null}
-                    <button
-                        type="button"
-                        onClick={toggleFullscreen}
-                        className={`inline-flex items-center justify-center rounded-full font-semibold text-white sm:self-auto ${
-                            isFullscreen
-                                ? "bg-indigo-400 gap-1 px-2 py-1 text-[10px]"
-                                : "bg-indigo-600 gap-2 px-4 py-2 text-sm"
-                        }`}
-                    >
-                        {isFullscreen ? <Minimize size={12} /> : <Maximize size={16} />}
-                        {isFullscreen ? "Exit Full Screen" : "Full Screen"}
-                    </button>
-                </div>
+                            <Minimize size={12} />
+                            Exit Full Screen
+                        </button>
+                    </div>
 
-                <div className={`grid ${isFullscreen ? "min-h-0 flex-1 grid-rows-[auto_auto_auto_minmax(240px,1.6fr)_auto] gap-[clamp(0.3rem,0.8vh,0.6rem)]" : "gap-4 sm:gap-5"}`}>
-                    <section className={`grid items-center rounded-[34px] bg-white ${isFullscreen ? "grid-cols-[minmax(0,1fr)_auto] gap-2 px-[clamp(0.65rem,1.25vw,0.95rem)] py-[clamp(0.3rem,0.65vh,0.5rem)]" : "grid-cols-1 gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-4 sm:px-6 sm:py-5"}`}>
-                        <div className={`flex min-w-0 items-center ${isFullscreen ? "gap-2.5" : "gap-4"}`}>
+                    <section className="mx-auto mb-[clamp(0.3rem,0.8vh,0.6rem)] grid w-full max-w-[1020px] grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-[34px] bg-white px-[clamp(0.65rem,1.25vw,0.95rem)] py-[clamp(0.3rem,0.65vh,0.5rem)] shadow-[0_22px_50px_-35px_rgba(15,23,42,0.35)]">
+                        <div className="flex min-w-0 items-center gap-2.5">
                             <Image
                                 src="/dapto-logo.png"
                                 alt="Dapto"
                                 width={64}
                                 height={64}
-                                className={`${isFullscreen ? "h-[clamp(2.85rem,5.6vmin,4rem)] w-auto" : "h-16 w-auto"} shrink-0 object-contain`}
+                                className="h-[clamp(2.85rem,5.6vmin,4rem)] w-auto shrink-0 object-contain"
                                 priority
                             />
                             <div className="min-w-0">
-                                <div className={`${isFullscreen ? "text-[clamp(0.86rem,1.7vmin,1.15rem)]" : "text-[1.5rem]"} truncate font-semibold text-slate-800`}>{todayLabel}</div>
-                                <div className={`${isFullscreen ? "mt-[1px] text-[clamp(0.62rem,1.05vmin,0.82rem)]" : "mt-1 text-[1rem]"} truncate font-semibold text-slate-900`}>{scheduleLabel}</div>
+                                <div className="truncate text-[clamp(0.86rem,1.7vmin,1.15rem)] font-semibold text-slate-800">{todayLabel}</div>
+                                <div className="mt-[1px] truncate text-[clamp(0.62rem,1.05vmin,0.82rem)] font-semibold text-slate-900">{scheduleLabel}</div>
                             </div>
                         </div>
-                        <div className={`${isFullscreen ? "text-[clamp(0.95rem,2vmin,1.35rem)]" : "text-[1.3rem] sm:text-[1.6rem] lg:text-[1.9rem]"} font-bold text-slate-900 sm:text-right`}>{clock}</div>
+                        <div className="text-[clamp(0.95rem,2vmin,1.35rem)] font-bold text-slate-900 sm:text-right">{clock}</div>
                     </section>
 
-                    <section className={`grid items-center ${isFullscreen ? "grid-cols-2 gap-6 px-[clamp(0.9rem,1.8vw,1.5rem)] py-0" : "grid-cols-1 gap-2 px-1 py-1 md:grid-cols-2 md:gap-6 md:px-3"}`}>
-                        <div className="min-w-0">
-                            <p className={`${isFullscreen ? "text-[clamp(1rem,2.4vmin,1.5rem)]" : "text-[1.4rem] sm:text-[1.8rem] lg:text-[2.2rem]"} truncate font-black leading-tight text-slate-900`}>
-                                {formatDoctorName(liveData.doctor_name || selectedClinic?.doctor?.doctor_name || me?.name || "Doctor")}
-                            </p>
+                    <div className="relative min-h-0 flex-1 overflow-visible">
+                        {showFullscreenSideAds ? (
+                            <div
+                                className="pointer-events-none absolute inset-y-0 right-full hidden xl:flex"
+                                style={{ marginRight: SIDE_TO_BOARD_GAP, width: LEFT_SIDE_PANEL_WIDTH, transform: `translateX(-${STRIP_EDGE_PULL})` }}
+                            >
+                                <QueueSideAdPanel side="LEFT" ads={queueSideAds} className="pointer-events-auto" />
+                            </div>
+                        ) : null}
+
+                        <div className="grid h-full min-h-0 w-full grid-rows-[auto_auto_minmax(240px,1.6fr)] gap-[clamp(0.3rem,0.8vh,0.6rem)]">
+                            <section className="grid grid-cols-2 items-center gap-6 px-[clamp(0.9rem,1.8vw,1.5rem)] py-0">
+                                <div className="min-w-0">
+                                    <p className="truncate text-[clamp(1rem,2.4vmin,1.5rem)] leading-tight text-slate-900">
+                                        <span className="font-black">{doctorDisplayName}</span>
+                                        {doctorMeta ? <span className="ml-2 text-[0.56em] font-normal text-slate-500">{doctorMeta}</span> : null}
+                                    </p>
+                                </div>
+                                <div className="min-w-0 md:text-right">
+                                    <p className="truncate text-[clamp(1rem,2.4vmin,1.5rem)] font-black leading-tight text-slate-900">
+                                        {liveData.clinic_name || selectedClinic?.clinic_name || "Clinic"}
+                                    </p>
+                                </div>
+                            </section>
+
+                            <section className="grid grid-cols-2 items-start gap-[clamp(0.8rem,1.6vw,1.15rem)] rounded-[clamp(1.3rem,2.4vmin,1.9rem)] bg-white px-[clamp(0.9rem,1.7vw,1.25rem)] pb-[clamp(0.35rem,0.7vh,0.5rem)] pt-[clamp(0.2rem,0.45vh,0.3rem)] shadow-[0_22px_50px_-35px_rgba(15,23,42,0.35)]">
+                                <FocusCard label="Current" appointment={liveData.current} compact />
+                                <FocusCard label="Next" appointment={liveData.next} compact />
+                            </section>
+
+                            <div className="grid min-h-0 grid-rows-[1fr_1fr] gap-[clamp(0.28rem,0.7vh,0.5rem)] overflow-hidden">
+                                <RotatingAppointmentGrid title="Remaining" items={liveData.remaining} compact />
+                                <RotatingAppointmentGrid title="Missed" items={liveData.missed} compact />
+                            </div>
                         </div>
-                        <div className="min-w-0 md:text-right">
-                            <p className={`${isFullscreen ? "text-[clamp(1rem,2.4vmin,1.5rem)]" : "text-[1.4rem] sm:text-[1.8rem] lg:text-[2.2rem]"} truncate font-black leading-tight text-slate-900`}>
-                                {liveData.clinic_name || selectedClinic?.clinic_name || "Clinic"}
-                            </p>
-                        </div>
-                    </section>
 
-                    <section className={`grid rounded-[clamp(1.3rem,2.4vmin,1.9rem)] bg-white ${isFullscreen ? "grid-cols-2 items-start gap-[clamp(0.8rem,1.6vw,1.15rem)] px-[clamp(0.9rem,1.7vw,1.25rem)] pt-[clamp(0.2rem,0.45vh,0.3rem)] pb-[clamp(0.35rem,0.7vh,0.5rem)]" : "min-h-0 grid-cols-1 gap-4 px-4 py-4 sm:px-5 md:grid-cols-2 md:gap-8 md:px-6"}`}>
-                        <FocusCard label="Current" appointment={liveData.current} compact={isFullscreen} />
-                        <FocusCard label="Next" appointment={liveData.next} compact={isFullscreen} />
-                    </section>
-
-                    <div className={`grid min-h-0 ${isFullscreen ? "grid-rows-[1fr_1fr] gap-[clamp(0.28rem,0.7vh,0.5rem)] overflow-hidden" : "gap-4"}`}>
-                        <RotatingAppointmentGrid title="Remaining" items={liveData.remaining} compact={isFullscreen} />
-                        <RotatingAppointmentGrid title="Missed" items={liveData.missed} compact={isFullscreen} />
+                        {showFullscreenSideAds ? (
+                            <div
+                                className="pointer-events-none absolute inset-y-0 left-full hidden xl:flex"
+                                style={{ marginLeft: SIDE_TO_BOARD_GAP, width: RIGHT_SIDE_PANEL_WIDTH }}
+                            >
+                                <QueueSideAdPanel side="RIGHT" ads={queueSideAds} className="pointer-events-auto" />
+                            </div>
+                        ) : null}
                     </div>
 
-                    <section className={`overflow-hidden rounded-full bg-white/80 text-indigo-700 ${isFullscreen ? "px-3 py-[clamp(0.2rem,0.5vh,0.35rem)]" : "px-4 py-2.5 sm:px-5 sm:py-3"}`}>
-                        <div className={`flex w-max animate-[liveTicker_34s_linear_infinite] whitespace-nowrap font-medium tracking-[0.04em] ${isFullscreen ? "text-[0.68rem]" : "text-[0.82rem] sm:text-[0.95rem] lg:text-[1.05rem]"}`}>
+                    <section className="mx-auto mt-[clamp(0.3rem,0.8vh,0.6rem)] w-full max-w-[1020px] overflow-hidden rounded-full bg-white/80 px-3 py-[clamp(0.2rem,0.5vh,0.35rem)] text-indigo-700">
+                        <div className="flex w-max animate-[liveTicker_34s_linear_infinite] whitespace-nowrap text-[0.68rem] font-medium tracking-[0.04em]">
                             <span className="pr-24">{TICKER_MESSAGE}</span>
                             <span className="pr-24" aria-hidden="true">
                                 {TICKER_MESSAGE}
                             </span>
                         </div>
                     </section>
+                </div>
+
+                <style jsx global>{`
+                    @keyframes liveTicker {
+                        from {
+                            transform: translateX(0);
+                        }
+                        to {
+                            transform: translateX(-50%);
+                        }
+                    }
+
+                    @keyframes queueAdScrollDown {
+                        from {
+                            transform: translateY(-50%);
+                        }
+                        to {
+                            transform: translateY(0);
+                        }
+                    }
+                `}</style>
+            </div>
+        );
+    }
+
+    return (
+        <div
+            ref={fullscreenRef}
+            className="min-h-screen bg-[#f4f7fb] p-4 text-slate-900 sm:p-6 md:p-8 lg:p-10"
+        >
+            <div className="mx-auto max-w-7xl">
+                <div className="w-full">
+                    <div className="mb-4 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end">
+                        {me?.role === "DOCTOR" && clinics.length > 1 ? (
+                            <select
+                                value={selectedClinicId ?? ""}
+                                onChange={(event) => setSelectedClinicId(event.target.value ? Number(event.target.value) : null)}
+                                className="w-full rounded-2xl bg-white px-4 py-3 text-sm font-medium text-slate-700 outline-none sm:w-auto"
+                            >
+                                {clinics.map((clinic) => (
+                                    <option key={clinic.clinic_id} value={clinic.clinic_id}>
+                                        {clinic.clinic_name || `Clinic ${clinic.clinic_id}`}
+                                    </option>
+                                ))}
+                            </select>
+                        ) : null}
+                        <button
+                            type="button"
+                            onClick={toggleFullscreen}
+                            className="inline-flex items-center justify-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white sm:self-auto"
+                        >
+                            <Maximize size={16} />
+                            Full Screen
+                        </button>
+                    </div>
+
+                    <div className="grid gap-4 sm:gap-5">
+                        <section className="grid grid-cols-1 items-center gap-3 rounded-[34px] bg-white px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-4 sm:px-6 sm:py-5">
+                            <div className="flex min-w-0 items-center gap-4">
+                                <Image
+                                    src="/dapto-logo.png"
+                                    alt="Dapto"
+                                    width={64}
+                                    height={64}
+                                    className="h-16 w-auto shrink-0 object-contain"
+                                    priority
+                                />
+                                <div className="min-w-0">
+                                    <div className="truncate text-[1.5rem] font-semibold text-slate-800">{todayLabel}</div>
+                                    <div className="mt-1 truncate text-[1rem] font-semibold text-slate-900">{scheduleLabel}</div>
+                                </div>
+                            </div>
+                            <div className="text-[1.3rem] font-bold text-slate-900 sm:text-right sm:text-[1.6rem] lg:text-[1.9rem]">{clock}</div>
+                        </section>
+
+                        <section className="grid grid-cols-1 items-center gap-2 px-1 py-1 md:grid-cols-2 md:gap-6 md:px-3">
+                            <div className="min-w-0">
+                                <p className="truncate text-[1.4rem] leading-tight text-slate-900 sm:text-[1.8rem] lg:text-[2.2rem]">
+                                    <span className="font-black">{doctorDisplayName}</span>
+                                    {doctorMeta ? <span className="ml-3 text-[0.56em] font-normal text-slate-500">{doctorMeta}</span> : null}
+                                </p>
+                            </div>
+                            <div className="min-w-0 md:text-right">
+                                <p className="truncate text-[1.4rem] font-black leading-tight text-slate-900 sm:text-[1.8rem] lg:text-[2.2rem]">
+                                    {liveData.clinic_name || selectedClinic?.clinic_name || "Clinic"}
+                                </p>
+                            </div>
+                        </section>
+
+                        <section className="grid min-h-0 grid-cols-1 gap-4 rounded-[clamp(1.3rem,2.4vmin,1.9rem)] bg-white px-4 py-4 sm:px-5 md:grid-cols-2 md:gap-8 md:px-6">
+                            <FocusCard label="Current" appointment={liveData.current} />
+                            <FocusCard label="Next" appointment={liveData.next} />
+                        </section>
+
+                        <div className="grid min-h-0 gap-4">
+                            <RotatingAppointmentGrid title="Remaining" items={liveData.remaining} />
+                            <RotatingAppointmentGrid title="Missed" items={liveData.missed} />
+                        </div>
+
+                        <section className="overflow-hidden rounded-full bg-white/80 px-4 py-2.5 text-indigo-700 sm:px-5 sm:py-3">
+                            <div className="flex w-max animate-[liveTicker_34s_linear_infinite] whitespace-nowrap text-[0.82rem] font-medium tracking-[0.04em] sm:text-[0.95rem] lg:text-[1.05rem]">
+                                <span className="pr-24">{TICKER_MESSAGE}</span>
+                                <span className="pr-24" aria-hidden="true">
+                                    {TICKER_MESSAGE}
+                                </span>
+                            </div>
+                        </section>
+                    </div>
                 </div>
             </div>
 
@@ -542,6 +875,15 @@ export default function LiveAppointmentsPage() {
                     }
                     to {
                         transform: translateX(-50%);
+                    }
+                }
+
+                @keyframes queueAdScrollDown {
+                    from {
+                        transform: translateY(-50%);
+                    }
+                    to {
+                        transform: translateY(0);
                     }
                 }
             `}</style>

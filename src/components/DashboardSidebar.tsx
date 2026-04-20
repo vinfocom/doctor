@@ -71,6 +71,7 @@ export default function DashboardSidebar({ role, userName, staffRole }: SidebarP
             { href: "/dashboard/doctor/schedule", label: "Schedule", icon: <Clock size={20} /> },
             { href: "/dashboard/doctor/appointments", label: "My Appointments", icon: <Calendar size={20} /> },
             { href: "/dashboard/doctor/live", label: "Live", icon: <MonitorPlay size={20} /> },
+            { href: "/dashboard/doctor/live/ads", label: "Live Ads", icon: <MonitorPlay size={20} /> },
             { href: "/dashboard/doctor/patients", label: "Patients", icon: <Users size={20} /> },
             { href: "/dashboard/doctor/users", label: "Users", icon: <UserPlus size={20} /> },
             { href: "/dashboard/doctor/profile", label: "Profile", icon: <UserPlus size={20} /> },

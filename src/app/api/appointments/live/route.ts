@@ -23,6 +23,8 @@ type AppointmentWithRelations = {
     doctor: {
         doctor_id: number;
         doctor_name: string | null;
+        education: string | null;
+        specialization: string | null;
     } | null;
 };
 
@@ -421,6 +423,8 @@ export async function GET(request: Request) {
                     select: {
                         doctor_id: true,
                         doctor_name: true,
+                        education: true,
+                        specialization: true,
                     },
                 },
             },
@@ -504,6 +508,8 @@ export async function GET(request: Request) {
 
         const response = {
             doctor_name: sorted[0]?.doctor?.doctor_name || sortedAll[0]?.doctor?.doctor_name || "",
+            doctor_education: sorted[0]?.doctor?.education || sortedAll[0]?.doctor?.education || "",
+            doctor_specialization: sorted[0]?.doctor?.specialization || sortedAll[0]?.doctor?.specialization || "",
             clinic_name: sorted[0]?.clinic?.clinic_name || sortedAll[0]?.clinic?.clinic_name || "",
             selected_clinic_id: allowedClinicId,
             today_label: formatISTDateLabel(todayYmd),

@@ -16,6 +16,16 @@ type S3Config = {
     forcePathStyle?: boolean;
 };
 
+const RETRYABLE_S3_ERROR_CODES = new Set([
+    "EAI_AGAIN",
+    "ECONNRESET",
+    "ETIMEDOUT",
+    "ENOTFOUND",
+    "TimeoutError",
+]);
+
+let cachedS3Client: S3Client | null = null;
+
 const getCloudPeConfig = (): S3Config | null => {
     const accessKeyId = process.env.CLOUDPE_ACCESS_KEY;
     const secretAccessKey = process.env.CLOUDPE_SECRET_KEY;
@@ -55,13 +65,19 @@ export const getS3Config = () => {
 };
 
 export const getS3Client = () => {
+    if (cachedS3Client) {
+        return cachedS3Client;
+    }
+
     const { region, accessKeyId, secretAccessKey, endpoint, forcePathStyle } = getS3Config();
-    return new S3Client({
+    cachedS3Client = new S3Client({
         region,
         endpoint,
         forcePathStyle,
         credentials: { accessKeyId, secretAccessKey },
     });
+
+    return cachedS3Client;
 };
 
 export const buildPublicUrl = (key: string) => {
@@ -78,6 +94,13 @@ export const buildPublicUrl = (key: string) => {
 export const sanitizeFilename = (name: string) =>
     name.replace(/[^a-zA-Z0-9._-]/g, "_");
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRetryableS3Error = (error: unknown) => {
+    const candidate = error as { code?: string; name?: string };
+    return RETRYABLE_S3_ERROR_CODES.has(String(candidate?.code || candidate?.name || ""));
+};
+
 export const uploadBufferToS3 = async ({
     key,
     buffer,
@@ -89,13 +112,26 @@ export const uploadBufferToS3 = async ({
 }) => {
     const { bucket } = getS3Config();
     const client = getS3Client();
-    await client.send(
-        new PutObjectCommand({
-            Bucket: bucket,
-            Key: key,
-            Body: buffer,
-            ContentType: contentType,
-        })
-    );
+
+    const command = new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+    });
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+            await client.send(command);
+            return { key, url: buildPublicUrl(key) };
+        } catch (error) {
+            if (!isRetryableS3Error(error) || attempt === 3) {
+                throw error;
+            }
+
+            await wait(attempt * 400);
+        }
+    }
+
     return { key, url: buildPublicUrl(key) };
 };

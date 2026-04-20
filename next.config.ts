@@ -1,9 +1,32 @@
 import type { NextConfig } from "next";
 
+const cloudPePublicBaseUrl = process.env.CLOUDPE_PUBLIC_BASE_URL;
+const cloudPeEndpoint = process.env.CLOUDPE_ENDPOINT;
+const remoteImageUrls = [cloudPePublicBaseUrl, cloudPeEndpoint].filter(Boolean);
+
+const remotePatterns = remoteImageUrls.flatMap((value) => {
+  try {
+    const parsed = new URL(String(value));
+    return [
+      {
+        protocol: parsed.protocol.replace(":", "") as "http" | "https",
+        hostname: parsed.hostname,
+        port: parsed.port,
+        pathname: `${parsed.pathname.replace(/\/$/, "")}/**`,
+      },
+    ];
+  } catch {
+    return [];
+  }
+});
+
 const nextConfig: NextConfig = {
   /* config options here */
   devIndicators: false,
   reactCompiler: true,
+  images: {
+    remotePatterns,
+  },
   async headers() {
     return [
       {
