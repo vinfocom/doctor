@@ -88,11 +88,11 @@ const TICKER_MESSAGE =
         "Thank you for your patience",
     ].join(TICKER_SEPARATOR);
 const FULLSCREEN_BOARD_WIDTH = 1020;
-const LEFT_SIDE_PANEL_WIDTH = `clamp(8.5rem, calc((100vw - ${FULLSCREEN_BOARD_WIDTH}px - 3rem) / 2), 16rem)`;
+const LEFT_SIDE_PANEL_WIDTH = `clamp(10rem, calc((100vw - ${FULLSCREEN_BOARD_WIDTH}px - 1.8rem) / 2), 17rem)`;
 const RIGHT_SIDE_PANEL_WIDTH = LEFT_SIDE_PANEL_WIDTH;
 const SCREEN_EDGE_GAP = "clamp(0.75rem, 1.4vw, 1.25rem)";
-const SIDE_TO_BOARD_GAP = "clamp(0.7rem, 1.2vw, 1rem)";
-const STRIP_EDGE_PULL = "clamp(1.5rem, 3vw, 2.75rem)";
+const FULLSCREEN_BOARD_BASE_WIDTH = `min(680px, calc(100vw - (2 * ${SCREEN_EDGE_GAP}) - 12rem))`;
+const FULLSCREEN_BOARD_COMPRESSED_WIDTH = `min(960px, calc(100vw - (2 * ${SCREEN_EDGE_GAP}) - (2 * ${LEFT_SIDE_PANEL_WIDTH}) - 2.4rem))`;
 
 function formatISTClock(date: Date) {
     return new Intl.DateTimeFormat("en-IN", {
@@ -203,6 +203,8 @@ function QueueSideAdPanel({
     }
 
     const scrollingLogos = buildScrollingLogoSequence(sideAds.logos);
+    const scrollingLogoItems = [...scrollingLogos, ...scrollingLogos];
+    const logoScrollDurationSeconds = Math.max(scrollingLogos.length * 2.4, 18);
     const videoSignature = sideAds.videos.map((video) => video.ad_id).join(",");
     const activeVideo =
         sideAds.videos.length > 0
@@ -238,6 +240,8 @@ function QueueSideAdPanel({
                             muted
                             playsInline
                             preload="auto"
+                            disableRemotePlayback
+                            controlsList="noremoteplayback"
                             onEnded={handleVideoEnded}
                         />
                     </div>
@@ -245,8 +249,11 @@ function QueueSideAdPanel({
             ) : (
                 <div className="relative z-10 min-h-0 flex-1 overflow-hidden px-3 py-3">
                     <div className="relative h-full overflow-hidden rounded-[1.6rem] border border-white/70 bg-white/78 px-3 py-4 shadow-[0_18px_40px_-28px_rgba(37,99,235,0.4)]">
-                        <div className="flex animate-[queueAdScrollDown_20s_linear_infinite] flex-col items-center gap-4 will-change-transform">
-                            {[...scrollingLogos, ...scrollingLogos].map((logo, index) => (
+                        <div
+                            className="flex animate-[queueAdScrollDown_linear_infinite] flex-col items-center gap-4 will-change-transform"
+                            style={{ animationDuration: `${logoScrollDurationSeconds}s` }}
+                        >
+                            {scrollingLogoItems.map((logo, index) => (
                                 <div
                                     key={`${logo.ad_id}-${index}`}
                                     className="flex w-full items-center justify-center rounded-[1.15rem] bg-white/95 px-3 py-4 shadow-[0_12px_26px_-22px_rgba(15,23,42,0.55)]"
@@ -640,10 +647,13 @@ export default function LiveAppointmentsPage() {
     );
     const leftSideAds = useMemo(() => resolveSideAds(queueSideAds, "LEFT"), [queueSideAds]);
     const rightSideAds = useMemo(() => resolveSideAds(queueSideAds, "RIGHT"), [queueSideAds]);
+    const hasLeftFullscreenSideAds = Boolean(leftSideAds.videos.length > 0 || leftSideAds.logos.length > 0);
+    const hasRightFullscreenSideAds = Boolean(rightSideAds.videos.length > 0 || rightSideAds.logos.length > 0);
     const hasFullscreenSideAds = Boolean(
-        leftSideAds.videos.length > 0 || leftSideAds.logos.length > 0 || rightSideAds.videos.length > 0 || rightSideAds.logos.length > 0
+        hasLeftFullscreenSideAds || hasRightFullscreenSideAds
     );
     const showFullscreenSideAds = isFullscreen && hasFullscreenSideAds;
+    const fullscreenBoardWidth = showFullscreenSideAds ? FULLSCREEN_BOARD_COMPRESSED_WIDTH : FULLSCREEN_BOARD_BASE_WIDTH;
 
     const toggleFullscreen = async () => {
         try {
@@ -673,8 +683,8 @@ export default function LiveAppointmentsPage() {
                 className="relative h-[100dvh] overflow-hidden bg-[#f4f7fb] py-[clamp(0.85rem,1.8vh,1.5rem)] text-slate-900"
                 style={{ paddingInline: SCREEN_EDGE_GAP }}
             >
-                <div className="mx-auto flex h-full w-full max-w-[1020px] flex-col">
-                    <div className="mx-auto mb-2 flex w-full max-w-[1020px] items-center justify-end gap-3">
+                <div className="mx-auto flex h-full w-full max-w-[calc(1020px+calc(16rem*2)+4rem)] flex-col">
+                    <div className="mx-auto mb-2 flex items-center justify-end gap-3" style={{ width: fullscreenBoardWidth }}>
                         <button
                             type="button"
                             onClick={toggleFullscreen}
@@ -685,7 +695,10 @@ export default function LiveAppointmentsPage() {
                         </button>
                     </div>
 
-                    <section className="mx-auto mb-[clamp(0.3rem,0.8vh,0.6rem)] grid w-full max-w-[1020px] grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-[34px] bg-white px-[clamp(0.65rem,1.25vw,0.95rem)] py-[clamp(0.3rem,0.65vh,0.5rem)] shadow-[0_22px_50px_-35px_rgba(15,23,42,0.35)]">
+                    <section
+                        className="mx-auto mb-[clamp(0.3rem,0.8vh,0.6rem)] grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-[34px] bg-white px-[clamp(0.65rem,1.25vw,0.95rem)] py-[clamp(0.3rem,0.65vh,0.5rem)] shadow-[0_22px_50px_-35px_rgba(15,23,42,0.35)]"
+                        style={{ width: fullscreenBoardWidth }}
+                    >
                         <div className="flex min-w-0 items-center gap-2.5">
                             <Image
                                 src="/dapto-logo.png"
@@ -703,22 +716,29 @@ export default function LiveAppointmentsPage() {
                         <div className="text-[clamp(0.95rem,2vmin,1.35rem)] font-bold text-slate-900 sm:text-right">{clock}</div>
                     </section>
 
-                    <div className="relative min-h-0 flex-1 overflow-visible">
+                    <div className="grid min-h-0 flex-1 items-stretch justify-center gap-x-[clamp(0.7rem,1.2vw,1rem)]"
+                        style={{
+                            gridTemplateColumns: showFullscreenSideAds
+                                ? `${LEFT_SIDE_PANEL_WIDTH} ${fullscreenBoardWidth} ${RIGHT_SIDE_PANEL_WIDTH}`
+                                : fullscreenBoardWidth,
+                        }}
+                    >
                         {showFullscreenSideAds ? (
-                            <div
-                                className="pointer-events-none absolute inset-y-0 right-full hidden xl:flex"
-                                style={{ marginRight: SIDE_TO_BOARD_GAP, width: LEFT_SIDE_PANEL_WIDTH, transform: `translateX(-${STRIP_EDGE_PULL})` }}
-                            >
-                                <QueueSideAdPanel side="LEFT" ads={queueSideAds} className="pointer-events-auto" />
+                            <div className="min-h-0">
+                                {hasLeftFullscreenSideAds ? (
+                                    <QueueSideAdPanel side="LEFT" ads={queueSideAds} />
+                                ) : (
+                                    <div aria-hidden="true" className="h-full w-full" />
+                                )}
                             </div>
                         ) : null}
 
                         <div className="grid h-full min-h-0 w-full grid-rows-[auto_auto_minmax(240px,1.6fr)] gap-[clamp(0.3rem,0.8vh,0.6rem)]">
-                            <section className="grid grid-cols-2 items-center gap-6 px-[clamp(0.9rem,1.8vw,1.5rem)] py-0">
+                            <section className="grid grid-cols-2 items-start gap-6 px-[clamp(0.9rem,1.8vw,1.5rem)] py-0">
                                 <div className="min-w-0">
-                                    <p className="truncate text-[clamp(1rem,2.4vmin,1.5rem)] leading-tight text-slate-900">
+                                    <p className="whitespace-nowrap text-[clamp(1rem,2.4vmin,1.5rem)] leading-tight text-slate-900">
                                         <span className="font-black">{doctorDisplayName}</span>
-                                        {doctorMeta ? <span className="ml-2 text-[0.56em] font-normal text-slate-500">{doctorMeta}</span> : null}
+                                        {doctorMeta ? <span className="ml-2 inline whitespace-nowrap text-[0.56em] font-normal text-slate-500">{doctorMeta}</span> : null}
                                     </p>
                                 </div>
                                 <div className="min-w-0 md:text-right">
@@ -740,16 +760,20 @@ export default function LiveAppointmentsPage() {
                         </div>
 
                         {showFullscreenSideAds ? (
-                            <div
-                                className="pointer-events-none absolute inset-y-0 left-full hidden xl:flex"
-                                style={{ marginLeft: SIDE_TO_BOARD_GAP, width: RIGHT_SIDE_PANEL_WIDTH }}
-                            >
-                                <QueueSideAdPanel side="RIGHT" ads={queueSideAds} className="pointer-events-auto" />
+                            <div className="min-h-0">
+                                {hasRightFullscreenSideAds ? (
+                                    <QueueSideAdPanel side="RIGHT" ads={queueSideAds} />
+                                ) : (
+                                    <div aria-hidden="true" className="h-full w-full" />
+                                )}
                             </div>
                         ) : null}
                     </div>
 
-                    <section className="mx-auto mt-[clamp(0.3rem,0.8vh,0.6rem)] w-full max-w-[1020px] overflow-hidden rounded-full bg-white/80 px-3 py-[clamp(0.2rem,0.5vh,0.35rem)] text-indigo-700">
+                    <section
+                        className="mx-auto mt-[clamp(0.3rem,0.8vh,0.6rem)] overflow-hidden rounded-full bg-white/80 px-3 py-[clamp(0.2rem,0.5vh,0.35rem)] text-indigo-700"
+                        style={{ width: fullscreenBoardWidth }}
+                    >
                         <div className="flex w-max animate-[liveTicker_34s_linear_infinite] whitespace-nowrap text-[0.68rem] font-medium tracking-[0.04em]">
                             <span className="pr-24">{TICKER_MESSAGE}</span>
                             <span className="pr-24" aria-hidden="true">
@@ -832,11 +856,11 @@ export default function LiveAppointmentsPage() {
                             <div className="text-[1.3rem] font-bold text-slate-900 sm:text-right sm:text-[1.6rem] lg:text-[1.9rem]">{clock}</div>
                         </section>
 
-                        <section className="grid grid-cols-1 items-center gap-2 px-1 py-1 md:grid-cols-2 md:gap-6 md:px-3">
+                        <section className="grid grid-cols-1 items-start gap-2 px-1 py-1 md:grid-cols-2 md:gap-6 md:px-3">
                             <div className="min-w-0">
-                                <p className="truncate text-[1.4rem] leading-tight text-slate-900 sm:text-[1.8rem] lg:text-[2.2rem]">
+                                <p className="whitespace-nowrap text-[1.4rem] leading-tight text-slate-900 sm:text-[1.8rem] lg:text-[2.2rem]">
                                     <span className="font-black">{doctorDisplayName}</span>
-                                    {doctorMeta ? <span className="ml-3 text-[0.56em] font-normal text-slate-500">{doctorMeta}</span> : null}
+                                    {doctorMeta ? <span className="ml-3 inline whitespace-nowrap text-[0.56em] font-normal text-slate-500">{doctorMeta}</span> : null}
                                 </p>
                             </div>
                             <div className="min-w-0 md:text-right">
