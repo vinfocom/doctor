@@ -127,13 +127,13 @@ export default function AdminPatientsPage() {
         <div className="w-full">
             {/* Header */}
             <motion.div className="mb-6" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
-                <h1 className="text-3xl font-bold text-gray-900">All Patients</h1>
+                <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">All Patients</h1>
                 <p className="text-gray-500 mt-1 text-sm">Patients grouped by their registered doctor</p>
             </motion.div>
 
             {/* Search Bar */}
             <motion.div className="mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-                <div className="relative max-w-md">
+                <div className="relative w-full max-w-md">
                     <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
                     <input
                         type="text"
@@ -179,7 +179,7 @@ export default function AdminPatientsPage() {
                                 {/* Doctor Header */}
                                 <button
                                     onClick={() => toggleDoc(key)}
-                                    className="w-full flex items-center gap-3 px-6 py-4 hover:bg-gray-50/60 transition-colors text-left"
+                                    className="flex w-full items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-gray-50/60 sm:px-6"
                                 >
                                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-sm font-bold text-white shrink-0">
                                         {group.doctor_name.charAt(0).toUpperCase()}

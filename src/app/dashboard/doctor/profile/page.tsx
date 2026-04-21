@@ -6,8 +6,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import {
     User, Phone, MessageCircle, Loader2, Save, MapPin, Building2, Clock,
     Plus, Trash2, Camera, FileText, QrCode, Hash, BadgeCheck, GraduationCap,
-    Send, Upload, X, Eye, Shield,
-    Sun
+    Send, Upload, X, Eye, Shield
 } from "lucide-react";
 import Link from "next/link";
 import { formatTime, convertTo12Hour } from "@/lib/timeUtils";
@@ -108,8 +107,8 @@ function FileUploadWidget({
         try {
             const url = await uploadFile(file, uploadType);
             onUploaded(url);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "Upload failed");
         } finally {
             setUploading(false);
             if (inputRef.current) inputRef.current.value = "";
@@ -213,8 +212,8 @@ export default function DoctorProfilePage() {
         try {
             const url = await uploadFile(file, "profile_pic");
             setProfile({ ...profile, profile_pic_url: url });
-        } catch (err: any) {
-            setMessage({ type: "error", text: err.message });
+        } catch (err: unknown) {
+            setMessage({ type: "error", text: err instanceof Error ? err.message : "Upload failed" });
         } finally {
             setAvatarUploading(false);
             if (avatarRef.current) avatarRef.current.value = "";
@@ -263,7 +262,8 @@ export default function DoctorProfilePage() {
         setMessage(null);
 
         try {
-            const { clinics, ...profileData } = profile || {};
+            const profileData: Partial<DoctorProfile> = profile ? { ...profile } : {};
+            delete profileData.clinics;
             const res = await fetch("/api/doctors/me", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
@@ -275,7 +275,7 @@ export default function DoctorProfilePage() {
             } else {
                 setMessage({ type: "error", text: "Failed to update profile" });
             }
-        } catch (error) {
+        } catch {
             setMessage({ type: "error", text: "An error occurred" });
         } finally {
             setSaving(false);
@@ -291,7 +291,7 @@ export default function DoctorProfilePage() {
     }
 
     return (
-        <div className="w-full max-w-6xl mx-auto p-4 space-y-8">
+        <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
             <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
                 <h1 className="text-3xl font-bold gradient-text">My Profile</h1>
                 <p className="text-gray-500 mt-1">Manage your personal and professional details</p>
@@ -324,7 +324,13 @@ export default function DoctorProfilePage() {
                             <div className="relative">
                                 <div className="w-28 h-28 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center overflow-hidden ring-4 ring-white shadow-lg">
                                     {profile?.profile_pic_url ? (
-                                        <img src={profile.profile_pic_url} alt="Profile" className="w-full h-full object-cover" />
+                                        <Image
+                                            src={profile.profile_pic_url}
+                                            alt="Profile"
+                                            fill
+                                            sizes="112px"
+                                            className="object-cover"
+                                        />
                                     ) : (
                                         <User className="w-12 h-12 text-white" />
                                     )}
@@ -567,7 +573,7 @@ export default function DoctorProfilePage() {
 
                         {/* ── WhatsApp Numbers ── */}
                         <GlassCard className="space-y-4">
-                            <div className="flex justify-between items-center">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                 <h2 className="text-lg font-semibold flex items-center gap-2">
                                     <MessageCircle className="w-5 h-5 text-indigo-500" /> WhatsApp Numbers
                                 </h2>
@@ -580,15 +586,15 @@ export default function DoctorProfilePage() {
                                             whatsapp_numbers: [...(prev.whatsapp_numbers || []), { whatsapp_number: "", is_primary: false }]
                                         };
                                     })}
-                                    className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 transition-colors"
+                                    className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-100 hover:text-indigo-700 sm:self-auto"
                                 >
                                     <Plus className="w-3 h-3" /> Add Number
                                 </button>
                             </div>
                             <div className="space-y-2">
                                 {profile?.whatsapp_numbers?.map((num, idx) => (
-                                    <div key={idx} className="flex gap-2 items-center">
-                                        <div className="relative flex-1">
+                                    <div key={idx} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                        <div className="relative min-w-0 flex-1">
                                             <MessageCircle className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                                             <input
                                                 type="tel"
@@ -603,7 +609,7 @@ export default function DoctorProfilePage() {
                                                 placeholder="+91 9876543210"
                                             />
                                         </div>
-                                        <div className="flex items-center gap-1">
+                                        <div className="flex items-center justify-end gap-1 sm:justify-start">
                                             <button
                                                 type="button"
                                                 onClick={() => {
@@ -654,7 +660,7 @@ export default function DoctorProfilePage() {
 
             {/* ── Clinics Section ── */}
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-                <div className="flex justify-between items-center mb-4">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <h2 className="text-2xl font-bold text-gray-800">My Clinics</h2>
                     <Link href="/dashboard/doctor/clinics">
                         <button className="text-indigo-600 hover:text-indigo-700 font-medium text-sm">
@@ -676,11 +682,11 @@ export default function DoctorProfilePage() {
                                     <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
                                         <Building2 className="w-6 h-6" />
                                     </div>
-                                    <div>
+                                    <div className="min-w-0">
                                         <h3 className="font-bold text-lg text-gray-900">{clinic.clinic_name}</h3>
                                         <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
                                             <MapPin className="w-3 h-3" />
-                                            <span>{clinic.location}</span>
+                                            <span className="break-words">{clinic.location}</span>
                                         </div>
                                         {profile?.doctor_id && (
                                             <button
@@ -706,11 +712,11 @@ export default function DoctorProfilePage() {
                                                     return String(a.start_time).localeCompare(String(b.start_time));
                                                 })
                                                 .map((sch, i) => (
-                                                    <div key={i} className="flex justify-between items-center text-sm">
+                                                    <div key={i} className="flex items-center justify-between gap-3 text-sm">
                                                         <span className="font-medium text-gray-700 w-8">
                                                             {dayNames[((sch.day_of_week % 7) + 7) % 7] || "N/A"}
                                                         </span>
-                                                        <div className="flex items-center gap-1 text-gray-500 bg-gray-50 px-2 py-1 rounded-md">
+                                                        <div className="flex items-center gap-1 rounded-md bg-gray-50 px-2 py-1 text-right text-gray-500">
                                                             <Clock className="w-3 h-3" />
                                                             <span>{convertTo12Hour(formatTime(sch.start_time))} - {convertTo12Hour(formatTime(sch.end_time))}</span>
                                                         </div>

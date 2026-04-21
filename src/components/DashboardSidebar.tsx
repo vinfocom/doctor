@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -26,7 +26,8 @@ interface SidebarProps {
 export default function DashboardSidebar({ role, userName, staffRole }: SidebarProps) {
     const pathname = usePathname();
     const router = useRouter();
-    const [isOpen, setIsOpen] = useState(false);
+    const [openPathname, setOpenPathname] = useState<string | null>(null);
+    const isOpen = Boolean(pathname) && openPathname === pathname;
     const homeHref = role === "SUPER_ADMIN" || role === "ADMIN"
         ? "/dashboard/admin"
         : "/dashboard/doctor";
@@ -39,6 +40,19 @@ export default function DashboardSidebar({ role, userName, staffRole }: SidebarP
     const displayName = role === "DOCTOR" && userName
         ? (/^dr\.?\s/i.test(userName.trim()) ? userName.trim() : `Dr. ${userName.trim()}`)
         : userName;
+
+    useEffect(() => {
+        if (!isOpen) {
+            document.body.style.overflow = "";
+            return;
+        }
+
+        document.body.style.overflow = "hidden";
+
+        return () => {
+            document.body.style.overflow = "";
+        };
+    }, [isOpen]);
 
     const links = {
         SUPER_ADMIN: [
@@ -85,7 +99,7 @@ export default function DashboardSidebar({ role, userName, staffRole }: SidebarP
         <div className="flex flex-col h-full">
             {/* Logo */}
             <div className="mb-7 -mt-4 px-2 flex justify-between items-center">
-                <Link href={homeHref} className="block" onClick={() => setIsOpen(false)}>
+                <Link href={homeHref} className="block" onClick={() => setOpenPathname(null)}>
                     <div className="flex items-center">
                         <Image
                             src="/logo.png"
@@ -99,8 +113,14 @@ export default function DashboardSidebar({ role, userName, staffRole }: SidebarP
                 </Link>
                 {/* Close button for mobile */}
                 <button
-                    onClick={() => setIsOpen(false)}
-                    className="md:hidden p-2 text-gray-500 hover:text-gray-700"
+                    type="button"
+                    onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setOpenPathname(null);
+                    }}
+                    className="dashboard-mobile-close rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 min-[900px]:hidden"
+                    aria-label="Close navigation"
                 >
                     <X size={24} />
                 </button>
@@ -117,7 +137,7 @@ export default function DashboardSidebar({ role, userName, staffRole }: SidebarP
                     >
                         <Link
                             href={link.href}
-                            onClick={() => setIsOpen(false)}
+                            onClick={() => setOpenPathname(null)}
                             className={`sidebar-link ${pathname === link.href ? "active" : ""}`}
                         >
                             <span className="text-lg">{link.icon}</span>
@@ -159,10 +179,15 @@ export default function DashboardSidebar({ role, userName, staffRole }: SidebarP
     return (
         <>
             {/* Mobile Menu Button - Fixed position, visible only on small screens */}
-            <div className="md:hidden fixed top-4 left-4 z-50">
+            <div className={`dashboard-mobile-toggle fixed left-3 top-3 z-50 sm:left-4 sm:top-4 min-[900px]:hidden ${isOpen ? "pointer-events-none opacity-0" : "pointer-events-auto opacity-100"}`}>
                 <button
-                    onClick={() => setIsOpen(true)}
-                    className="p-2 bg-white rounded-lg shadow-md text-gray-700 border border-gray-100"
+                    type="button"
+                    onClick={() => {
+                        if (!pathname) return;
+                        setOpenPathname(pathname);
+                    }}
+                    className="rounded-lg border border-gray-100 bg-white p-2 text-gray-700 shadow-md"
+                    aria-label="Open navigation"
                 >
                     <Menu size={24} />
                 </button>
@@ -170,7 +195,7 @@ export default function DashboardSidebar({ role, userName, staffRole }: SidebarP
 
             {/* Desktop Sidebar */}
             <motion.div
-                className="dashboard-sidebar hidden md:flex"
+                className="dashboard-sidebar hidden min-[900px]:flex"
                 initial={{ x: -20, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
                 transition={{ duration: 0.5 }}
@@ -187,15 +212,16 @@ export default function DashboardSidebar({ role, userName, staffRole }: SidebarP
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 0.5 }}
                             exit={{ opacity: 0 }}
-                            onClick={() => setIsOpen(false)}
-                            className="fixed inset-0 bg-black z-40 md:hidden"
+                            onClick={() => setOpenPathname(null)}
+                            className="dashboard-mobile-overlay fixed inset-0 bg-black z-40 min-[900px]:hidden"
                         />
                         {/* Drawer */}
                         <motion.div
                             initial={{ x: "-100%" }}
                             animate={{ x: 0 }}
                             exit={{ x: "-100%" }}
-                            className="fixed inset-y-0 left-0 w-[280px] bg-white z-50 p-6 md:hidden overflow-y-auto"
+                            onClick={(event) => event.stopPropagation()}
+                            className="dashboard-mobile-drawer fixed inset-y-0 left-0 z-[60] w-[280px] max-w-[85vw] overflow-y-auto bg-white p-6 min-[900px]:hidden"
                         >
                             {sidebarContent}
                         </motion.div>

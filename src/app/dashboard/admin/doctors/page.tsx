@@ -444,12 +444,12 @@ export default function AdminDoctorsPage() {
     return (
         <div className="w-full">
             <motion.div className="mb-8" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Manage Doctors</h1>
+                        <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Manage Doctors</h1>
                         <p className="text-gray-500 mt-1 text-sm">View, edit and manage all registered doctors</p>
                     </div>
-                    <PremiumButton onClick={() => { setShowForm(!showForm); resetForm(); }} icon={UserPlus}>
+                    <PremiumButton className="w-full sm:w-auto" onClick={() => { setShowForm(!showForm); resetForm(); }} icon={UserPlus}>
                         Create New Doctor
                     </PremiumButton>
                 </div>
@@ -460,7 +460,7 @@ export default function AdminDoctorsPage() {
             )}
 
             {/* ────── Doctors Table ────── */}
-            <motion.div className="glass-card p-7" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+            <motion.div className="glass-card p-5 sm:p-7" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                 {doctors.length === 0 ? (
                     <div className="text-center py-12">
                         <div className="mb-3 flex justify-center"><Stethoscope size={40} className="text-indigo-400" /></div>
@@ -471,7 +471,7 @@ export default function AdminDoctorsPage() {
                         <table className="data-table">
                             <thead>
                                 <tr>
-                                    <th>Doctor's Name</th>
+                                    <th>Doctor&apos;s Name</th>
                                     <th>Status</th>
                                     <th>Phone</th>
                                     <th>Specialization</th>
@@ -534,7 +534,7 @@ export default function AdminDoctorsPage() {
                                                 )}
                                             </td>
                                             <td>
-                                                <div className="flex items-center gap-1.5">
+                                                <div className="flex flex-wrap items-center gap-1.5">
                                                     <motion.button
                                                         onClick={() => openEdit(doc)}
                                                         className="p-2 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
@@ -581,7 +581,7 @@ export default function AdminDoctorsPage() {
                     <>
                         <motion.div className="fixed inset-0 bg-black/40 z-40 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setViewDoc(null)} />
                         <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                            <motion.div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8 relative max-h-[90vh] overflow-y-auto" initial={{ scale: 0.92, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 30 }} onClick={(e) => e.stopPropagation()}>
+                            <motion.div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl sm:p-8" initial={{ scale: 0.92, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 30 }} onClick={(e) => e.stopPropagation()}>
                                 <button onClick={() => setViewDoc(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
 
                                 {/* Header */}
@@ -619,7 +619,7 @@ export default function AdminDoctorsPage() {
                                     {/* Basic Info */}
                                     <div>
                                         <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-2.5 flex items-center gap-1.5"><User size={13} /> Basic Info</p>
-                                        <div className="grid grid-cols-2 gap-3">
+                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                             {viewDoc.phone && (
                                                 <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
                                                     <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">Phone</p>
@@ -669,7 +669,7 @@ export default function AdminDoctorsPage() {
                                     {(viewDoc.registration_no || viewDoc.education || viewDoc.address) && (
                                         <div>
                                             <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-2.5 flex items-center gap-1.5"><Stethoscope size={13} /> Professional</p>
-                                            <div className="grid grid-cols-2 gap-3">
+                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                                 {viewDoc.registration_no && (
                                                     <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
                                                         <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">Registration No.</p>
@@ -926,7 +926,7 @@ export default function AdminDoctorsPage() {
 
                                     {editError && <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{editError}</p>}
 
-                                    <div className="flex justify-end gap-3 pt-2">
+                                    <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
                                         <button type="button" onClick={() => setEditDoc(null)} className="btn-secondary">Cancel</button>
                                         <button type="submit" disabled={editSubmitting || anyEditUploading} className="btn-primary">
                                             {editSubmitting ? "Saving…" : "Save Changes"}
@@ -945,7 +945,7 @@ export default function AdminDoctorsPage() {
                     <>
                         <motion.div className="fixed inset-0 bg-black/40 z-40 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setShowForm(false); resetForm(); }} />
                         <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                            <motion.div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-8 relative max-h-[92vh] overflow-y-auto" initial={{ scale: 0.92, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 30 }} onClick={(e) => e.stopPropagation()}>
+                            <motion.div className="relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl sm:p-8" initial={{ scale: 0.92, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 30 }} onClick={(e) => e.stopPropagation()}>
                                 <button onClick={() => { setShowForm(false); resetForm(); }} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
 
                                 <h2 className="text-xl font-bold text-gray-900 mb-1 flex items-center gap-2"><Shield className="w-5 h-5 text-indigo-500" /> Create New Doctor</h2>

@@ -25,6 +25,18 @@ interface Clinic {
     clinic_name: string;
 }
 
+interface UserTableRow {
+    id: number;
+    username: string;
+    email: string;
+    role: string;
+    status: string;
+    clinic: string;
+    validity: string;
+    created_on: string;
+    _raw: StaffUser;
+}
+
 export default function UsersViewPage() {
     const [users, setUsers] = useState<StaffUser[]>([]);
     const [loading, setLoading] = useState(true);
@@ -133,7 +145,7 @@ export default function UsersViewPage() {
                 const err = await res.json();
                 setSaveError(err.error || "Failed to update user");
             }
-        } catch (e) {
+        } catch {
             setSaveError("Something went wrong");
         } finally {
             setSaving(false);
@@ -163,7 +175,7 @@ export default function UsersViewPage() {
         return matchesSearch && matchesStatus;
     });
 
-    const data = filteredUsers.map((user) => ({
+    const data: UserTableRow[] = filteredUsers.map((user) => ({
         id: user.staff_id,
         username: user.name || "N/A",
         email: user.email || "N/A",
@@ -178,27 +190,27 @@ export default function UsersViewPage() {
     }));
 
     return (
-        <div className="p-6 max-w-7xl mx-auto space-y-6">
+        <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
             {/* Header */}
-            <div className="flex justify-between items-center bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+            <div className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2 text-gray-800">
                         <Users className="text-purple-600" /> View Users
                     </h1>
                     <p className="text-gray-500 mt-1">Manage clinic staff ({users.length} total)</p>
                 </div>
-                <div className="flex gap-3">
-                    <button onClick={fetchUsers} className="px-4 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors text-sm">
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+                    <button onClick={fetchUsers} className="px-4 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors text-sm text-center">
                         Refresh
                     </button>
-                    <Link href="/dashboard/doctor/users/add" className="px-4 py-2 flex items-center gap-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white shadow-md text-sm transition-colors">
+                    <Link href="/dashboard/doctor/users/add" className="px-4 py-2 flex items-center justify-center gap-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white shadow-md text-sm transition-colors">
                         <UserPlus size={18} /> Add User
                     </Link>
                 </div>
             </div>
 
             {/* Filters */}
-            <div className="flex justify-between items-center gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+            <div className="flex flex-col gap-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                 <div className="relative flex-1 max-w-xl">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                     <input
@@ -210,7 +222,7 @@ export default function UsersViewPage() {
                     />
                 </div>
                 <select
-                    className="border border-gray-200 rounded-lg px-4 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-sm"
+                    className="w-full border border-gray-200 rounded-lg px-4 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-sm sm:w-auto"
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
                 >
@@ -231,7 +243,7 @@ export default function UsersViewPage() {
                         if (col.accessorKey === "status") {
                             return {
                                 ...col,
-                                accessorKey: (row: any) => (
+                                accessorKey: (row: UserTableRow) => (
                                     <span className={`px-3 py-1 text-xs font-semibold rounded-full ${row.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                                         {row.status}
                                     </span>
@@ -241,7 +253,7 @@ export default function UsersViewPage() {
                         if (col.accessorKey === "clinic") {
                             return {
                                 ...col,
-                                accessorKey: (row: any) => (
+                                accessorKey: (row: UserTableRow) => (
                                     <span className="flex items-center gap-1.5 text-gray-600 bg-gray-50 px-2 py-1 rounded-md text-sm">
                                         <MapPin size={14} className="text-gray-400" />
                                         {row.clinic}
@@ -252,8 +264,8 @@ export default function UsersViewPage() {
                         if (col.accessorKey === "actions") {
                             return {
                                 ...col,
-                                accessorKey: (row: any) => (
-                                    <div className="flex items-center gap-2">
+                                accessorKey: (row: UserTableRow) => (
+                                    <div className="flex flex-wrap items-center gap-2">
                                         <button
                                             onClick={() => openEdit(row._raw)}
                                             className="text-purple-600 hover:text-purple-800 p-1.5 hover:bg-purple-50 rounded-lg transition-colors"
@@ -280,8 +292,8 @@ export default function UsersViewPage() {
 
             {/* Edit Modal */}
             {editingUser && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-5">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+                    <div className="w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl p-6 space-y-5">
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg font-bold text-gray-800">Edit User</h2>
                             <button onClick={() => setEditingUser(null)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
@@ -399,7 +411,7 @@ export default function UsersViewPage() {
                             </div>
 
                             {editForm.is_limited && (
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                     <div>
                                         <label className="block text-xs font-medium text-gray-600 mb-1">From Date</label>
                                         <input
@@ -426,7 +438,7 @@ export default function UsersViewPage() {
                             )}
                         </div>
 
-                        <div className="flex gap-3 pt-2">
+                        <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
                             <button
                                 onClick={() => setEditingUser(null)}
                                 className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors text-sm"

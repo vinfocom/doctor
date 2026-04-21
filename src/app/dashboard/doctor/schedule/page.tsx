@@ -27,6 +27,19 @@ interface Clinic {
     clinic_name: string;
 }
 
+interface ScheduleApiItem extends ScheduleItem {
+    clinic?: Clinic | null;
+}
+
+interface SchedulePayloadItem {
+    schedule_id?: number;
+    day_of_week: number;
+    start_time: string;
+    end_time: string;
+    slot_duration: number;
+    effective_to: string;
+}
+
 // Keep day ids aligned with backend: Sunday=0 ... Saturday=6
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -160,7 +173,7 @@ export default function DoctorSchedulePage() {
             const res = await fetch(`/api/schedule?doctorId=${user.doctor_id}`);
             if (res.ok) {
                 const data = await res.json();
-                const processed = (data.schedules || []).map((s: any) => ({
+                const processed = (data.schedules || []).map((s: ScheduleApiItem) => ({
                     ...s,
                     start_time: formatTime(s.start_time),
                     end_time: formatTime(s.end_time),
@@ -223,7 +236,7 @@ export default function DoctorSchedulePage() {
             }
             const effectiveTo = effectiveToDate.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
-            let schedulesPayload: any[] = [];
+            let schedulesPayload: SchedulePayloadItem[] = [];
             if (editingScheduleId) {
                 const [firstDay, ...restDays] = scheduleForm.days;
                 schedulesPayload.push({
@@ -308,7 +321,7 @@ export default function DoctorSchedulePage() {
         evening: schedules.filter(s => getPeriod(s.start_time) === "evening").length,
     };
 
-    if (loading) return <div className="p-10 text-center">Loading...</div>;
+    if (loading) return <div className="p-6 text-center sm:p-10">Loading...</div>;
 
     return (
         <div className="w-full space-y-8">
@@ -319,7 +332,7 @@ export default function DoctorSchedulePage() {
                     <h1 className="text-3xl font-bold gradient-text">Manage Schedule</h1>
                     <p className="text-gray-500 mt-1 text-sm">View and manage your consultation hours across all clinics</p>
                 </div>
-                <PremiumButton onClick={() => {
+                <PremiumButton className="w-full sm:w-auto" onClick={() => {
                     setEditingScheduleId(null);
                     setScheduleForm({
                         clinic_id: clinics[0]?.clinic_id ? String(clinics[0].clinic_id) : "",
@@ -439,7 +452,7 @@ export default function DoctorSchedulePage() {
                                                                         initial={{ opacity: 0 }}
                                                                         animate={{ opacity: 1 }}
                                                                         exit={{ opacity: 0 }}
-                                                                        className={`flex items-center gap-4 px-5 py-3 group/row ${rowHover} transition-colors`}>
+                                                                        className={`flex flex-wrap items-center gap-4 px-5 py-3 group/row ${rowHover} transition-colors`}>
 
                                                                         {/* Day badge */}
                                                                         <span className={`w-10 shrink-0 text-center text-xs font-bold py-1 rounded-lg border ${badge}`}>
@@ -447,7 +460,7 @@ export default function DoctorSchedulePage() {
                                                                         </span>
 
                                                                         {/* Time range */}
-                                                                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                                        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
                                                                             <Clock className={`w-3.5 h-3.5 shrink-0 ${color}`} />
                                                                             <span className={`text-sm font-semibold px-2.5 py-0.5 rounded-lg ${timeBg}`}>
                                                                                 {convertTo12Hour(item.start_time)}
@@ -471,7 +484,7 @@ export default function DoctorSchedulePage() {
                                                                         </span>
 
                                                                         {/* Actions */}
-                                                                        <div className="flex gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0">
+                                                                        <div className="flex gap-1 opacity-100 transition-opacity shrink-0 sm:opacity-0 sm:group-hover/row:opacity-100">
                                                                             <button
                                                                                 onClick={() => handleEditSchedule(item)}
                                                                                 className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
@@ -510,7 +523,7 @@ export default function DoctorSchedulePage() {
                         <motion.div
                             initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.95 }}
-                            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+                            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl sm:p-6">
                             <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
                                 <Calendar className="w-5 h-5 text-indigo-500" />
                                 {editingScheduleId ? "Edit Schedule Slot" : "Add New Schedule"}
@@ -546,7 +559,7 @@ export default function DoctorSchedulePage() {
                                 </div>
 
                                 {/* Times */}
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
                                         <input type="time" className="input-field" value={scheduleForm.start_time}
@@ -590,7 +603,7 @@ export default function DoctorSchedulePage() {
                                 </div>
                             )}
 
-                            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
+                            <div className="mt-6 flex flex-col-reverse gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end">
                                 <button onClick={() => { setShowAddModal(false); setMessage(null); }}
                                     className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors text-sm">
                                     Cancel

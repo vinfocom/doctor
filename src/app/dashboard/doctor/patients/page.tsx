@@ -62,16 +62,16 @@ export default function DoctorPatientsPage() {
         );
     }
 
-    return (
+        return (
         <div className="w-full">
-            <div className="flex justify-between items-center mb-10">
+            <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
-                    <h1 className="text-3xl font-bold text-gray-900">My Patients</h1>
+                    <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">My Patients</h1>
                     <p className="text-gray-500 mt-1 text-sm">View details of your patients</p>
                 </motion.div>
             </div>
 
-            <motion.div className="glass-card p-7" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+            <motion.div className="glass-card p-5 sm:p-7" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                 {patients.length === 0 ? (
                     <div className="text-center py-12">
                         <p className="text-4xl mb-3">Patients</p>

@@ -200,7 +200,7 @@ export default function DoctorDashboard() {
     ];
 
     return (
-        <div className="relative min-h-screen w-full p-8 max-w-7xl mx-auto space-y-8">
+        <div className="relative mx-auto min-h-screen w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
             {/* Background Gradients */}
             <div className="fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
                 <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] animate-pulse" />
@@ -208,10 +208,10 @@ export default function DoctorDashboard() {
             </div>
 
             <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-                <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
+                <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 sm:text-4xl">
                     {userRole === "CLINIC_STAFF" ? `Welcome, ${user.name}` : `Welcome Back, Dr. ${user.name}`}
                 </h1>
-                <p className="text-gray-500 mt-2 text-lg">
+                <p className="mt-2 text-base text-gray-500 sm:text-lg">
                     {userRole === "CLINIC_STAFF" ? "Here's your clinic appointment overview." : "Here's your practice overview."}
                 </p>
             </motion.div>
@@ -238,13 +238,13 @@ export default function DoctorDashboard() {
             {/* Recent Appointments */}
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.5 }}>
                 <GlassCard className="p-0 overflow-hidden border border-white/20 shadow-xl bg-white/40 backdrop-blur-md">
-                    <div className="flex items-center justify-between p-6 border-b border-gray-100/50">
-                        <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <div className="flex flex-col gap-3 border-b border-gray-100/50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+                        <h2 className="flex items-center gap-2 text-lg font-bold text-gray-800 sm:text-xl">
                             <Activity className="w-5 h-5 text-indigo-500" />
                             Recent Appointments
                         </h2>
                         <button
-                            className="px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-all hover:shadow-md"
+                            className="rounded-lg bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-600 transition-all hover:bg-indigo-100 hover:shadow-md sm:self-auto"
                             onClick={() => router.push("/dashboard/doctor/appointments")}
                         >
                             View All

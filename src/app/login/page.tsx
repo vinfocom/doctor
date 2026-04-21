@@ -210,7 +210,7 @@ export default function LoginPage() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94] }}
             >
-                <div className="glass-card p-10">
+                <div className="glass-card p-6 sm:p-8 md:p-10">
                     {/* Header */}
                     <motion.div
                         className="text-center mb-8"
@@ -297,54 +297,54 @@ export default function LoginPage() {
                                     <RefreshCw size={14} />
                                 </button>
                             </div>
-                            <div className="mb-3 flex items-center rounded-xl border border-indigo-100 bg-white px-4 py-3 shadow-sm">
-                                <div className="flex items-center pl-1">
-                                <Calculator size={20} className="text-indigo-600" />
-                                {challengeLoading ? (
-                                    <span className="ml-3 text-xl font-bold text-gray-800">Loading calculation...</span>
-                                ) : challengeQuestion ? (
-                                    <>
-                                        <span className="ml-3 mr-1 text-2xl font-bold text-gray-800">
-                                            {challengeQuestion.replace("?", "")}
-                                        </span>
-                                        {challengeAnswer === "" && !answerInputActive && !challengeVerified ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => setAnswerInputActive(true)}
-                                                className="ml-4 mr-1 flex h-12 w-24 items-center justify-center rounded-2xl border border-indigo-200 bg-white px-2"
-                                            >
-                                                <span className="text-2xl font-bold text-gray-400">?</span>
-                                            </button>
-                                        ) : (
-                                            <input
-                                                autoFocus={answerInputActive && !challengeVerified}
-                                                type="text"
-                                                inputMode="numeric"
-                                                maxLength={4}
-                                                className="ml-4 mr-1 h-12 w-24 rounded-2xl border border-indigo-200 bg-white px-2 text-center text-2xl font-bold text-gray-800 outline-none"
-                                                placeholder="?"
-                                                value={challengeAnswer}
-                                                onChange={(e) => {
-                                                    const next = e.target.value.slice(0, 4);
-                                                    setChallengeAnswer(next);
-                                                    if (next === "" && !challengeVerified) {
-                                                        setAnswerInputActive(false);
-                                                    }
-                                                }}
-                                                onBlur={() => {
-                                                    if (!challengeAnswer && !challengeVerified) {
-                                                        setAnswerInputActive(false);
-                                                    }
-                                                }}
-                                                disabled={challengeVerified}
-                                            />
-                                        )}
-                                    </>
-                                ) : (
-                                    <span className="ml-3 text-xl font-bold text-gray-800">Calculation unavailable</span>
-                                )}
+                            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-indigo-100 bg-white px-4 py-3 shadow-sm">
+                                <div className="flex min-w-0 flex-1 items-center gap-3 pl-1">
+                                    <Calculator size={20} className="shrink-0 text-indigo-600" />
+                                    {challengeLoading ? (
+                                        <span className="text-lg font-bold text-gray-800 sm:text-xl">Loading calculation...</span>
+                                    ) : challengeQuestion ? (
+                                        <>
+                                            <span className="whitespace-nowrap text-2xl font-bold text-gray-800">
+                                                {challengeQuestion.replace("?", "").trim()}
+                                            </span>
+                                            {challengeAnswer === "" && !answerInputActive && !challengeVerified ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setAnswerInputActive(true)}
+                                                    className="flex h-12 w-20 shrink-0 items-center justify-center rounded-2xl border border-indigo-200 bg-white px-2 sm:w-24"
+                                                >
+                                                    <span className="text-2xl font-bold text-gray-400">?</span>
+                                                </button>
+                                            ) : (
+                                                <input
+                                                    autoFocus={answerInputActive && !challengeVerified}
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    maxLength={4}
+                                                    className="h-12 w-20 shrink-0 rounded-2xl border border-indigo-200 bg-white px-2 text-center text-2xl font-bold text-gray-800 outline-none sm:w-24"
+                                                    placeholder="?"
+                                                    value={challengeAnswer}
+                                                    onChange={(e) => {
+                                                        const next = e.target.value.slice(0, 4);
+                                                        setChallengeAnswer(next);
+                                                        if (next === "" && !challengeVerified) {
+                                                            setAnswerInputActive(false);
+                                                        }
+                                                    }}
+                                                    onBlur={() => {
+                                                        if (!challengeAnswer && !challengeVerified) {
+                                                            setAnswerInputActive(false);
+                                                        }
+                                                    }}
+                                                    disabled={challengeVerified}
+                                                />
+                                            )}
+                                        </>
+                                    ) : (
+                                        <span className="text-lg font-bold text-gray-800 sm:text-xl">Calculation unavailable</span>
+                                    )}
                                 </div>
-                                <div className="ml-1 flex h-9 w-9 items-center justify-center">
+                                <div className="ml-auto flex h-9 w-9 shrink-0 items-center justify-center">
                                     {verifyingChallenge ? (
                                         <svg className="h-4 w-4 animate-spin text-indigo-600" viewBox="0 0 24 24" fill="none">
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />

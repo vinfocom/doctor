@@ -858,9 +858,13 @@ export default function LiveAppointmentsPage() {
 
                         <section className="grid grid-cols-1 items-start gap-2 px-1 py-1 md:grid-cols-2 md:gap-6 md:px-3">
                             <div className="min-w-0">
-                                <p className="whitespace-nowrap text-[1.4rem] leading-tight text-slate-900 sm:text-[1.8rem] lg:text-[2.2rem]">
+                                <p className="text-[1.25rem] leading-tight text-slate-900 sm:text-[1.8rem] lg:text-[2.2rem]">
                                     <span className="font-black">{doctorDisplayName}</span>
-                                    {doctorMeta ? <span className="ml-3 inline whitespace-nowrap text-[0.56em] font-normal text-slate-500">{doctorMeta}</span> : null}
+                                    {doctorMeta ? (
+                                        <span className="mt-1 block text-[0.56em] font-normal text-slate-500 sm:ml-3 sm:mt-0 sm:inline sm:whitespace-nowrap">
+                                            {doctorMeta}
+                                        </span>
+                                    ) : null}
                                 </p>
                             </div>
                             <div className="min-w-0 md:text-right">

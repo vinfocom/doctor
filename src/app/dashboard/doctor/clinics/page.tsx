@@ -460,14 +460,14 @@ export default function ClinicsPage() {
     const newGroups = groupByPeriod(formData.schedule.map((s, i) => ({ ...s, schedule_id: -(i + 1) })));
 
     return (
-        <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+        <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 animate-in fade-in duration-500 sm:px-6 sm:py-8">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h1 className="text-3xl font-bold gradient-text">Clinic Management</h1>
                     <p className="text-gray-500 mt-2">Manage your practice locations and schedules.</p>
                 </div>
-                <PremiumButton onClick={() => {
+                <PremiumButton className="w-full sm:w-auto" onClick={() => {
                     setEditingClinicId(null);
                     setFormData({ clinic_name: "", location: "", phone: "", status: "ACTIVE", barcode_url: "", schedule: [] });
                     resetScheduleForm();
@@ -505,12 +505,12 @@ export default function ClinicsPage() {
                         onChange={e => setSearchTerm(e.target.value)} className="input-field input-field-with-icon pr-4"
                         style={{ paddingLeft: "3rem" }} />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex w-full items-center gap-2 md:w-auto">
                     <Filter className="w-4 h-4 text-gray-500" />
                     <select
                         value={filterStatus}
                         onChange={e => setFilterStatus(e.target.value as "ALL" | "ACTIVE" | "INACTIVE")}
-                        className="input-field w-auto"
+                        className="input-field w-full md:w-auto"
                     >
                         <option value="ALL">All Status</option>
                         <option value="ACTIVE">Active</option>
@@ -608,12 +608,12 @@ export default function ClinicsPage() {
                                                                 const isDeleting = deletingScheduleId === sch.schedule_id;
                                                                 return (
                                                                     <div key={sch.schedule_id}
-                                                                        className={`flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${isEditing ? "bg-indigo-50/80" : "hover:bg-gray-50/80"}`}>
+                                                                        className={`flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm transition-colors ${isEditing ? "bg-indigo-50/80" : "hover:bg-gray-50/80"}`}>
                                                                         {/* Day badge */}
                                                                         <span className={`w-10 text-center py-0.5 rounded-md text-xs font-bold ${color} bg-white border`}>
                                                                             {getDayName(sch.day_of_week)}
                                                                         </span>
-                                                                        <span className="flex-1 text-gray-700 font-medium">
+                                                                        <span className="flex-1 min-w-[10rem] text-gray-700 font-medium">
                                                                             {convertTo12Hour(formatTime(sch.start_time))} – {convertTo12Hour(formatTime(sch.end_time))}
                                                                         </span>
                                                                         <span className="text-xs text-gray-400 whitespace-nowrap">
@@ -676,12 +676,12 @@ export default function ClinicsPage() {
                                                             const idx = -(sch.schedule_id as number) - 1;
                                                             const isEditing = editingNewIdx === idx;
                                                             return (
-                                                                <div key={idx}
-                                                                    className={`flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${isEditing ? "bg-indigo-50/80" : "hover:bg-gray-50/80"}`}>
+                                                                    <div key={idx}
+                                                                        className={`flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm transition-colors ${isEditing ? "bg-indigo-50/80" : "hover:bg-gray-50/80"}`}>
                                                                     <span className={`w-10 text-center py-0.5 rounded-md text-xs font-bold ${color} bg-white border`}>
                                                                         {getDayName(sch.day_of_week)}
                                                                     </span>
-                                                                    <span className="flex-1 text-gray-700 font-medium">
+                                                                    <span className="flex-1 min-w-[10rem] text-gray-700 font-medium">
                                                                         {sch.start_time} – {sch.end_time}
                                                                     </span>
                                                                     <span className="text-xs text-gray-400">{sch.slot_duration} min/slot</span>
@@ -788,7 +788,7 @@ export default function ClinicsPage() {
                         </div>
 
                         {/* Form actions */}
-                        <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+                        <div className="flex flex-col-reverse gap-3 border-t border-gray-100 pt-2 sm:flex-row sm:justify-end">
                             <PremiumButton type="button" variant="ghost" onClick={() => {
                                 setShowForm(false);
                                 setEditingClinicId(null);
@@ -812,7 +812,7 @@ export default function ClinicsPage() {
 
                     return (
                         <GlassCard key={clinic.clinic_id} className="group relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-                            <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2 z-10">
+                            <div className="absolute top-0 right-0 z-10 flex gap-2 p-4 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                                 <button onClick={() => handleEditClinic(clinic)}
                                     className="p-2 bg-white/80 backdrop-blur text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors shadow-sm"
                                     title="Edit clinic"><Pencil className="w-4 h-4" /></button>
@@ -894,9 +894,9 @@ export default function ClinicsPage() {
                                                         </div>
                                                         <div className="bg-white/70 divide-y divide-gray-100/50">
                                                             {(items as ScheduleEntry[]).map((sch, i) => (
-                                                                <div key={i} className="flex justify-between items-center px-3 py-1.5">
+                                                                <div key={i} className="flex items-center justify-between gap-3 px-3 py-1.5">
                                                                     <span className={`font-semibold ${color}`}>{getDayName(sch.day_of_week)}</span>
-                                                                    <span className="text-gray-500">
+                                                                    <span className="text-right text-gray-500">
                                                                         {convertTo12Hour(formatTime(sch.start_time))} – {convertTo12Hour(formatTime(sch.end_time))}
                                                                     </span>
                                                                 </div>

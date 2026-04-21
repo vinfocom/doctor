@@ -217,13 +217,15 @@ textarea:focus {
 .dashboard-layout {
   display: flex;
   min-height: 100vh;
+  min-width: 0;
 }
 
 .dashboard-sidebar {
+  display: none;
   width: 280px;
   padding: 2rem 1.5rem;
-  display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   border-right: 1px solid #e2e8f0;
   background: #ffffff;
   position: sticky;
@@ -234,8 +236,16 @@ textarea:focus {
 
 .dashboard-main {
   flex: 1;
+  min-width: 0;
   padding: 2rem 2.5rem;
   overflow-y: auto;
+}
+
+.dashboard-mobile-toggle,
+.dashboard-mobile-close,
+.dashboard-mobile-overlay,
+.dashboard-mobile-drawer {
+  display: block;
 }
 
 /* Sidebar links */
@@ -262,6 +272,20 @@ textarea:focus {
   background: rgba(79, 70, 229, 0.08);
   color: var(--primary);
   font-weight: 600;
+}
+
+.details-summary-reset {
+  list-style: none;
+  display: block;
+  appearance: none;
+}
+
+.details-summary-reset::-webkit-details-marker {
+  display: none;
+}
+
+.details-summary-reset::marker {
+  content: "";
 }
 
 /* Stat cards */
@@ -371,6 +395,37 @@ textarea:focus {
 .brand-logo-left:hover,
 .brand-logo-right:hover {
   transform: translateY(-1px);
+}
+
+@media (min-width: 900px) {
+  .dashboard-sidebar {
+    display: flex;
+  }
+
+  .dashboard-mobile-toggle,
+  .dashboard-mobile-close,
+  .dashboard-mobile-overlay,
+  .dashboard-mobile-drawer {
+    display: none !important;
+  }
+}
+
+@media (max-width: 899px) {
+  .dashboard-main {
+    padding: 4.75rem 1rem 1.25rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .data-table th {
+    padding: 0.65rem 0.75rem;
+    font-size: 0.6875rem;
+  }
+
+  .data-table td {
+    padding: 0.75rem;
+    font-size: 0.8125rem;
+  }
 }
 
 /* Scrollbar */

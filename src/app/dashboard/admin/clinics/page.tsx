@@ -348,7 +348,7 @@ export default function AdminClinicsPage() {
             {/* Header — no Add button here, adding happens from within each doctor group */}
             <motion.div className="mb-6" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Clinic Management</h1>
+                    <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Clinic Management</h1>
                     <p className="text-gray-500 mt-1 text-sm">Manage clinics grouped by doctor</p>
                 </div>
             </motion.div>
@@ -386,7 +386,7 @@ export default function AdminClinicsPage() {
 
             {/* Search — fixed padding so icon and placeholder don't overlap */}
             <motion.div className="mb-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}>
-                <div className="relative max-w-md">
+                <div className="relative w-full max-w-md">
                     <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                     <input
                         type="text"
@@ -429,7 +429,7 @@ export default function AdminClinicsPage() {
                             <GlassCard className="overflow-hidden">
                                 {/* Doctor Header Row */}
                                 <div
-                                    className="flex items-center gap-4 cursor-pointer select-none hover:bg-gray-50/60 transition-colors px-6 py-4 rounded-t-2xl"
+                                    className="flex items-center gap-4 cursor-pointer select-none rounded-t-2xl px-4 py-4 transition-colors hover:bg-gray-50/60 sm:px-6"
                                     onClick={() => toggle(group.doctor.doctor_id)}
                                 >
                                     {/* Avatar */}
@@ -790,7 +790,7 @@ export default function AdminClinicsPage() {
                         <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4"
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                             <motion.div
-                                className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8 relative max-h-[90vh] overflow-y-auto"
+                                className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl sm:p-8"
                                 initial={{ scale: 0.92, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 30 }}
                                 onClick={(e) => e.stopPropagation()}
                             >
@@ -903,7 +903,7 @@ export default function AdminClinicsPage() {
                                         <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">{addError}</p>
                                     )}
 
-                                    <div className="flex justify-end gap-3 pt-2">
+                                    <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
                                         <PremiumButton type="button" variant="ghost" onClick={() => { setShowAdd(false); setAddDoctorLocked(false); }}>Cancel</PremiumButton>
                                         <PremiumButton type="submit" disabled={addSubmitting}>
                                             {addSubmitting ? "Saving…" : "Save Clinic"}
@@ -926,7 +926,7 @@ export default function AdminClinicsPage() {
                         <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4"
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                             <motion.div
-                                className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8 relative max-h-[90vh] overflow-y-auto"
+                                className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl sm:p-8"
                                 initial={{ scale: 0.92, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 30 }}
                                 onClick={(e) => e.stopPropagation()}
                             >
@@ -973,7 +973,7 @@ export default function AdminClinicsPage() {
                                         <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">{editError}</p>
                                     )}
 
-                                    <div className="flex justify-end gap-3 pt-2">
+                                    <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
                                         <PremiumButton type="button" variant="ghost" onClick={() => setEditClinic(null)}>Cancel</PremiumButton>
                                         <PremiumButton type="submit" disabled={editSubmitting}>
                                             {editSubmitting ? "Saving…" : "Update Clinic"}
@@ -1007,7 +1007,7 @@ export default function AdminClinicsPage() {
                                 <p className="text-sm text-gray-500 mb-6">
                                     Are you sure you want to delete <span className="font-semibold text-gray-700">{deleteClinic.clinic_name}</span>? This action cannot be undone.
                                 </p>
-                                <div className="flex gap-3">
+                                <div className="flex flex-col gap-3 sm:flex-row">
                                     <button onClick={() => setDeleteClinic(null)} className="flex-1 btn-secondary">Cancel</button>
                                     <button onClick={handleDelete} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl py-2.5 transition-colors">
                                         Yes, Delete

@@ -24,7 +24,7 @@ export function PremiumTable<T>({ columns, data, onRowClick, className }: Premiu
                             {columns.map((col, index) => (
                                 <th
                                     key={index}
-                                    className={cn("px-6 py-4 font-medium text-gray-500 uppercase tracking-wider text-xs", col.className)}
+                                    className={cn("px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500 sm:px-6 sm:py-4", col.className)}
                                 >
                                     {col.header}
                                 </th>
@@ -42,7 +42,7 @@ export function PremiumTable<T>({ columns, data, onRowClick, className }: Premiu
                                 )}
                             >
                                 {columns.map((col, colIndex) => (
-                                    <td key={colIndex} className="px-6 py-4 text-gray-600">
+                                    <td key={colIndex} className="px-4 py-3 text-gray-600 sm:px-6 sm:py-4">
                                         {typeof col.accessorKey === 'function'
                                             ? col.accessorKey(item)
                                             : (item[col.accessorKey] as React.ReactNode)
@@ -53,7 +53,7 @@ export function PremiumTable<T>({ columns, data, onRowClick, className }: Premiu
                         ))}
                         {data.length === 0 && (
                             <tr>
-                                <td colSpan={columns.length} className="px-6 py-8 text-center text-gray-400">
+                                <td colSpan={columns.length} className="px-4 py-8 text-center text-gray-400 sm:px-6">
                                     No data available
                                 </td>
                             </tr>

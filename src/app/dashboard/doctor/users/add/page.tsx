@@ -2,14 +2,19 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { UserPlus, ArrowLeft, Shield, Clock, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Shield, Clock, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+
+interface ClinicOption {
+    clinic_id: number;
+    clinic_name: string;
+}
 
 export default function AddUserPage() {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
-    const [clinics, setClinics] = useState<any[]>([]);
+    const [clinics, setClinics] = useState<ClinicOption[]>([]);
     const [showPassword, setShowPassword] = useState(false);
 
     const [formData, setFormData] = useState({
@@ -49,7 +54,7 @@ export default function AddUserPage() {
         e.preventDefault();
         setLoading(true);
 
-        let backendRole = formData.role.toUpperCase().replace(" ", "_");
+        const backendRole = formData.role.toUpperCase().replace(" ", "_");
 
         try {
             const res = await fetch("/api/doctor/staff", {
@@ -76,13 +81,13 @@ export default function AddUserPage() {
     };
 
     return (
-        <div className="p-6 max-w-5xl mx-auto space-y-6">
+        <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
             {/* Header */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-start gap-4">
                 <Link href="/dashboard/doctor/users" className="p-2 bg-white rounded-xl shadow-sm border border-gray-100 text-gray-500 hover:text-purple-600 transition-colors">
                     <ArrowLeft size={20} />
                 </Link>
-                <div>
+                <div className="min-w-0">
                     <h1 className="text-2xl font-bold text-gray-800">Add New User</h1>
                     <p className="text-gray-500 text-sm">Configure and add a new user to your system</p>
                 </div>
@@ -136,7 +141,7 @@ export default function AddUserPage() {
                                     required
                                     value={formData.password}
                                     onChange={handleChange}
-                                    placeholder="••••••••"
+                                    placeholder="********"
                                     className="w-full px-4 py-2 pr-10 bg-gray-50/50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
                                 />
                                 <button
@@ -271,18 +276,18 @@ export default function AddUserPage() {
                     </div>
                 </motion.div>
 
-                <div className="flex justify-end gap-4 pb-10">
+                <div className="flex flex-col-reverse gap-4 pb-10 sm:flex-row sm:justify-end">
                     <button
                         type="button"
                         onClick={() => router.back()}
-                        className="px-6 py-2 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors"
+                        className="rounded-xl border border-gray-200 px-6 py-2 text-gray-600 transition-colors hover:bg-gray-50"
                     >
                         Cancel
                     </button>
                     <button
                         type="submit"
                         disabled={loading}
-                        className="btn-primary px-8 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white shadow-md flex items-center justify-center min-w-[140px]"
+                        className="btn-primary flex min-h-11 items-center justify-center rounded-xl bg-purple-600 px-8 py-2 text-white shadow-md hover:bg-purple-700 sm:min-w-[140px]"
                     >
                         {loading ? (
                             <span className="flex items-center gap-2">

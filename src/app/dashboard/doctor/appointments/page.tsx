@@ -287,22 +287,22 @@ export default function DoctorAppointmentsPage() {
 
     return (
         <div className="w-full">
-            <div className="flex justify-between items-center mb-10">
+            <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
-                    <h1 className="text-3xl font-bold text-gray-900">Appointments</h1>
+                    <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Appointments</h1>
                     <p className="text-gray-500 mt-1 text-sm">
                         {userRole === "CLINIC_STAFF" ? "Viewing clinic appointments" : "Manage your patient appointments"}
                     </p>
                 </motion.div>
                 {/* Only DOCTOR or HAVE_ACCESS staff can add appointments */}
-                <div className="flex items-center gap-3">
+                <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end">
                     <motion.button
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={() => setIsExportOpen(true)}
-                        className="px-3 py-2 border border-gray-200 text-gray-700 rounded-lg shadow-sm font-medium flex items-center justify-center hover:bg-gray-50 transition-colors"
+                        className="inline-flex items-center justify-center rounded-lg border border-gray-200 px-3 py-2 font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
                         aria-label="Download"
                     >
                         <Download size={16} />
@@ -314,7 +314,7 @@ export default function DoctorAppointmentsPage() {
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
                             onClick={() => setIsModalOpen(true)}
-                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg shadow-lg shadow-indigo-200 font-medium flex items-center gap-2 hover:bg-indigo-700 transition-colors"
+                            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white shadow-lg shadow-indigo-200 transition-colors hover:bg-indigo-700"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                                 <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
@@ -384,7 +384,7 @@ export default function DoctorAppointmentsPage() {
                         )}
                     </div>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                        <div className="min-w-[180px]">
+                        <div className="w-full sm:min-w-[180px]">
                             <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
                             <select
                                 value={statusFilter}
@@ -465,7 +465,7 @@ export default function DoctorAppointmentsPage() {
                                 Time: {deleteAppointment.start_time ? convertTo12Hour(formatTime(deleteAppointment.start_time)) : "N/A"}
                             </div>
                         </div>
-                        <div className="flex justify-end gap-3 p-6">
+                        <div className="flex flex-col-reverse gap-3 p-6 sm:flex-row sm:justify-end">
                             <button
                                 type="button"
                                 onClick={() => setDeleteAppointment(null)}
@@ -511,18 +511,20 @@ export default function DoctorAppointmentsPage() {
                                 className="border border-gray-200 rounded-xl bg-white/70 shadow-sm"
                             >
                                 <details className="group">
-                                    <summary className="flex items-center justify-between gap-3 cursor-pointer px-5 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-700 flex items-center justify-center font-bold">
-                                                {group.name.charAt(0).toUpperCase()}
+                                    <summary className="details-summary-reset cursor-pointer px-5 py-4">
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                            <div className="flex min-w-0 items-center gap-3">
+                                                <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-700 flex items-center justify-center font-bold">
+                                                    {group.name.charAt(0).toUpperCase()}
+                                                </div>
+                                                <div className="truncate text-base font-medium text-gray-900">{group.name}</div>
                                             </div>
-                                            <div className="text-base font-medium text-gray-900">{group.name}</div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
-                                                {group.appointments.length} appointment{group.appointments.length !== 1 ? "s" : ""}
-                                            </span>
-                                            <ChevronDown size={16} className="text-gray-400 transition-transform group-open:rotate-180" />
+                                            <div className="flex items-center gap-3 self-start sm:self-auto">
+                                                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
+                                                    {group.appointments.length} appointment{group.appointments.length !== 1 ? "s" : ""}
+                                                </span>
+                                                <ChevronDown size={16} className="text-gray-400 transition-transform group-open:rotate-180" />
+                                            </div>
                                         </div>
                                     </summary>
                                     <div className="border-t border-gray-100 px-5 pb-5 pt-3">
@@ -566,7 +568,7 @@ export default function DoctorAppointmentsPage() {
                                                                 })()}
                                                             </td>
                                                             <td>
-                                                                <div className="flex gap-2">
+                                                                <div className="flex flex-wrap gap-2">
                                                                     {/* Only show action buttons for DOCTOR or HAVE_ACCESS staff */}
                                                                     {(userRole === "DOCTOR" || staffRole === "HAVE_ACCESS") && (
                                                                         <>

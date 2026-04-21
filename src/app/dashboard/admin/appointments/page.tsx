@@ -207,13 +207,13 @@ export default function AppointmentsPage() {
     ];
 
     return (
-        <div className="p-8 max-w-7xl mx-auto space-y-8">
+        <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold gradient-text">Appointments</h1>
+                    <h1 className="text-2xl font-bold gradient-text sm:text-3xl">Appointments</h1>
                     <p className="text-gray-500 mt-2">View and manage patient appointments.</p>
                 </div>
-                <div className="flex gap-3 items-center">
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
                     {/* Search — inline style overrides .input-field padding shorthand */}
                     <div className="relative flex items-center">
                         <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 z-10" />
@@ -222,7 +222,7 @@ export default function AppointmentsPage() {
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             placeholder="Search patients, doctors…"
-                            className="input-field w-64"
+                            className="input-field w-full sm:w-64"
                             style={{ paddingLeft: "2.25rem", paddingRight: "0.75rem" }}
                         />
                     </div>
@@ -291,7 +291,7 @@ export default function AppointmentsPage() {
                         )}
                     </div>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                        <div className="min-w-[180px]">
+                        <div className="w-full sm:min-w-[180px]">
                             <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
                             <select
                                 value={statusFilter}
