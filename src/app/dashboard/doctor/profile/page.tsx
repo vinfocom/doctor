@@ -6,7 +6,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import {
     User, Phone, MessageCircle, Loader2, Save, MapPin, Building2, Clock,
     Plus, Trash2, Camera, FileText, QrCode, Hash, BadgeCheck, GraduationCap,
-    Send, Upload, X, Eye, Shield
+    Send, Upload, X, Eye, Shield, Info
 } from "lucide-react";
 import Link from "next/link";
 import { formatTime, convertTo12Hour } from "@/lib/timeUtils";
@@ -34,6 +34,15 @@ interface DoctorWhatsappNumber {
     is_primary: boolean;
 }
 
+interface DoctorSmsService {
+    enabled: boolean;
+    status: "DISABLED" | "ACTIVE" | "EXHAUSTED";
+    totalCredits: number;
+    usedCredits: number;
+    remainingCredits: number;
+    displayText: string;
+}
+
 interface DoctorProfile {
     doctor_id: number;
     doctor_name: string;
@@ -54,6 +63,7 @@ interface DoctorProfile {
     profile_pic_url?: string | null;
     document_url?: string | null;
     num_clinics?: number | null;
+    sms_service?: DoctorSmsService | null;
 }
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -182,6 +192,44 @@ export default function DoctorProfilePage() {
 
     useEffect(() => { fetchProfile(); }, []);
 
+    useEffect(() => {
+        if (!profile?.doctor_id) return;
+
+        const refreshSmsSnapshot = async () => {
+            try {
+                const res = await fetch("/api/doctors/me", { cache: "no-store" });
+                if (!res.ok) return;
+
+                const data = await res.json();
+                const nextSms = data?.doctor?.sms_service ?? null;
+
+                setProfile((prev) => {
+                    if (!prev) return prev;
+                    return {
+                        ...prev,
+                        sms_service: nextSms,
+                    };
+                });
+            } catch (error) {
+                console.error("Error refreshing SMS balance:", error);
+            }
+        };
+
+        const intervalId = window.setInterval(refreshSmsSnapshot, 15000);
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "visible") {
+                void refreshSmsSnapshot();
+            }
+        };
+
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        return () => {
+            window.clearInterval(intervalId);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+        };
+    }, [profile?.doctor_id]);
+
     const fetchProfile = async () => {
         try {
             const res = await fetch("/api/doctors/me");
@@ -264,6 +312,7 @@ export default function DoctorProfilePage() {
         try {
             const profileData: Partial<DoctorProfile> = profile ? { ...profile } : {};
             delete profileData.clinics;
+            delete profileData.sms_service;
             const res = await fetch("/api/doctors/me", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
@@ -373,6 +422,28 @@ export default function DoctorProfilePage() {
                                     <p className="text-2xl font-bold text-indigo-600">{profile.num_clinics}</p>
                                 </div>
                             )}
+                            <div className="w-full border-t border-gray-100 pt-3">
+                                <div className="flex items-center justify-center gap-1.5">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold text-center">SMS Balance</p>
+                                    <div className="group relative inline-flex">
+                                        <Info className="h-3.5 w-3.5 text-gray-400 transition-colors group-hover:text-indigo-500" />
+                                        <div className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 w-52 -translate-x-1/2 rounded-xl bg-gray-900 px-3 py-2 text-[11px] font-medium leading-4 text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                                            These SMS credits are used for appointment booking confirmation messages.
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="mt-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-center">
+                                    <p className="text-lg font-bold text-indigo-700">{profile?.sms_service?.displayText || "0/0 left"}</p>
+                                    <span className={`mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${profile?.sms_service?.status === "ACTIVE"
+                                        ? "bg-emerald-100 text-emerald-700"
+                                        : profile?.sms_service?.status === "EXHAUSTED"
+                                            ? "bg-amber-100 text-amber-700"
+                                            : "bg-gray-100 text-gray-600"
+                                        }`}>
+                                        {profile?.sms_service?.status || "DISABLED"}
+                                    </span>
+                                </div>
+                            </div>
                         </GlassCard>
 
                         {/* Documents card */}

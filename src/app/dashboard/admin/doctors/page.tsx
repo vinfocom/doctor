@@ -4,10 +4,18 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { PremiumButton } from "@/components/ui/PremiumButton";
-import { Shield, UserPlus, X, Pencil, Trash2, AlertTriangle, UploadCloud, FileText, CheckCircle2, Plus, CircleMinus, Power, Smartphone, User, Bot, Building2, Stethoscope, GraduationCap, MapPin, BarChart3, Eye, EyeOff, Phone, Hash, FileDigit, ExternalLink } from "lucide-react";
+import { Shield, UserPlus, X, Pencil, Trash2, AlertTriangle, UploadCloud, FileText, CheckCircle2, Plus, CircleMinus, Power, Smartphone, User, Bot, Building2, Stethoscope, GraduationCap, MapPin, BarChart3, Eye, EyeOff, Phone, Hash, FileDigit, ExternalLink, MessageSquareText } from "lucide-react";
 
 /* ───────────────── Types ───────────────── */
 interface WhatsAppNum { id?: number; whatsapp_number: string }
+interface DoctorSmsService {
+    enabled: boolean;
+    status: "DISABLED" | "ACTIVE" | "EXHAUSTED";
+    totalCredits: number;
+    usedCredits: number;
+    remainingCredits: number;
+    displayText: string;
+}
 interface Doctor {
     doctor_id: number;
     doctor_name: string;
@@ -30,6 +38,7 @@ interface Doctor {
     status?: string | null;
     whatsapp_numbers?: WhatsAppNum[];
     user?: { email: string | null } | null;
+    sms_service?: DoctorSmsService | null;
 }
 
 const INITIAL_FORM = {
@@ -57,6 +66,33 @@ const getEffectiveStatus = (doc: Doctor) => {
         if (toStr && toStr < todayStr) return "INACTIVE";
     }
     return "ACTIVE";
+};
+
+const getSmsStatusTone = (status?: string | null) => {
+    if (status === "ACTIVE") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    if (status === "EXHAUSTED") return "bg-amber-50 text-amber-700 border-amber-200";
+    return "bg-gray-50 text-gray-600 border-gray-200";
+};
+
+const getSmsRowBadge = (sms?: DoctorSmsService | null) => {
+    if (!sms?.enabled) {
+        return {
+            label: "SMS Disabled",
+            className: "bg-red-50 text-red-600 border-red-200",
+        };
+    }
+
+    if (sms.status === "EXHAUSTED" || sms.remainingCredits <= 0) {
+        return {
+            label: "SMS Exhausted",
+            className: "bg-amber-50 text-amber-700 border-amber-200",
+        };
+    }
+
+    return {
+        label: "SMS Active",
+        className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    };
 };
 
 /* ───────────── Reusable upload component ───────────── */
@@ -186,12 +222,15 @@ export default function AdminDoctorsPage() {
         gst_number: "", pan_number: "", address: "", registration_no: "", education: "",
         chat_id: "", telegram_userid: "", num_clinics: "0", active_from: "", active_to: "",
         email: "", password: "",
+        sms_service_enabled: false, sms_recharge_credits: "0", sms_recharge_remarks: "",
     });
     const [editError, setEditError] = useState("");
     const [editSubmitting, setEditSubmitting] = useState(false);
     const [editWaNums, setEditWaNums] = useState<string[]>([""]);
     const [showCreatePassword, setShowCreatePassword] = useState(false);
     const [showEditPassword, setShowEditPassword] = useState(false);
+    const [smsToggleConfirmOpen, setSmsToggleConfirmOpen] = useState(false);
+    const [pendingSmsToggleValue, setPendingSmsToggleValue] = useState<boolean | null>(null);
 
     // ── Edit file uploads
     const editFileRef = useRef<HTMLInputElement>(null);
@@ -321,6 +360,9 @@ export default function AdminDoctorsPage() {
             active_to: toDateInput(doc.active_to),
             email: doc.user?.email || "",
             password: "", // Password is blank by default for security
+            sms_service_enabled: Boolean(doc.sms_service?.enabled),
+            sms_recharge_credits: "0",
+            sms_recharge_remarks: "",
         });
         setEditDocUrl(doc.document_url || ""); setEditDocFile(null); setEditUploadError("");
         setEditProfilePicUrl(doc.profile_pic_url || ""); setEditProfilePicFile(null); setEditProfilePicError("");
@@ -329,6 +371,25 @@ export default function AdminDoctorsPage() {
             : (doc.whatsapp_number ? [doc.whatsapp_number] : [""])
         );
         setEditError("");
+        setSmsToggleConfirmOpen(false);
+        setPendingSmsToggleValue(null);
+    };
+
+    const requestSmsToggleChange = (nextValue: boolean) => {
+        setPendingSmsToggleValue(nextValue);
+        setSmsToggleConfirmOpen(true);
+    };
+
+    const confirmSmsToggleChange = () => {
+        if (pendingSmsToggleValue === null) return;
+        setEditForm((prev) => ({ ...prev, sms_service_enabled: pendingSmsToggleValue }));
+        setSmsToggleConfirmOpen(false);
+        setPendingSmsToggleValue(null);
+    };
+
+    const cancelSmsToggleChange = () => {
+        setSmsToggleConfirmOpen(false);
+        setPendingSmsToggleValue(null);
     };
 
     /* ────── Submit edit ────── */
@@ -349,6 +410,9 @@ export default function AdminDoctorsPage() {
                     active_from: editForm.active_from || null,
                     active_to: editForm.active_to || null,
                     whatsapp_numbers: editWaNums.filter(n => n.trim()).map(n => ({ whatsapp_number: n.trim() })),
+                    sms_service_enabled: editForm.sms_service_enabled,
+                    sms_recharge_credits: Number(editForm.sms_recharge_credits || 0),
+                    sms_recharge_remarks: editForm.sms_recharge_remarks || null,
                 }),
             });
             const data = await res.json();
@@ -483,6 +547,7 @@ export default function AdminDoctorsPage() {
                             <tbody>
                                 {doctors.map((doc, i) => {
                                     const pending = getPendingFields(doc);
+                                    const smsBadge = getSmsRowBadge(doc.sms_service);
                                     return (
                                         <motion.tr
                                             key={doc.doctor_id}
@@ -499,7 +564,13 @@ export default function AdminDoctorsPage() {
                                                             {doc.doctor_name?.charAt(0)?.toUpperCase()}
                                                         </div>
                                                     )}
-                                                    <span className="text-gray-800 font-medium group-hover:text-indigo-600 group-hover:underline transition-colors">Dr. {doc.doctor_name}</span>
+                                                    <div className="min-w-0">
+                                                        <span className="block text-gray-800 font-medium group-hover:text-indigo-600 group-hover:underline transition-colors">Dr. {doc.doctor_name}</span>
+                                                        <span className={`mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${smsBadge.className}`}>
+                                                            <MessageSquareText size={12} />
+                                                            {smsBadge.label}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td>
@@ -654,6 +725,20 @@ export default function AdminDoctorsPage() {
                                                 <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
                                                     <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">Clinics</p>
                                                     <p className="text-sm font-medium text-gray-800">{viewDoc.num_clinics}</p>
+                                                </div>
+                                            )}
+                                            {viewDoc.sms_service && (
+                                                <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
+                                                    <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">SMS Service</p>
+                                                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${getSmsStatusTone(viewDoc.sms_service.status)}`}>
+                                                        {viewDoc.sms_service.status}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {viewDoc.sms_service && (
+                                                <div className="bg-gray-50 rounded-xl px-3.5 py-2.5">
+                                                    <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">SMS Balance</p>
+                                                    <p className="text-sm font-medium text-gray-800">{viewDoc.sms_service.displayText}</p>
                                                 </div>
                                             )}
                                             {viewDoc.whatsapp_numbers && viewDoc.whatsapp_numbers.length > 0 && (
@@ -924,6 +1009,89 @@ export default function AdminDoctorsPage() {
                                         </div>
                                     </div>
 
+                                    <div>
+                                        <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-3 flex items-center gap-1.5"><Smartphone size={14} /> SMS Service</p>
+                                        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-4">
+                                            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-sm font-semibold text-gray-900">Enable appointment booking SMS</p>
+                                                    <p className="text-xs text-gray-500">This does not affect appointment booking. It only controls whether SMS can be sent afterward.</p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    role="switch"
+                                                    aria-checked={editForm.sms_service_enabled}
+                                                    onClick={() => requestSmsToggleChange(!editForm.sms_service_enabled)}
+                                                    className={`inline-flex shrink-0 flex-col items-center gap-1 self-start rounded-2xl border px-2.5 py-2 text-[11px] font-semibold transition-colors ${editForm.sms_service_enabled
+                                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                        : "border-gray-200 bg-white text-gray-600"
+                                                        }`}
+                                                >
+                                                    <span
+                                                        className={`relative h-5 w-10 rounded-full transition-colors ${editForm.sms_service_enabled ? "bg-emerald-500" : "bg-gray-300"}`}
+                                                    >
+                                                        <span
+                                                            className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${editForm.sms_service_enabled ? "translate-x-5" : "translate-x-0"}`}
+                                                        />
+                                                    </span>
+                                                    <span>{editForm.sms_service_enabled ? "Active" : "Disabled"}</span>
+                                                </button>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                                <div className="rounded-xl bg-white px-3 py-3 border border-indigo-100">
+                                                    <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Current Status</p>
+                                                    <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${getSmsStatusTone(editDoc.sms_service?.status)}`}>
+                                                        {editDoc.sms_service?.status || "DISABLED"}
+                                                    </span>
+                                                </div>
+                                                <div className="rounded-xl bg-white px-3 py-3 border border-indigo-100">
+                                                    <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Balance</p>
+                                                    <p className="mt-1 text-sm font-semibold text-gray-900">{editDoc.sms_service?.displayText || "0/0 left"}</p>
+                                                </div>
+                                                <div className="rounded-xl bg-white px-3 py-3 border border-indigo-100">
+                                                    <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Quick Recharge</p>
+                                                    <div className="mt-2 flex flex-wrap gap-2">
+                                                        {[1000, 2000, 5000].map((credits) => (
+                                                            <button
+                                                                key={credits}
+                                                                type="button"
+                                                                onClick={() => setEditForm((prev) => ({ ...prev, sms_recharge_credits: String(credits) }))}
+                                                                className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                                                            >
+                                                                +{credits}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                                <div className="space-y-1">
+                                                    <label className="text-sm font-medium text-gray-700">Credits to add now</label>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        value={editForm.sms_recharge_credits}
+                                                        onChange={(e) => setEditForm({ ...editForm, sms_recharge_credits: e.target.value })}
+                                                        className="input-field"
+                                                        placeholder="0"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-sm font-medium text-gray-700">Recharge note</label>
+                                                    <input
+                                                        type="text"
+                                                        value={editForm.sms_recharge_remarks}
+                                                        onChange={(e) => setEditForm({ ...editForm, sms_recharge_remarks: e.target.value })}
+                                                        className="input-field"
+                                                        placeholder="Optional note for audit"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     {editError && <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{editError}</p>}
 
                                     <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
@@ -940,6 +1108,55 @@ export default function AdminDoctorsPage() {
             </AnimatePresence>
 
             {/* ═══════ Create Doctor Modal ═══════ */}
+            <AnimatePresence>
+                {smsToggleConfirmOpen && editDoc && pendingSmsToggleValue !== null && (
+                    <>
+                        <motion.div
+                            className="fixed inset-0 bg-black/40 z-[70] backdrop-blur-sm"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={cancelSmsToggleChange}
+                        />
+                        <motion.div
+                            className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                        >
+                            <motion.div
+                                className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+                                initial={{ scale: 0.94, y: 18 }}
+                                animate={{ scale: 1, y: 0 }}
+                                exit={{ scale: 0.94, y: 18 }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <h3 className="text-lg font-bold text-gray-900">
+                                    {pendingSmsToggleValue ? "Enable SMS service?" : "Disable SMS service?"}
+                                </h3>
+                                <p className="mt-2 text-sm text-gray-500">
+                                    {pendingSmsToggleValue
+                                        ? `SMS sending will be allowed for Dr. ${editDoc.doctor_name} when credits are available.`
+                                        : `SMS sending will be stopped for Dr. ${editDoc.doctor_name}. Appointment booking will continue normally.`}
+                                </p>
+                                <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                                    <button type="button" onClick={cancelSmsToggleChange} className="btn-secondary">
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={confirmSmsToggleChange}
+                                        className={`btn-primary ${pendingSmsToggleValue ? "" : "!bg-red-600 hover:!bg-red-700"}`}
+                                    >
+                                        {pendingSmsToggleValue ? "Yes, Enable" : "Yes, Disable"}
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+
             <AnimatePresence>
                 {showForm && (
                     <>

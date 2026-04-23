@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 import { cookies } from "next/headers";
+import { toDoctorSmsPayload } from "@/lib/doctorSms";
+import { isMissingPrismaTable } from "@/lib/prismaErrors";
 
 function jsonSafe<T>(value: T): T {
     return JSON.parse(
@@ -33,20 +35,43 @@ export async function GET(req: Request) {
     try {
         // Find doctor profile linked to this user
         // Note: user.id is verified, but we need to check if they have a doctor profile
-        const doctor = await prisma.doctors.findUnique({
-            where: { user_id: user.userId },
-            include: {
-                admin: {
-                    select: {
-                        user: {
-                            select: {
-                                email: true
+        let doctor: any;
+        try {
+            doctor = await prisma.doctors.findUnique({
+                where: { user_id: user.userId },
+                include: {
+                    admin: {
+                        select: {
+                            user: {
+                                select: {
+                                    email: true
+                                }
                             }
                         }
-                    }
-                },
+                    },
+                    sms_service: true,
+                }
+            });
+        } catch (error) {
+            if (!isMissingPrismaTable(error, "doctor_sms_service")) {
+                throw error;
             }
-        });
+
+            doctor = await prisma.doctors.findUnique({
+                where: { user_id: user.userId },
+                include: {
+                    admin: {
+                        select: {
+                            user: {
+                                select: {
+                                    email: true
+                                }
+                            }
+                        }
+                    },
+                }
+            });
+        }
 
         if (!doctor) {
             return NextResponse.json({ error: "Doctor profile not found" }, { status: 404 });
@@ -76,6 +101,7 @@ export async function GET(req: Request) {
                 ...doctor,
                 clinics,
                 whatsapp_numbers: whatsappNumbers,
+                sms_service: toDoctorSmsPayload(doctor.sms_service ?? null),
             }),
         });
     } catch (error) {

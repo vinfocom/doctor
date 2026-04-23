@@ -4,6 +4,8 @@ import prisma from '@/lib/prisma';
 import { verifyToken } from '@/lib/jwt';
 import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
+import { SmsServiceStatus } from '@/generated/prisma/enums';
+import { isMissingPrismaTable } from '@/lib/prismaErrors';
 
 export async function POST(req: Request) {
     const cookieStore = await cookies();
@@ -109,6 +111,24 @@ export async function POST(req: Request) {
                         num_clinics: specific_details?.num_clinics ? Number(specific_details.num_clinics) : 0,
                     }
                 });
+
+                try {
+                    await tx.doctor_sms_service.create({
+                        data: {
+                            doctor_id: doctor.doctor_id,
+                            sms_service_enabled: false,
+                            sms_service_status: SmsServiceStatus.DISABLED,
+                            sms_credit_total: 0,
+                            sms_credit_used: 0,
+                            current_pack_total: 0,
+                            current_pack_used: 0,
+                        },
+                    });
+                } catch (error) {
+                    if (!isMissingPrismaTable(error, "doctor_sms_service")) {
+                        throw error;
+                    }
+                }
 
                 // Create whatsapp_numbers rows if provided
                 const waNums = specific_details?.whatsapp_numbers;
