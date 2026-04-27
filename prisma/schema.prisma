@@ -62,6 +62,26 @@ model admins {
   patients              patients[]
 }
 
+model channel_accounts {
+  channel_account_id  BigInt   @id @default(autoincrement())
+  admin_id            Int?
+  channel             String   @db.VarChar(30)
+  provider            String   @db.VarChar(30)
+  account_label       String?  @db.VarChar(120)
+  sender_identity     String   @db.VarChar(191)
+  webhook_path_key    String?  @unique(map: "uq_channel_webhook_key") @db.VarChar(120)
+  webhook_secret_enc  String?  @db.Text
+  credential_json_enc String?  @db.LongText
+  status              String   @default("ACTIVE") @db.VarChar(20)
+  is_primary          Boolean  @default(false)
+  created_at          DateTime @default(now()) @db.Timestamp(0)
+  updated_at          DateTime @default(now()) @updatedAt @db.Timestamp(0)
+
+  @@unique([channel, provider, sender_identity], map: "uq_channel_provider_sender")
+  @@index([admin_id], map: "idx_channel_accounts_admin")
+  @@index([status], map: "idx_channel_accounts_status")
+}
+
 model doctors {
   doctor_id              Int                       @id @default(autoincrement())
   doctor_name            String?                   @db.VarChar(255)
@@ -86,6 +106,7 @@ model doctors {
   active_from            DateTime?                 @db.Date
   active_to              DateTime?                 @db.Date
   num_clinics            Int?                      @default(0)
+  slug                   String?                   @unique(map: "slug") @db.VarChar(255)
   announcement_campaigns announcement_campaigns[]
   appointments           appointment[]
   chat_messages          chat_messages[]
@@ -119,6 +140,23 @@ model doctor_whatsapp_numbers {
   @@index([doctor_id], map: "doctor_whatsapp_numbers_doctor_id_fkey")
 }
 
+model doctor_channel_bindings {
+  binding_id          BigInt   @id @default(autoincrement())
+  doctor_id           Int
+  clinic_id           Int?
+  channel_account_id  BigInt
+  status              String   @default("ACTIVE") @db.VarChar(20)
+  is_primary          Boolean  @default(true)
+  created_at          DateTime @default(now()) @db.Timestamp(0)
+  updated_at          DateTime @default(now()) @updatedAt @db.Timestamp(0)
+
+  @@unique([doctor_id, clinic_id, channel_account_id], map: "uq_doctor_clinic_account")
+  @@index([doctor_id], map: "idx_dcb_doctor")
+  @@index([clinic_id], map: "idx_dcb_clinic")
+  @@index([channel_account_id], map: "idx_dcb_channel_account")
+  @@index([doctor_id, clinic_id, is_primary, status], map: "idx_dcb_primary")
+}
+
 model doctor_sms_service {
   id                  Int                @id @default(autoincrement())
   doctor_id           Int                @unique
@@ -148,6 +186,20 @@ model doctor_sms_recharge_log {
   doctor         doctors   @relation(fields: [doctor_id], references: [doctor_id], onDelete: Cascade)
 
   @@index([doctor_id, created_at], map: "idx_doctor_sms_recharge_log_lookup")
+}
+
+model doctor_evolution_bindings {
+  binding_id                  BigInt   @id @default(autoincrement())
+  doctor_id                   Int
+  clinic_id                   Int?
+  evolution_instance_name     String   @unique(map: "uq_doctor_evolution_instance") @db.VarChar(191)
+  evolution_account_identity  String?  @unique(map: "uq_doctor_evolution_account") @db.VarChar(64)
+  status                      String   @default("ACTIVE") @db.VarChar(20)
+  created_at                  DateTime @default(now()) @db.Timestamp(0)
+  updated_at                  DateTime @default(now()) @updatedAt @db.Timestamp(0)
+
+  @@index([doctor_id], map: "idx_doctor_evolution_doctor")
+  @@index([status], map: "idx_doctor_evolution_status")
 }
 
 model doctor_sms_usage_log {
@@ -202,6 +254,7 @@ model patients {
   announcement_recipients announcement_campaign_recipients[]
   appointments            appointment[]
   chat_messages           chat_messages[]
+  password_otps           patient_password_otps[]
   whatsapp_numbers        patient_whatsapp_numbers[]
   admin                   admins                             @relation(fields: [admin_id], references: [admin_id])
   doctor                  doctors?                           @relation(fields: [doctor_id], references: [doctor_id])
@@ -226,10 +279,13 @@ model inbound_turn_queue {
   dead_at       DateTime? @db.DateTime(0)
   dead_reason   String?   @db.Text
   created_at    DateTime  @default(now()) @db.Timestamp(0)
-  updated_at    DateTime  @default(now()) @updatedAt @db.Timestamp(0)
+  updated_at    DateTime  @default(now()) @db.Timestamp(0)
+  channel_account_id BigInt?
+  source_channel String?   @db.VarChar(30)
 
   @@index([status, next_retry_at], map: "idx_inbound_turn_poll")
   @@index([locked_at, lock_owner], map: "idx_inbound_turn_lock")
+  @@index([channel_account_id], map: "idx_inbound_turn_channel_account")
 }
 
 model patient_whatsapp_numbers {
@@ -243,6 +299,28 @@ model patient_whatsapp_numbers {
   patient         patients @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade)
 
   @@index([patient_id], map: "patient_whatsapp_numbers_patient_id_fkey")
+}
+
+model patient_password_otps {
+  otp_id                   Int                        @id @default(autoincrement())
+  patient_id               Int
+  phone                    String                     @db.VarChar(20)
+  purpose                  patient_password_otp_purpose
+  otp_hash                 String                     @db.VarChar(255)
+  expires_at               DateTime                   @db.DateTime(0)
+  resend_after             DateTime?                  @db.DateTime(0)
+  used_at                  DateTime?                  @db.DateTime(0)
+  attempt_count            Int                        @default(0)
+  resend_count             Int                        @default(0)
+  verification_token       String?                    @db.VarChar(255)
+  verification_expires_at  DateTime?                  @db.DateTime(0)
+  created_at               DateTime                   @default(now()) @db.Timestamp(0)
+  updated_at               DateTime                   @default(now()) @db.Timestamp(0)
+  patient                  patients                   @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade)
+
+  @@index([patient_id], map: "patient_password_otps_patient_id_fkey")
+  @@index([phone, purpose, created_at], map: "idx_patient_password_otps_phone_purpose_created")
+  @@index([phone, purpose, used_at, expires_at], map: "idx_patient_password_otps_phone_purpose_active")
 }
 
 model appointment {
@@ -296,9 +374,14 @@ model appointment_notification_log {
   locked_at            DateTime?    @db.DateTime(0)
   next_retry_at        DateTime?    @db.DateTime(0)
   provider_message_sid String?      @db.VarChar(80)
+  channel_account_id   BigInt?
+  doctor_id            Int?
+  source_channel       String?      @db.VarChar(30)
   appointment          appointment? @relation(fields: [appointment_id], references: [appointment_id])
 
   @@index([appointment_id], map: "appointment_notification_log_appointment_id_fkey")
+  @@index([channel_account_id], map: "idx_appt_notif_channel_account")
+  @@index([doctor_id], map: "idx_appt_notif_doctor")
 }
 
 model doctor_leaves {
@@ -348,17 +431,24 @@ model conversation_sessions {
   in_edit_flow        Int      @db.TinyInt
   doctor_id           Int?
   admin_id            Int?
-  updated_at          DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  updated_at          DateTime @default(now()) @db.Timestamp(0)
   fsm_extra_json      String?  @db.Text
+  channel_account_id  BigInt?
+  source_channel      String?  @db.VarChar(30)
+
+  @@index([channel_account_id], map: "idx_conv_sessions_channel_account")
 }
 
 model inbound_message_sids {
-  message_sid String   @id @db.VarChar(255)
-  user_id     String   @db.VarChar(255)
-  body        String?  @db.Text
-  received_at DateTime @default(now()) @db.Timestamp(0)
+  message_sid         String   @id @db.VarChar(255)
+  user_id             String   @db.VarChar(255)
+  body                String?  @db.Text
+  received_at         DateTime @default(now()) @db.Timestamp(0)
+  channel_account_id  BigInt?
+  source_channel      String?  @db.VarChar(30)
 
   @@index([received_at], map: "idx_inbound_message_received")
+  @@index([channel_account_id], map: "idx_inbound_sids_channel_account")
 }
 
 model user_tokens {
@@ -438,7 +528,7 @@ model doctor_cache_invalidation_queue {
   lock_owner    String?   @db.VarChar(80)
   locked_at     DateTime? @db.DateTime(0)
   created_at    DateTime  @default(now()) @db.Timestamp(0)
-  updated_at    DateTime  @default(now()) @updatedAt @db.Timestamp(0)
+  updated_at    DateTime  @default(now()) @db.Timestamp(0)
 
   @@index([clinic_id], map: "idx_dcq_clinic")
   @@index([doctor_id], map: "idx_dcq_doc")
@@ -457,10 +547,16 @@ model message_delivery_status {
   error_message        String?  @db.Text
   payload_json         String?  @db.Text
   created_at           DateTime @default(now()) @db.Timestamp(0)
-  updated_at           DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  updated_at           DateTime @default(now()) @db.Timestamp(0)
+  channel_account_id   BigInt?
+  doctor_id            Int?
+  admin_id             Int?
 
   @@unique([provider, provider_message_sid], map: "uq_provider_sid")
   @@index([message_status, updated_at], map: "idx_delivery_status")
+  @@index([channel_account_id], map: "idx_delivery_status_channel_account")
+  @@index([doctor_id], map: "idx_delivery_status_doctor")
+  @@index([admin_id], map: "idx_delivery_status_admin")
 }
 
 model qr_walkin_queue {
@@ -476,7 +572,7 @@ model qr_walkin_queue {
   status         String    @default("WAITING") @db.VarChar(20)
   source_channel String    @default("qr") @db.VarChar(20)
   created_at     DateTime? @default(now()) @db.Timestamp(0)
-  updated_at     DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  updated_at     DateTime? @default(now()) @db.Timestamp(0)
 
   @@unique([doctor_id, clinic_id, queue_date, phone, status], map: "uq_qr_waiting_phone")
   @@index([doctor_id, clinic_id, queue_date, status, queue_position], map: "idx_qr_waiting_lookup")
@@ -558,6 +654,11 @@ enum PatientStatus {
 enum PatientProfileType {
   SELF
   OTHER
+}
+
+enum patient_password_otp_purpose {
+  SET_PASSWORD_FIRST_TIME
+  RESET_PASSWORD
 }
 
 enum users_role {
