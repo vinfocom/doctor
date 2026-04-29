@@ -94,6 +94,7 @@ export async function GET(req: Request) {
                         phone: true,
                         specialization: true,
                         profile_pic_url: true,
+                        status: true,
                     },
                 },
             },
@@ -104,6 +105,7 @@ export async function GET(req: Request) {
         const doctors = [];
         for (const appt of appointments) {
             if (!appt.doctor_id || !appt.doctor || seen.has(appt.doctor_id)) continue;
+            if (String(appt.doctor.status || "").toUpperCase() === "INACTIVE") continue;
             if (appt.patient_id != null && !groupedPatientIdsSet.has(appt.patient_id)) continue;
             seen.add(appt.doctor_id);
             doctors.push({

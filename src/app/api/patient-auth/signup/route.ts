@@ -8,7 +8,7 @@ import { validateLoginChallengeProof } from "@/lib/loginChallenge";
 
 const DEFAULT_PATIENT_ADMIN_ID = 1;
 
-type PatientAuthRow = {
+type SignupPatientRow = {
     patient_id: number;
     full_name: string | null;
     phone: string | null;
@@ -18,7 +18,6 @@ type PatientAuthRow = {
     profile_type: "SELF" | "OTHER";
     age: number | null;
     gender: string | null;
-    password: string | null;
 };
 
 function normalizePhone(value: string | null | undefined) {
@@ -36,21 +35,7 @@ function phonesMatch(left: string | null | undefined, right: string | null | und
     return false;
 }
 
-function toSafePatient(patient: PatientAuthRow) {
-    return {
-        patient_id: patient.patient_id,
-        full_name: patient.full_name,
-        phone: patient.phone,
-        doctor_id: patient.doctor_id,
-        admin_id: patient.admin_id,
-        booking_id: patient.booking_id,
-        profile_type: patient.profile_type,
-        age: patient.age,
-        gender: patient.gender,
-    };
-}
-
-async function findSelfPatientByPhone(phone: string): Promise<PatientAuthRow | null> {
+async function findSelfPatientByPhone(phone: string): Promise<SignupPatientRow | null> {
     const patients = await prisma.patients.findMany({
         where: {
             admin_id: DEFAULT_PATIENT_ADMIN_ID,
@@ -66,7 +51,6 @@ async function findSelfPatientByPhone(phone: string): Promise<PatientAuthRow | n
             profile_type: true,
             age: true,
             gender: true,
-            password: true,
         },
         orderBy: { patient_id: "desc" },
     });
@@ -80,28 +64,16 @@ export async function GET(req: NextRequest) {
         const phone = String(searchParams.get("phone") || "").trim();
 
         if (!phone) {
-            return NextResponse.json(
-                { error: "Phone number is required" },
-                { status: 400 }
-            );
+            return NextResponse.json({ exists: false, patient: null });
         }
 
         const patient = await findSelfPatientByPhone(phone);
-        if (!patient) {
-            return NextResponse.json({
-                exists: false,
-                hasPassword: false,
-                patient: null,
-            });
-        }
-
         return NextResponse.json({
-            exists: true,
-            hasPassword: Boolean(patient.password),
-            patient: toSafePatient(patient),
+            exists: Boolean(patient),
+            patient,
         });
     } catch (error) {
-        console.error("Patient login lookup error:", error);
+        console.error("Patient signup lookup error:", error);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
@@ -109,14 +81,48 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const phone = String(body?.phone || body?.identifier || "").trim();
+        const full_name = String(body?.full_name || "").trim();
+        const phone = String(body?.phone || "").trim();
         const password = String(body?.password || "").trim();
+        const confirmPassword = String(body?.confirmPassword || "").trim();
+        const gender = body?.gender == null ? null : String(body.gender).trim() || null;
+        const ageValue = body?.age;
         const challengeId = String(body?.challengeId || "").trim();
         const challengeVerificationToken = String(body?.challengeVerificationToken || "").trim();
 
-        if (!phone || !challengeId || !challengeVerificationToken) {
+        if (!full_name) {
+            return NextResponse.json({ error: "Full name is required" }, { status: 400 });
+        }
+
+        if (!phone) {
+            return NextResponse.json({ error: "Phone number is required" }, { status: 400 });
+        }
+
+        if (!password) {
+            return NextResponse.json({ error: "Password is required" }, { status: 400 });
+        }
+
+        if (!confirmPassword) {
+            return NextResponse.json({ error: "Confirm password is required" }, { status: 400 });
+        }
+
+        if (password.length < 6) {
             return NextResponse.json(
-                { error: "Phone number and verified calculation are required" },
+                { error: "Password must be at least 6 characters long" },
+                { status: 400 }
+            );
+        }
+
+        if (password !== confirmPassword) {
+            return NextResponse.json(
+                { error: "Password and confirm password must match" },
+                { status: 400 }
+            );
+        }
+
+        if (!challengeId || !challengeVerificationToken) {
+            return NextResponse.json(
+                { error: "Verified calculation is required" },
                 { status: 400 }
             );
         }
@@ -129,42 +135,57 @@ export async function POST(req: NextRequest) {
             const message =
                 challengeResult.reason === "expired"
                     ? "Calculation expired. Please generate a new one."
-                    : "Please verify the calculation before logging in.";
+                    : "Please verify the calculation before signing up.";
 
             return NextResponse.json({ error: message }, { status: 400 });
         }
 
-        const patient = await findSelfPatientByPhone(phone);
-        if (!patient) {
-            return NextResponse.json({ error: "Patient not found" }, { status: 404 });
-        }
-
-        if (!patient.password) {
+        const existingPatient = await findSelfPatientByPhone(phone);
+        if (existingPatient) {
             return NextResponse.json(
                 {
-                    error: "This account needs password setup before login.",
-                    requiresPasswordSetup: true,
+                    error: "This phone number is already linked to a patient account.",
+                    patient: existingPatient,
                 },
-                { status: 428 }
+                { status: 409 }
             );
         }
 
-        if (!password) {
-            return NextResponse.json(
-                { error: "Password is required" },
-                { status: 400 }
-            );
+        let parsedAge: number | null = null;
+        if (ageValue !== undefined && ageValue !== null && String(ageValue).trim() !== "") {
+            const ageNum = parseInt(String(ageValue), 10);
+            if (!Number.isNaN(ageNum) && ageNum > 0 && ageNum < 150) {
+                parsedAge = ageNum;
+            }
         }
 
-        const isPasswordValid = await bcrypt.compare(password, patient.password);
-        if (!isPasswordValid) {
-            return NextResponse.json(
-                { error: "Invalid phone number or password" },
-                { status: 401 }
-            );
-        }
+        const hashedPassword = await bcrypt.hash(password, 12);
 
-        const safePatient = toSafePatient(patient);
+        const patient = await prisma.patients.create({
+            data: {
+                full_name,
+                phone,
+                password: hashedPassword,
+                age: parsedAge,
+                gender,
+                admin_id: DEFAULT_PATIENT_ADMIN_ID,
+                doctor_id: null,
+                booking_id: null,
+                profile_type: "SELF",
+            },
+            select: {
+                patient_id: true,
+                full_name: true,
+                phone: true,
+                age: true,
+                gender: true,
+                admin_id: true,
+                doctor_id: true,
+                booking_id: true,
+                profile_type: true,
+            },
+        });
+
         const token = generateToken({
             userId: patient.patient_id,
             patientId: patient.patient_id,
@@ -173,12 +194,12 @@ export async function POST(req: NextRequest) {
 
         const response = NextResponse.json(
             {
-                message: "Patient login successful",
+                message: "Patient signup successful",
                 role: "PATIENT",
                 token,
-                patient: safePatient,
+                patient,
             },
-            { status: 200 }
+            { status: 201 }
         );
 
         response.cookies.set("token", token, {
@@ -191,7 +212,7 @@ export async function POST(req: NextRequest) {
 
         return response;
     } catch (error) {
-        console.error("Patient login error:", error);
+        console.error("Patient signup error:", error);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }

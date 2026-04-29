@@ -258,9 +258,12 @@ export async function POST(req: Request) {
 
         const doctor = await prisma.doctors.findUnique({
             where: { doctor_id },
-            select: { doctor_id: true, admin_id: true },
+            select: { doctor_id: true, admin_id: true, status: true },
         });
         if (!doctor || doctor.admin_id !== patient.admin_id) {
+            return NextResponse.json({ error: "Doctor not available for this patient" }, { status: 403 });
+        }
+        if (String(doctor.status || "").toUpperCase() === "INACTIVE") {
             return NextResponse.json({ error: "Doctor not available for this patient" }, { status: 403 });
         }
 
@@ -297,6 +300,14 @@ export async function POST(req: Request) {
             appointment_date: apptDate,
             start_time: startTimeObj,
         });
+        const existingAppointmentsCount = await prisma.appointment.count({
+            where: {
+                doctor_id,
+                clinic_id,
+                appointment_date: apptDate,
+            },
+        });
+        const patientBookingId = existingAppointmentsCount + 1;
 
         const targetProfileType = booking_for === "OTHER" ? "OTHER" : "SELF";
         let targetPatient = patient;
@@ -327,14 +338,6 @@ export async function POST(req: Request) {
                     return NextResponse.json({ error: "Other patient name is required" }, { status: 400 });
                 }
 
-                const maxBooking = await prisma.appointment.count({
-                    where: {
-                        doctor_id,
-                        clinic_id,
-                        appointment_date: apptDate,
-                    },
-                });
-
                 targetPatient = await prisma.patients.create({
                     data: {
                         admin_id: patient.admin_id,
@@ -342,7 +345,7 @@ export async function POST(req: Request) {
                         phone: patient.phone || null,
                         full_name: patient_name,
                         profile_type: "OTHER",
-                        booking_id: maxBooking + 1,
+                        booking_id: patientBookingId,
                     },
                     select: {
                         patient_id: true,
@@ -386,6 +389,19 @@ export async function POST(req: Request) {
                 },
             });
 
+            const patientUpdateData: { doctor_id: number; booking_id?: number; full_name?: string } = {
+                doctor_id,
+                booking_id: patientBookingId,
+            };
+            if (targetProfileType === "SELF" && patient_name && patient_name !== (patient.full_name || "")) {
+                patientUpdateData.full_name = patient_name;
+            }
+
+            await prisma.patients.update({
+                where: { patient_id: targetPatient.patient_id },
+                data: patientUpdateData,
+            }).catch(() => undefined);
+
             return NextResponse.json({ appointment: rescheduled, rescheduled_existing: true }, { status: 200 });
         }
 
@@ -420,12 +436,18 @@ export async function POST(req: Request) {
             sourceChannel: "app",
         });
 
+        const patientUpdateData: { doctor_id: number; booking_id?: number; full_name?: string } = {
+            doctor_id,
+            booking_id: patientBookingId,
+        };
         if (targetProfileType === "SELF" && patient_name && patient_name !== (patient.full_name || "")) {
-            await prisma.patients.update({
-                where: { patient_id: patient.patient_id },
-                data: { full_name: patient_name },
-            }).catch(() => undefined);
+            patientUpdateData.full_name = patient_name;
         }
+
+        await prisma.patients.update({
+            where: { patient_id: targetPatient.patient_id },
+            data: patientUpdateData,
+        }).catch(() => undefined);
 
         return NextResponse.json({ appointment, rescheduled_existing: false }, { status: 201 });
     } catch (error: any) {
