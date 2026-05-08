@@ -8,6 +8,8 @@ const ALLOWED_TYPES = new Set([
     "image/jpg",
     "image/png",
     "image/webp",
+    "image/heic",
+    "image/heif",
     "application/pdf",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
