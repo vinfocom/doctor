@@ -46,6 +46,7 @@ model users {
   clinic_staff clinic_staff?
   doctor       doctors?
   user_tokens  user_tokens[]
+  uploaded_prescriptions prescription_records[] @relation("prescription_uploaded_by_user")
 }
 
 model admins {
@@ -123,6 +124,7 @@ model doctors {
   admin                  admins                    @relation(fields: [admin_id], references: [admin_id])
   user                   users?                    @relation(fields: [user_id], references: [user_id])
   patients               patients[]
+  prescriptions          prescription_records[] @relation("prescription_record_doctor")
 
   @@index([admin_id], map: "doctors_admin_id_fkey")
 }
@@ -229,6 +231,7 @@ model clinics {
   admin        admins                   @relation(fields: [admin_id], references: [admin_id])
   doctor       doctors?                 @relation(fields: [doctor_id], references: [doctor_id])
   liveQueueAds live_queue_side_ads[]
+  prescriptions prescription_records[] @relation("prescription_record_clinic")
   schedules    doctor_clinic_schedule[]
   clinic_staff clinic_staff[]
 
@@ -255,6 +258,8 @@ model patients {
   appointments            appointment[]
   chat_messages           chat_messages[]
   password_otps           patient_password_otps[]
+  prescriptions           prescription_records[] @relation("prescription_record_patient")
+  uploaded_prescriptions  prescription_records[] @relation("prescription_uploaded_by_patient")
   whatsapp_numbers        patient_whatsapp_numbers[]
   admin                   admins                             @relation(fields: [admin_id], references: [admin_id])
   doctor                  doctors?                           @relation(fields: [doctor_id], references: [doctor_id])
@@ -345,12 +350,61 @@ model appointment {
   doctor                      doctors?                       @relation(fields: [doctor_id], references: [doctor_id])
   patient                     patients?                      @relation(fields: [patient_id], references: [patient_id])
   appointmentNotificationLogs appointment_notification_log[]
+  prescriptions               prescription_records[] @relation("prescription_record_appointment")
 
   @@unique([doctor_id, appointment_date, start_time])
   @@index([appointment_date])
   @@index([admin_id], map: "appointment_admin_id_fkey")
   @@index([clinic_id], map: "appointment_clinic_id_fkey")
   @@index([patient_id], map: "appointment_patient_id_fkey")
+}
+
+model prescription_records {
+  prescription_id         Int                      @id @default(autoincrement())
+  patient_id              Int
+  doctor_id               Int
+  clinic_id               Int?
+  appointment_id          Int?
+  uploaded_by_role        PrescriptionUploadRole
+  uploaded_by_user_id     Int?
+  uploaded_by_patient_id  Int?
+  note                    String?                  @db.VarChar(500)
+  page_count              Int                      @default(1)
+  status                  PrescriptionRecordStatus @default(ACTIVE)
+  created_at              DateTime                 @default(now()) @db.Timestamp(0)
+  updated_at              DateTime                 @default(now()) @updatedAt @db.Timestamp(0)
+  patient                 patients                 @relation("prescription_record_patient", fields: [patient_id], references: [patient_id], onDelete: Cascade)
+  doctor                  doctors                  @relation("prescription_record_doctor", fields: [doctor_id], references: [doctor_id], onDelete: Cascade)
+  clinic                  clinics?                 @relation("prescription_record_clinic", fields: [clinic_id], references: [clinic_id], onDelete: SetNull)
+  appointment             appointment?             @relation("prescription_record_appointment", fields: [appointment_id], references: [appointment_id], onDelete: SetNull)
+  uploaded_by_user        users?                   @relation("prescription_uploaded_by_user", fields: [uploaded_by_user_id], references: [user_id], onDelete: SetNull)
+  uploaded_by_patient     patients?                @relation("prescription_uploaded_by_patient", fields: [uploaded_by_patient_id], references: [patient_id], onDelete: SetNull)
+  pages                   prescription_pages[]
+
+  @@index([patient_id, doctor_id, created_at], map: "idx_prescription_patient_doctor_created")
+  @@index([doctor_id, created_at], map: "idx_prescription_doctor_created")
+  @@index([appointment_id], map: "idx_prescription_appointment")
+  @@index([clinic_id], map: "idx_prescription_clinic")
+  @@index([uploaded_by_user_id], map: "idx_prescription_uploaded_by_user")
+  @@index([uploaded_by_patient_id], map: "idx_prescription_uploaded_by_patient")
+}
+
+model prescription_pages {
+  prescription_page_id Int                   @id @default(autoincrement())
+  prescription_id      Int
+  page_number          Int
+  storage_key          String                @db.VarChar(1000)
+  file_url             String                @db.VarChar(1000)
+  mime_type            String?               @db.VarChar(100)
+  original_file_name   String?               @db.VarChar(255)
+  file_size_bytes      Int?
+  width                Int?
+  height               Int?
+  created_at           DateTime              @default(now()) @db.Timestamp(0)
+  prescription         prescription_records  @relation(fields: [prescription_id], references: [prescription_id], onDelete: Cascade)
+
+  @@unique([prescription_id, page_number], map: "uq_prescription_page_number")
+  @@index([prescription_id], map: "idx_prescription_pages_prescription")
 }
 
 model appointment_notification_log {
@@ -667,6 +721,18 @@ enum users_role {
   DOCTOR
   PATIENT
   CLINIC_STAFF
+}
+
+enum PrescriptionUploadRole {
+  PATIENT
+  DOCTOR
+  STAFF
+}
+
+enum PrescriptionRecordStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
 }
 
 enum QueueSideAdPosition {

@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 const getRequiredEnv = (key: string) => {
     const value = process.env[key];
@@ -134,4 +134,27 @@ export const uploadBufferToS3 = async ({
     }
 
     return { key, url: buildPublicUrl(key) };
+};
+
+export const deleteObjectFromS3 = async (key: string) => {
+    const { bucket } = getS3Config();
+    const client = getS3Client();
+
+    const command = new DeleteObjectCommand({
+        Bucket: bucket,
+        Key: key,
+    });
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+            await client.send(command);
+            return;
+        } catch (error) {
+            if (!isRetryableS3Error(error) || attempt === 3) {
+                throw error;
+            }
+
+            await wait(attempt * 400);
+        }
+    }
 };

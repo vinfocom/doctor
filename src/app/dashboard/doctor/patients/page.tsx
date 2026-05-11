@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
+import DoctorPrescriptionModal, { type PrescriptionModalTarget } from "@/components/DoctorPrescriptionModal";
 
 interface Patient {
     patient_id: number;
@@ -17,6 +18,8 @@ export default function DoctorPatientsPage() {
     const [, setUser] = useState<{ name: string } | null>(null);
     const [patients, setPatients] = useState<Patient[]>([]);
     const [loading, setLoading] = useState(true);
+    const [doctorId, setDoctorId] = useState<number | null>(null);
+    const [prescriptionTarget, setPrescriptionTarget] = useState<PrescriptionModalTarget | null>(null);
 
     const fetchData = useCallback(async () => {
         try {
@@ -33,6 +36,7 @@ export default function DoctorPatientsPage() {
             }
 
             setUser(meData.user);
+            setDoctorId(meData.user.doctor_id || meData.user.doctor?.doctor_id || null);
 
             if (patRes.ok) {
                 const data = await patRes.json();
@@ -97,7 +101,20 @@ export default function DoctorPatientsPage() {
                                                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white">
                                                     {pat.full_name?.charAt(0)?.toUpperCase() || "P"}
                                                 </div>
-                                                <span className="text-gray-800 font-medium">{pat.full_name || "N/A"}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (!doctorId) return;
+                                                        setPrescriptionTarget({
+                                                            patientId: pat.patient_id,
+                                                            doctorId,
+                                                            patientName: pat.full_name || "Patient",
+                                                        });
+                                                    }}
+                                                    className="text-left text-indigo-700 hover:text-indigo-900 hover:underline font-medium"
+                                                >
+                                                    {pat.full_name || "N/A"}
+                                                </button>
                                             </div>
                                         </td>
                                         <td className="text-gray-500">{pat.age ? `${pat.age} yrs` : "N/A"}</td>
@@ -127,6 +144,12 @@ export default function DoctorPatientsPage() {
                     </div>
                 )}
             </motion.div>
+            <DoctorPrescriptionModal
+                isOpen={Boolean(prescriptionTarget)}
+                onClose={() => setPrescriptionTarget(null)}
+                target={prescriptionTarget}
+                allowUpload
+            />
         </div>
     );
 }

@@ -34,6 +34,7 @@ export async function GET() {
                 },
                 doctor: {
                     select: {
+                        doctor_id: true,
                         status: true,
                         active_from: true,
                         active_to: true,
@@ -49,6 +50,7 @@ export async function GET() {
         // For CLINIC_STAFF, include staff-specific role in the response
         const responseUser = {
             ...user,
+            doctor_id: user.doctor?.doctor_id || null,
             staff_role: user.clinic_staff?.staff_role || null,
             staff_clinic_id: user.clinic_staff?.clinic_id || null,
             staff_doctor_id: user.clinic_staff?.doctor_id || null,
@@ -84,4 +86,3 @@ export async function GET() {
         );
     }
 }
-

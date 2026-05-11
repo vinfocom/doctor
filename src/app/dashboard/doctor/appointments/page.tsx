@@ -1,9 +1,10 @@
 "use client";
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { Check, UserX, CalendarSync, Trash2, X, Filter, RotateCcw, Stethoscope, User, Download, ChevronDown } from "lucide-react";
+import { Check, UserX, CalendarSync, Trash2, X, Filter, RotateCcw, Stethoscope, User, Download, ChevronDown, Upload, ImagePlus, ZoomIn, ZoomOut, FileText } from "lucide-react";
 import AppointmentExportModal from "@/components/AppointmentExportModal";
+import DoctorPrescriptionModal, { type PrescriptionModalTarget } from "@/components/DoctorPrescriptionModal";
 
 interface Appointment {
     appointment_id: number;
@@ -13,12 +14,52 @@ interface Appointment {
     status: string;
     cancelled_by?: string | null;
     rescheduled_by?: string | null;
-    patient: { full_name: string; phone: string; symptoms?: string; booking_id?: number | null } | null;
+    patient: { patient_id?: number; full_name: string; phone: string; symptoms?: string; booking_id?: number | null } | null;
     clinic?: { clinic_id: number; clinic_name: string } | null;
     appointment_date: string;
     start_time: string;
     end_time: string;
     doctor_id: number;
+}
+
+interface PrescriptionPageItem {
+    prescription_page_id: number;
+    page_number: number;
+    storage_key: string;
+    file_url: string;
+    mime_type: string | null;
+    original_file_name: string | null;
+    file_size_bytes: number | null;
+    width: number | null;
+    height: number | null;
+    created_at: string;
+}
+
+interface PrescriptionRecordItem {
+    prescription_id: number;
+    patient_id: number;
+    doctor_id: number;
+    clinic_id: number | null;
+    appointment_id: number | null;
+    uploaded_by_role: "PATIENT" | "DOCTOR" | "STAFF";
+    uploaded_by_user_id: number | null;
+    uploaded_by_patient_id: number | null;
+    note: string | null;
+    page_count: number;
+    status: "ACTIVE" | "ARCHIVED" | "DELETED";
+    created_at: string;
+    updated_at: string;
+    pages: PrescriptionPageItem[];
+    uploaded_by_user?: {
+        user_id: number;
+        name?: string | null;
+        email?: string | null;
+    } | null;
+    uploaded_by_patient?: {
+        patient_id: number;
+        full_name?: string | null;
+        phone?: string | null;
+    } | null;
 }
 
 import AppointmentModal from "./AppointmentModal";
@@ -156,6 +197,7 @@ export default function DoctorAppointmentsPage() {
     const [customFrom, setCustomFrom] = useState("");
     const [customTo, setCustomTo] = useState("");
     const [isExportOpen, setIsExportOpen] = useState(false);
+    const [prescriptionTarget, setPrescriptionTarget] = useState<PrescriptionModalTarget | null>(null);
 
     const [userRole, setUserRole] = useState<string>("DOCTOR");
     const [staffRole, setStaffRole] = useState<string>("");
@@ -268,6 +310,19 @@ export default function DoctorAppointmentsPage() {
         const res = await fetch("/api/appointments", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         if (res.ok) setAppointments(appointments.map((a) => a.appointment_id === appointmentId ? { ...a, status, ...(status === 'CANCELLED' ? { cancelled_by: 'DOCTOR' } : {}) } : a));
     };
+
+    const openPrescriptionHistory = useCallback((apt: Appointment) => {
+        if (!apt.patient?.patient_id) {
+            return;
+        }
+        setPrescriptionTarget({
+            patientId: apt.patient.patient_id,
+            doctorId: apt.doctor_id,
+            patientName: apt.patient?.full_name || "Patient",
+            clinicId: apt.clinic?.clinic_id ?? null,
+            appointmentId: apt.appointment_id,
+        });
+    }, []);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [rescheduleAppointment, setRescheduleAppointment] = useState<Appointment | null>(null);
@@ -439,6 +494,12 @@ export default function DoctorAppointmentsPage() {
                     booking_for: rescheduleAppointment.booked_for === 'OTHER' ? 'OTHER' : 'SELF',
                 } : undefined}
             />
+            <DoctorPrescriptionModal
+                isOpen={Boolean(prescriptionTarget)}
+                onClose={() => setPrescriptionTarget(null)}
+                target={prescriptionTarget}
+                allowUpload={userRole === "DOCTOR" || staffRole === "HAVE_ACCESS"}
+            />
             {deleteAppointment && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
                     <motion.div
@@ -539,7 +600,13 @@ export default function DoctorAppointmentsPage() {
                                                                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-sky-600 flex items-center justify-center text-xs font-bold text-white">
                                                                         {apt.patient?.full_name?.charAt(0)?.toUpperCase()}
                                                                     </div>
-                                                                    <span className="text-gray-800 font-medium">{apt.patient?.full_name || "N/A"}</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => openPrescriptionHistory(apt)}
+                                                                        className="text-left text-indigo-700 hover:text-indigo-900 hover:underline font-medium"
+                                                                    >
+                                                                        {apt.patient?.full_name || "N/A"}
+                                                                    </button>
                                                                 </div>
                                                             </td>
                                                             <td className="text-gray-500 font-medium">
@@ -625,5 +692,3 @@ export default function DoctorAppointmentsPage() {
         </div>
     );
 }
-
-
