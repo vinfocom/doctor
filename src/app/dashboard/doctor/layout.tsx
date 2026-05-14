@@ -13,15 +13,30 @@ export default async function DoctorLayout({
     if (!session || (session.role !== "DOCTOR" && session.role !== "CLINIC_STAFF")) {
         redirect("/login");
     }
-    const userName = session.email?.split("@")[0] || (session.role === "DOCTOR" ? "Doctor" : "Staff");
+    const fallbackUserName = session.email?.split("@")[0] || (session.role === "DOCTOR" ? "Doctor" : "Staff");
+    let userName = fallbackUserName;
     let staffRole: string | null = null;
+
+    if (session.role === "DOCTOR") {
+        const doctor = await prisma.doctors.findUnique({
+            where: { user_id: session.userId },
+            select: { doctor_name: true },
+        });
+        userName = doctor?.doctor_name?.trim() || userName;
+    }
 
     if (session.role === "CLINIC_STAFF") {
         const staff = await prisma.clinic_staff.findUnique({
             where: { user_id: session.userId },
-            select: { staff_role: true },
+            select: {
+                staff_role: true,
+                users: {
+                    select: { name: true },
+                },
+            },
         });
         staffRole = staff?.staff_role || null;
+        userName = staff?.users?.name?.trim() || userName;
     }
 
     return (
