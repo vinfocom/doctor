@@ -10,9 +10,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.654.0",
     "@prisma/adapter-mariadb": "^7.4.0",
     "@prisma/client": "^7.4.0",
-    "@aws-sdk/client-s3": "^3.654.0",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "dotenv": "^17.3.1",
@@ -22,6 +22,7 @@
     "motion": "^12.34.0",
     "mysql2": "^3.17.1",
     "next": "16.1.6",
+    "nodemailer": "^7.0.13",
     "pdf-lib": "^1.17.1",
     "prisma": "^7.4.0",
     "react": "19.2.3",
