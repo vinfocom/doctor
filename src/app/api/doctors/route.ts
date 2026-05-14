@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import bcrypt from "bcryptjs";
 import { toDoctorSmsPayload, deriveDoctorSmsSnapshot } from "@/lib/doctorSms";
+import { sendDoctorApprovalEmail } from "@/lib/doctorApprovalEmail";
 import { isMissingPrismaTable } from "@/lib/prismaErrors";
 
 // GET: List doctors
@@ -189,6 +190,26 @@ export async function PATCH(req: NextRequest) {
             return NextResponse.json({ error: "doctor_id required" }, { status: 400 });
         }
 
+        const existingDoctor = await prisma.doctors.findUnique({
+            where: { doctor_id: Number(doctor_id) },
+            select: {
+                doctor_id: true,
+                status: true,
+                active_from: true,
+                active_to: true,
+                user_id: true,
+                user: {
+                    select: {
+                        email: true,
+                    },
+                },
+            },
+        });
+
+        if (!existingDoctor) {
+            return NextResponse.json({ error: "Doctor not found" }, { status: 404 });
+        }
+
         // Safely convert chat_id to BigInt; empty / non-numeric strings become null or ignored
         let chatIdValue: bigint | null | undefined = undefined;
         if (chat_id !== undefined) {
@@ -370,6 +391,25 @@ export async function PATCH(req: NextRequest) {
             JSON.parse(
                 JSON.stringify(value, (_key, v) => (typeof v === "bigint" ? v.toString() : v))
             ) as T;
+
+        const wasPending =
+            session.role === "SUPER_ADMIN" &&
+            existingDoctor.status === "INACTIVE" &&
+            existingDoctor.active_from == null &&
+            existingDoctor.active_to == null;
+        const isNowApproved =
+            full?.status === "ACTIVE" &&
+            full?.active_from != null &&
+            full?.active_to != null;
+        const approvalEmail = String(full?.user?.email || existingDoctor.user?.email || "").trim();
+
+        if (wasPending && isNowApproved && approvalEmail) {
+            try {
+                await sendDoctorApprovalEmail(approvalEmail);
+            } catch (error) {
+                console.error("Doctor approval email failed:", error);
+            }
+        }
 
         return NextResponse.json({
             message: "Doctor updated successfully",
