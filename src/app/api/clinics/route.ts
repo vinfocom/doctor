@@ -72,7 +72,7 @@ export async function GET(req: Request) {
             }
         }
 
-        // For clinic staff, filter to their assigned clinic
+        // For clinic staff, return their assigned clinic, or all clinics for their doctor when clinic_id is null.
         if (user.role === 'CLINIC_STAFF') {
             const staff = await prisma.clinic_staff.findUnique({
                 where: { user_id: user.userId },
@@ -89,9 +89,37 @@ export async function GET(req: Request) {
                     clinics: await attachClinicQrStorageUrls([assignedClinic]),
                     doctors: staff.doctors ? [staff.doctors] : [],
                 });
-            } else {
-                return NextResponse.json({ clinics: [], doctors: [] });
             }
+
+            if (staff && staff.doctor_id) {
+                const doctorClinics = await prisma.clinics.findMany({
+                    where: { doctor_id: staff.doctor_id },
+                    include: {
+                        doctor: {
+                            select: {
+                                doctor_id: true,
+                                doctor_name: true,
+                                profile_pic_url: true,
+                                num_clinics: true,
+                                specialization: true,
+                                education: true,
+                                status: true,
+                            }
+                        },
+                        schedules: {
+                            orderBy: { day_of_week: 'asc' }
+                        }
+                    },
+                    orderBy: { clinic_name: 'asc' }
+                });
+
+                return NextResponse.json({
+                    clinics: await attachClinicQrStorageUrls(doctorClinics),
+                    doctors: staff.doctors ? [staff.doctors] : [],
+                });
+            }
+
+            return NextResponse.json({ clinics: [], doctors: [] });
         }
 
         // For admins / super_admins — return all clinics with doctor info

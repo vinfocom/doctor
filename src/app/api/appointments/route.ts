@@ -321,7 +321,21 @@ export async function POST(request: Request) {
                         if (staff.staff_role === "VIEWER" || staff.staff_role === "Viewer") {
                             return NextResponse.json({ error: "Viewers cannot create appointments" }, { status: 403 });
                         }
-                        if (staff.clinic_id && clinic_id && staff.clinic_id !== Number(clinic_id)) {
+                        const requestedClinicId = Number(clinic_id);
+                        if (!Number.isFinite(requestedClinicId) || requestedClinicId <= 0) {
+                            return NextResponse.json({ error: "Clinic ID required" }, { status: 400 });
+                        }
+                        if (staff.clinic_id && staff.clinic_id !== requestedClinicId) {
+                            return NextResponse.json({ error: "Cannot create appointments for other clinics" }, { status: 403 });
+                        }
+                        const allowedClinic = await prisma.clinics.findFirst({
+                            where: {
+                                clinic_id: requestedClinicId,
+                                doctor_id: staff.doctor_id,
+                            },
+                            select: { clinic_id: true },
+                        });
+                        if (!allowedClinic) {
                             return NextResponse.json({ error: "Cannot create appointments for other clinics" }, { status: 403 });
                         }
                         doctor_id = staff.doctor_id;
@@ -586,10 +600,16 @@ export async function DELETE(request: Request) {
                 if (staff?.staff_role === "VIEWER" || staff?.staff_role === "Viewer") {
                     return NextResponse.json({ error: "Viewers cannot delete appointments" }, { status: 403 });
                 }
-                if (staff?.clinic_id) {
-                    const apt = await prisma.appointment.findUnique({ where: { appointment_id: Number(appointmentId) } });
-                    if (apt && apt.clinic_id !== staff.clinic_id) {
+                if (staff) {
+                    const apt = await prisma.appointment.findUnique({
+                        where: { appointment_id: Number(appointmentId) },
+                        select: { clinic_id: true, doctor_id: true },
+                    });
+                    if (staff.clinic_id && apt && apt.clinic_id !== staff.clinic_id) {
                         return NextResponse.json({ error: "Unauthorized for this clinic" }, { status: 403 });
+                    }
+                    if (!staff.clinic_id && apt && apt.doctor_id !== staff.doctor_id) {
+                        return NextResponse.json({ error: "Unauthorized for this doctor" }, { status: 403 });
                     }
                 }
             }
@@ -643,10 +663,16 @@ export async function PATCH(request: Request) {
             if (staff?.staff_role === "VIEWER" || staff?.staff_role === "Viewer") {
                 return NextResponse.json({ error: "Viewers cannot update appointments" }, { status: 403 });
             }
-            if (staff?.clinic_id) {
-                const apt = await prisma.appointment.findUnique({ where: { appointment_id: Number(appointmentId) } });
-                if (apt && apt.clinic_id !== staff.clinic_id) {
+            if (staff) {
+                const apt = await prisma.appointment.findUnique({
+                    where: { appointment_id: Number(appointmentId) },
+                    select: { clinic_id: true, doctor_id: true },
+                });
+                if (staff.clinic_id && apt && apt.clinic_id !== staff.clinic_id) {
                     return NextResponse.json({ error: "Unauthorized for this clinic" }, { status: 403 });
+                }
+                if (!staff.clinic_id && apt && apt.doctor_id !== staff.doctor_id) {
+                    return NextResponse.json({ error: "Unauthorized for this doctor" }, { status: 403 });
                 }
             }
         }

@@ -41,6 +41,8 @@ interface Doctor {
     sms_service?: DoctorSmsService | null;
 }
 
+type DoctorDisplayStatus = "ACTIVE" | "INACTIVE" | "NEED_APPROVAL";
+
 const INITIAL_FORM = {
     name: "", email: "", password: "", role: "DOCTOR", phone: "", whatsapp_number: "",
     gst_number: "", pan_number: "", address: "", registration_no: "", education: "", specialization: "",
@@ -66,6 +68,40 @@ const getEffectiveStatus = (doc: Doctor) => {
         if (toStr && toStr < todayStr) return "INACTIVE";
     }
     return "ACTIVE";
+};
+
+const getDoctorDisplayStatus = (doc: Doctor): DoctorDisplayStatus => {
+    if (doc.status === "INACTIVE" && !doc.active_from && !doc.active_to) {
+        return "NEED_APPROVAL";
+    }
+
+    return getEffectiveStatus(doc) === "ACTIVE" ? "ACTIVE" : "INACTIVE";
+};
+
+const getDoctorDisplayStatusBadge = (doc: Doctor) => {
+    const displayStatus = getDoctorDisplayStatus(doc);
+
+    if (displayStatus === "NEED_APPROVAL") {
+        return {
+            dotClassName: "bg-orange-500",
+            textClassName: "text-orange-600",
+            label: "Need Approval",
+        };
+    }
+
+    if (displayStatus === "INACTIVE") {
+        return {
+            dotClassName: "bg-red-500",
+            textClassName: "text-red-600",
+            label: "Inactive",
+        };
+    }
+
+    return {
+        dotClassName: "bg-green-500",
+        textClassName: "text-green-600",
+        label: "Active",
+    };
 };
 
 const getSmsStatusTone = (status?: string | null) => {
@@ -576,12 +612,12 @@ export default function AdminDoctorsPage() {
                                             <td>
                                                 <div className="flex items-center gap-2">
                                                     {(() => {
-                                                        const effectiveStatus = getEffectiveStatus(doc);
+                                                        const statusBadge = getDoctorDisplayStatusBadge(doc);
                                                         return (
                                                             <>
-                                                                <span className={`inline-block w-2.5 h-2.5 rounded-full ${effectiveStatus === "INACTIVE" ? "bg-red-500" : "bg-green-500"}`} />
-                                                                <span className={`text-xs font-semibold ${effectiveStatus === "INACTIVE" ? "text-red-600" : "text-green-600"}`}>
-                                                                    {effectiveStatus === "INACTIVE" ? "Inactive" : "Active"}
+                                                                <span className={`inline-block w-2.5 h-2.5 rounded-full ${statusBadge.dotClassName}`} />
+                                                                <span className={`text-xs font-semibold ${statusBadge.textClassName}`}>
+                                                                    {statusBadge.label}
                                                                 </span>
                                                             </>
                                                         );
@@ -668,12 +704,12 @@ export default function AdminDoctorsPage() {
                                         <h2 className="text-xl font-bold text-gray-900">Dr. {viewDoc.doctor_name}</h2>
                                         <div className="flex items-center gap-2 mt-1">
                                             {(() => {
-                                                const effectiveStatus = getEffectiveStatus(viewDoc);
+                                                const statusBadge = getDoctorDisplayStatusBadge(viewDoc);
                                                 return (
                                                     <>
-                                                        <span className={`inline-block w-2 h-2 rounded-full ${effectiveStatus === "INACTIVE" ? "bg-red-500" : "bg-green-500"}`} />
-                                                        <span className={`text-xs font-semibold ${effectiveStatus === "INACTIVE" ? "text-red-600" : "text-green-600"}`}>
-                                                            {effectiveStatus === "INACTIVE" ? "Inactive" : "Active"}
+                                                        <span className={`inline-block w-2 h-2 rounded-full ${statusBadge.dotClassName}`} />
+                                                        <span className={`text-xs font-semibold ${statusBadge.textClassName}`}>
+                                                            {statusBadge.label}
                                                         </span>
                                                     </>
                                                 );
@@ -850,10 +886,18 @@ export default function AdminDoctorsPage() {
                                     <Power size={26} className={getEffectiveStatus(statusToggleDoc) === "INACTIVE" ? "text-green-500" : "text-orange-500"} />
                                 </div>
                                 <h3 className="text-lg font-bold text-gray-900 mb-2">
-                                    {getEffectiveStatus(statusToggleDoc) === "INACTIVE" ? "Activate" : "Deactivate"} Doctor?
+                                    {getEffectiveStatus(statusToggleDoc) === "INACTIVE"
+                                        ? getDoctorDisplayStatus(statusToggleDoc) === "NEED_APPROVAL"
+                                            ? "Approve Doctor?"
+                                            : "Activate Doctor?"
+                                        : "Deactivate Doctor?"}
                                 </h3>
                                 <p className="text-sm text-gray-500 mb-6">
-                                    Are you sure you want to {getEffectiveStatus(statusToggleDoc) === "INACTIVE" ? "activate" : "deactivate"}{" "}
+                                    Are you sure you want to {getEffectiveStatus(statusToggleDoc) === "INACTIVE"
+                                        ? getDoctorDisplayStatus(statusToggleDoc) === "NEED_APPROVAL"
+                                            ? "approve"
+                                            : "activate"
+                                        : "deactivate"}{" "}
                                     <span className="font-semibold text-gray-700">Dr. {statusToggleDoc.doctor_name}</span>?
                                     {getEffectiveStatus(statusToggleDoc) !== "INACTIVE" && (
                                         <span className="block mt-1 text-orange-500 font-medium">The doctor will not be able to log in while deactivated.</span>
@@ -879,7 +923,13 @@ export default function AdminDoctorsPage() {
                                             : "bg-orange-500 hover:bg-orange-600"
                                             }`}
                                     >
-                                        {statusToggling ? "Processing…" : statusToggleDoc.status === "INACTIVE" ? "Yes, Activate" : "Yes, Deactivate"}
+                                        {statusToggling
+                                            ? "Processing…"
+                                            : statusToggleDoc.status === "INACTIVE"
+                                                ? getDoctorDisplayStatus(statusToggleDoc) === "NEED_APPROVAL"
+                                                    ? "Yes, Approve"
+                                                    : "Yes, Activate"
+                                                : "Yes, Deactivate"}
                                     </button>
                                 </div>
                             </motion.div>

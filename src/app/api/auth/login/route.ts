@@ -56,8 +56,14 @@ export async function POST(req: NextRequest) {
                 select: { status: true, active_from: true, active_to: true },
             });
             if (doctor?.status === "INACTIVE") {
+                const isPendingApproval = !doctor.active_from && !doctor.active_to;
+
                 return NextResponse.json(
-                    { error: "Your account has been deactivated. Please contact the administrator." },
+                    {
+                        error: isPendingApproval
+                            ? "We're reviewing your doctor profile. You can sign in once your account is approved."
+                            : "Your doctor account is inactive. Please contact the administrator.",
+                    },
                     { status: 403 }
                 );
             }
