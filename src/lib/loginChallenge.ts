@@ -45,7 +45,7 @@ function buildVerificationToken(challengeId: string, expiresAt: number) {
 }
 
 function pickOperator(): Operator {
-    const operators: Operator[] = ["+", "-", "*"];
+    const operators: Operator[] = ["+", "-"];
     return operators[Math.floor(Math.random() * operators.length)];
 }
 
