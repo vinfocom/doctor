@@ -74,7 +74,7 @@ const EMPTY_STATE: LiveResponse = {
     total_today: 0,
 };
 
-const ROTATE_INTERVAL_MS = 10000;
+const ROTATE_INTERVAL_MS = 8000;
 const ADS_REFRESH_INTERVAL_MS = 5000;
 const TICKER_SEPARATOR = " \u2022 ";
 const TICKER_MESSAGE =
@@ -317,7 +317,7 @@ function RotatingAppointmentGrid({
     items: QueueCard[];
     compact?: boolean;
 }) {
-    const pages = useMemo(() => splitIntoPages(items, 8), [items]);
+    const pages = useMemo(() => splitIntoPages(items, 6), [items]);
     const [pageIndex, setPageIndex] = useState(0);
     const [fading, setFading] = useState(false);
 
@@ -337,34 +337,34 @@ function RotatingAppointmentGrid({
 
     const normalizedPageIndex = pageIndex >= pages.length ? 0 : pageIndex % pages.length;
     const activePage = pages[normalizedPageIndex] || [];
-    const columns = splitColumns(activePage, 4);
+    const columns = splitColumns(activePage, 3);
     const isMissedSection = title.toLowerCase() === "missed";
     const sectionTone = isMissedSection
         ? "border-sky-200 bg-sky-50/65 text-sky-600"
         : "border-indigo-200 bg-indigo-50/55 text-indigo-500";
     const appointmentNumberColor = isMissedSection ? "text-red-500" : "text-indigo-600";
 
-    const numberColumnClass = compact ? "grid-cols-[clamp(3.4rem,5vw,4.6rem)_minmax(0,1fr)]" : "grid-cols-[72px_minmax(0,1fr)] sm:grid-cols-[88px_minmax(0,1fr)]";
+    const numberColumnClass = compact ? "grid-cols-[clamp(3.8rem,5.6vw,5rem)_minmax(0,1fr)]" : "grid-cols-[84px_minmax(0,1fr)] sm:grid-cols-[100px_minmax(0,1fr)]";
     const rowCardClass = compact
-        ? "min-h-[clamp(1.5rem,2.4vh,2rem)] gap-[clamp(0.3rem,0.5vw,0.45rem)] px-[clamp(0.5rem,0.8vw,0.7rem)] py-[clamp(0.15rem,0.28vh,0.24rem)]"
-        : "min-h-[48px] gap-2 px-2.5 sm:min-h-[56px] sm:px-3";
+        ? "min-h-[clamp(1.9rem,3vh,2.45rem)] gap-[clamp(0.35rem,0.6vw,0.5rem)] px-[clamp(0.6rem,0.95vw,0.8rem)] py-[clamp(0.2rem,0.34vh,0.3rem)]"
+        : "min-h-[56px] gap-2.5 px-3 sm:min-h-[64px] sm:px-3.5";
     const sectionPaddingClass = compact ? "px-[clamp(0.8rem,1.7vmin,1.1rem)] pb-[clamp(0.35rem,0.7vmin,0.55rem)] pt-[clamp(0.35rem,0.8vmin,0.55rem)]" : "p-3 sm:p-4 lg:p-5";
     const sectionHeaderClass = compact ? "mb-[clamp(0.1rem,0.28vh,0.2rem)]" : "mb-4";
     const sectionTitleClass = compact ? "text-[clamp(0.78rem,1.45vmin,1rem)] tracking-[0.18em]" : "text-[clamp(0.85rem,1.8vmin,1.15rem)] tracking-[0.24em]";
     const columnHeaderClass = compact
-        ? "px-2 pb-0 text-[clamp(0.52rem,0.9vmin,0.72rem)] tracking-[0.11em]"
-        : "px-2.5 pb-1.5 sm:px-3 sm:pb-2";
+        ? "px-2 pb-0 text-[clamp(0.58rem,1vmin,0.78rem)] tracking-[0.11em]"
+        : "px-3 pb-1.5 sm:px-3.5 sm:pb-2";
 
     const renderColumn = (columnItems: QueueCard[], columnKey: string) => (
         <div
                 className={`grid min-h-0 ${compact ? "mx-auto w-full max-w-[24rem] gap-[clamp(0.24rem,0.5vh,0.38rem)]" : "gap-2"}`}
-            style={{ gridTemplateRows: "auto repeat(4, minmax(0, 1fr))" }}
+            style={{ gridTemplateRows: "auto repeat(3, minmax(0, 1fr))" }}
         >
             <div className={`grid ${numberColumnClass} font-semibold uppercase text-slate-500 ${compact ? columnHeaderClass : `text-[clamp(0.62rem,1.15vmin,0.9rem)] tracking-[0.16em] ${columnHeaderClass}`}`}>
                 <span>No.</span>
                 <span>Patient Name</span>
             </div>
-            {Array.from({ length: 4 }).map((_, index) => {
+            {Array.from({ length: 3 }).map((_, index) => {
                 const appointment = columnItems[index];
                 return (
                     <div
@@ -373,9 +373,9 @@ function RotatingAppointmentGrid({
                     >
                         {appointment ? (
                             <>
-                                <div className={`${compact ? "text-[clamp(0.82rem,1.55vmin,1.1rem)] leading-none" : "text-xl sm:text-2xl"} font-black ${appointmentNumberColor}`}>{appointment.queue_number}</div>
+                                <div className={`${compact ? "text-[clamp(0.96rem,1.8vmin,1.28rem)] leading-none" : "text-[1.4rem] sm:text-[1.7rem]"} font-black ${appointmentNumberColor}`}>{appointment.queue_number}</div>
                                 <div className="min-w-0">
-                                    <p className={`truncate font-semibold text-slate-900 ${compact ? "text-[clamp(0.82rem,1.24vmin,1rem)] leading-tight" : "text-[1rem] sm:text-[1.08rem] lg:text-[1.18rem]"}`}>
+                                    <p className={`truncate font-semibold text-slate-900 ${compact ? "text-[clamp(0.92rem,1.38vmin,1.1rem)] leading-tight" : "text-[1.08rem] sm:text-[1.16rem] lg:text-[1.26rem]"}`}>
                                         {appointment.patient_name}
                                     </p>
                                 </div>
