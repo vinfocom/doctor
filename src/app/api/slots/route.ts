@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { verifyToken } from '@/lib/jwt';
 import { cookies } from 'next/headers';
 import { formatUTCDateToISTTime, getISTDayOfWeek, getISTNowYMD, parseISTDate } from '@/lib/appointmentDateTime';
+import { getDoctorFullDayLeave } from '@/lib/leaveAvailability';
 
 export async function GET(request: Request) {
     try {
@@ -27,20 +28,35 @@ export async function GET(request: Request) {
         const user = verifyToken(token);
         if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        // If doctor, auto-set doctorId
+        // If doctor or clinic staff, auto-set doctorId
         if (user.role === 'DOCTOR') {
             const doctor = await prisma.doctors.findUnique({ where: { user_id: user.userId }, select: { doctor_id: true } });
             if (doctor) doctorId = String(doctor.doctor_id);
+        } else if (user.role === 'CLINIC_STAFF') {
+            const staff = await prisma.clinic_staff.findUnique({ where: { user_id: user.userId }, select: { doctor_id: true } });
+            if (staff) doctorId = String(staff.doctor_id);
         }
 
         // 1. Get ALL Schedules for the specific day
         const [year, month, day] = date.split('-').map(Number);
         const dayOfWeek = getISTDayOfWeek(date);
+        const numericDoctorId = Number(doctorId);
+
+        if (numericDoctorId > 0) {
+            const leave = await getDoctorFullDayLeave(numericDoctorId, date);
+            if (leave) {
+                return NextResponse.json({
+                    slots: [],
+                    leaveBlocked: true,
+                    leaveReason: leave.reason,
+                });
+            }
+        }
 
         const schedules = await prisma.doctor_clinic_schedule.findMany({
             where: {
                 clinic_id: Number(clinicId),
-                doctor_id: doctorId ? Number(doctorId) : undefined,
+                doctor_id: numericDoctorId > 0 ? numericDoctorId : undefined,
                 day_of_week: dayOfWeek,
             }
         });
@@ -94,7 +110,8 @@ export async function GET(request: Request) {
 
             if (is12Hour) {
                 const [timePart, modifier] = t.split(' ');
-                let [hours, minutes] = timePart.split(':').map(Number);
+                const [rawHours, minutes] = timePart.split(':').map(Number);
+                let hours = rawHours;
                 if (hours === 12) {
                     hours = 0;
                 }
@@ -134,7 +151,7 @@ export async function GET(request: Request) {
             const start = parseTime(schedule.start_time);
             const end = parseTime(schedule.end_time);
 
-            let current = new Date(start);
+            const current = new Date(start);
 
             // Loop slots
             while (current < end) {

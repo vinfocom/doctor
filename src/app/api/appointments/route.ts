@@ -3,8 +3,9 @@ import prisma from '@/lib/prisma';
 import { verifyToken } from '@/lib/jwt';
 import { cookies } from 'next/headers';
 import { Prisma } from '@/generated/prisma/client';
-import { parseISTDate, parseISTTimeToUTCDate } from '@/lib/appointmentDateTime';
+import { formatDateToISTYMD, parseISTDate, parseISTTimeToUTCDate } from '@/lib/appointmentDateTime';
 import { attachBookingIds, computeBookingIdForAppointment } from '@/lib/bookingId';
+import { getDoctorFullDayLeave } from '@/lib/leaveAvailability';
 
 const VALID_APPOINTMENT_STATUSES = new Set([
     'BOOKED',
@@ -372,6 +373,13 @@ export async function POST(request: Request) {
 
         // Construct Date objects
         const dateObj = parseISTDate(appointment_date);
+        const leave = await getDoctorFullDayLeave(Number(doctor_id), appointment_date);
+        if (leave) {
+            return NextResponse.json(
+                { error: leave.reason ? `Doctor is on leave for this date: ${leave.reason}` : "Doctor is on leave for this date" },
+                { status: 409 }
+            );
+        }
         const startTimeObj = parseISTTimeToUTCDate(start_time);
         const endTimeObj = parseISTTimeToUTCDate(end_time);
         const appointmentBookingId = await computeBookingIdForAppointment({
@@ -762,6 +770,16 @@ export async function PATCH(request: Request) {
         if (hasRescheduleFields) {
             const nextDate = appointment_date ? parseISTDate(appointment_date) : currentAppointment.appointment_date || null;
             const nextStart = start_time ? parseISTTimeToUTCDate(start_time) : currentAppointment.start_time || null;
+            const targetDateStr = appointment_date || (nextDate ? formatDateToISTYMD(nextDate) : "");
+            if (currentAppointment.doctor_id && targetDateStr) {
+                const leave = await getDoctorFullDayLeave(currentAppointment.doctor_id, targetDateStr);
+                if (leave) {
+                    return NextResponse.json(
+                        { error: leave.reason ? `Doctor is on leave for this date: ${leave.reason}` : "Doctor is on leave for this date" },
+                        { status: 409 }
+                    );
+                }
+            }
             const bookingId = await computeBookingIdForAppointment({
                 doctor_id: currentAppointment.doctor_id ?? null,
                 clinic_id: currentAppointment.clinic_id ?? null,

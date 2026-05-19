@@ -13,13 +13,35 @@ export async function GET(req: Request) {
         }
 
         const { searchParams } = new URL(req.url);
-        const doctorId = searchParams.get("doctorId");
+        let doctorId = searchParams.get("doctorId");
         const clinicId = searchParams.get("clinicId");
         const fromDateStr = searchParams.get("fromDate"); // optional, default today
         const daysParam = searchParams.get("days");       // optional, default 60
 
-        if (!doctorId || !clinicId) {
-            return NextResponse.json({ error: "doctorId and clinicId are required" }, { status: 400 });
+        if (!clinicId) {
+            return NextResponse.json({ error: "clinicId is required" }, { status: 400 });
+        }
+
+        if (!doctorId && session.role === "DOCTOR") {
+            const doctor = await prisma.doctors.findUnique({
+                where: { user_id: session.userId },
+                select: { doctor_id: true },
+            });
+            if (doctor?.doctor_id) {
+                doctorId = String(doctor.doctor_id);
+            }
+        } else if (!doctorId && session.role === "CLINIC_STAFF") {
+            const staff = await prisma.clinic_staff.findUnique({
+                where: { user_id: session.userId },
+                select: { doctor_id: true },
+            });
+            if (staff?.doctor_id) {
+                doctorId = String(staff.doctor_id);
+            }
+        }
+
+        if (!doctorId) {
+            return NextResponse.json({ error: "doctorId is required" }, { status: 400 });
         }
 
         const days = Math.min(Number(daysParam) || 60, 120); // cap at 120 days

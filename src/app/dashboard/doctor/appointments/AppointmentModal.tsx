@@ -39,6 +39,16 @@ const to12HourLabel = (time: string): string => {
     return /AM|PM/i.test(time) ? time : convertTo12Hour(time);
 };
 
+const formatAvailableDate = (date: string): string => {
+    if (!date) return "";
+    return new Date(`${date}T12:00:00`).toLocaleDateString("en-IN", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+    });
+};
+
 const emptyForm = {
     patient_phone: '',
     patient_name: '',
@@ -60,7 +70,10 @@ export default function AppointmentModal({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [formData, setFormData] = useState(emptyForm);
+    const [availableDates, setAvailableDates] = useState<string[]>([]);
+    const [loadingDates, setLoadingDates] = useState(false);
     const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+    const [availabilityNotice, setAvailabilityNotice] = useState('');
     const [matchedPatients, setMatchedPatients] = useState<MatchedPatient[]>([]);
     const [lookupLoading, setLookupLoading] = useState(false);
     const [lockedPatientProfile, setLockedPatientProfile] = useState<MatchedPatient | null>(null);
@@ -69,6 +82,8 @@ export default function AppointmentModal({
         if (isOpen) {
             fetchClinics();
             setError('');
+            setAvailabilityNotice('');
+            setAvailableDates([]);
             setAvailableSlots([]);
             setSlotDuration(30);
             setMatchedPatients([]);
@@ -84,8 +99,10 @@ export default function AppointmentModal({
             });
         } else {
             setFormData(emptyForm);
+            setAvailableDates([]);
             setAvailableSlots([]);
             setError('');
+            setAvailabilityNotice('');
             setMatchedPatients([]);
             setLockedPatientProfile(null);
             setLookupLoading(false);
@@ -159,6 +176,50 @@ export default function AppointmentModal({
         }
     };
 
+    const fetchAvailableDates = useCallback(async (selectedDate?: string) => {
+        if (!formData.clinic_id) {
+            setAvailableDates([]);
+            setLoadingDates(false);
+            return;
+        }
+
+        setLoadingDates(true);
+        try {
+            const params = new URLSearchParams({
+                clinicId: formData.clinic_id,
+            });
+            const res = await fetch(`/api/slots/available-dates?${params.toString()}`);
+
+            if (!res.ok) {
+                setAvailableDates([]);
+                setAvailabilityNotice('');
+                return;
+            }
+
+            const data = await res.json();
+            const nextAvailableDates = Array.isArray(data.availableDates) ? data.availableDates : [];
+            const isSelectedDateInvalid = Boolean(selectedDate) && !nextAvailableDates.includes(selectedDate);
+
+            setAvailableDates(nextAvailableDates);
+
+            if (isSelectedDateInvalid) {
+                setFormData((prev) => ({ ...prev, date: '', time: '' }));
+                setAvailableSlots([]);
+                setAvailabilityNotice('Doctor is on leave or unavailable on the previously selected date. Please choose another date.');
+            } else if (nextAvailableDates.length === 0) {
+                setAvailabilityNotice('No available dates for this clinic right now.');
+            } else {
+                setAvailabilityNotice('');
+            }
+        } catch (e) {
+            console.error(e);
+            setAvailableDates([]);
+            setAvailabilityNotice('');
+        } finally {
+            setLoadingDates(false);
+        }
+    }, [formData.clinic_id]);
+
     const fetchSlots = useCallback(async () => {
         if (!formData.date || !formData.clinic_id) return;
 
@@ -170,6 +231,13 @@ export default function AppointmentModal({
                 if (data.slot_duration) {
                     setSlotDuration(data.slot_duration);
                 }
+                if (data.leaveBlocked) {
+                    setAvailabilityNotice(data.leaveReason ? `Doctor is on leave for this date: ${data.leaveReason}` : 'Doctor is on leave for this date.');
+                } else if ((data.slots || []).length === 0) {
+                    setAvailabilityNotice('No slots available on selected date.');
+                } else {
+                    setAvailabilityNotice('');
+                }
             } else {
                 setAvailableSlots([]);
             }
@@ -180,6 +248,15 @@ export default function AppointmentModal({
     }, [formData.clinic_id, formData.date]);
 
     useEffect(() => {
+        if (formData.clinic_id) {
+            fetchAvailableDates(formData.date);
+        } else {
+            setAvailableDates([]);
+            setAvailabilityNotice('');
+        }
+    }, [fetchAvailableDates, formData.clinic_id, formData.date]);
+
+    useEffect(() => {
         if (formData.clinic_id && formData.date) {
             fetchSlots();
         }
@@ -187,6 +264,9 @@ export default function AppointmentModal({
 
     const handleClinicChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const clinicId = e.target.value;
+        setAvailableDates([]);
+        setAvailableSlots([]);
+        setAvailabilityNotice('');
         setFormData({ ...formData, clinic_id: clinicId, date: '', time: '' });
     };
 
@@ -277,6 +357,11 @@ export default function AppointmentModal({
                             {error && (
                                 <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-100">
                                     {error}
+                                </div>
+                            )}
+                            {availabilityNotice && (
+                                <div className="bg-amber-50 text-amber-700 p-3 rounded-lg text-sm border border-amber-100">
+                                    {availabilityNotice}
                                 </div>
                             )}
 
@@ -392,14 +477,28 @@ export default function AppointmentModal({
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                                    <input
-                                        type="date"
+                                    <select
                                         required
-                                        min={new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })}
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                                         value={formData.date}
-                                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                                    />
+                                        onChange={(e) => {
+                                            setAvailabilityNotice('');
+                                            setAvailableSlots([]);
+                                            setFormData({ ...formData, date: e.target.value, time: '' });
+                                        }}
+                                        disabled={!formData.clinic_id || loadingDates || availableDates.length === 0}
+                                    >
+                                        <option value="">
+                                            {loadingDates
+                                                ? 'Loading available dates...'
+                                                : availableDates.length > 0
+                                                  ? 'Select Date'
+                                                  : 'No Available Dates'}
+                                        </option>
+                                        {availableDates.map((date) => (
+                                            <option key={date} value={date}>{formatAvailableDate(date)}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
 
