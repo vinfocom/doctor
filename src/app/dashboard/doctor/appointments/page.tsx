@@ -85,7 +85,7 @@ const toISTDateInput = (value: string) => {
 const STATUS_LABELS: Record<string, string> = {
     BOOKED: "Booked",
     CANCELLED: "Cancelled",
-    COMPLETED: "Completed",
+    COMPLETED: "Visited",
     PENDING: "Not Visited",
 };
 

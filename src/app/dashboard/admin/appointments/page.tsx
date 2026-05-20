@@ -30,7 +30,7 @@ const STATUS_LABELS: Record<string, string> = {
     PENDING: "Not Visited",
     CONFIRMED: "Confirmed",
     CANCELLED: "Cancelled",
-    COMPLETED: "Completed",
+    COMPLETED: "Visited",
 };
 
 type DatePreset = "ALL" | "TODAY" | "TOMORROW" | "YESTERDAY" | "CUSTOM";
@@ -301,7 +301,7 @@ export default function AppointmentsPage() {
                                 <option value="ALL">All Statuses</option>
                                 <option value="BOOKED">Booked</option>
                                 <option value="PENDING">Not Visited</option>
-                                <option value="COMPLETED">Completed</option>
+                                <option value="COMPLETED">Visited</option>
                                 <option value="CANCELLED">Cancelled</option>
                             </select>
                         </div>
