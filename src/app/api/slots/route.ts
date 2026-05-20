@@ -84,7 +84,7 @@ export async function GET(request: Request) {
                 clinic_id: Number(clinicId),
                 appointment_date: { gte: apptStart, lt: apptEnd },
                 status: {
-                    in: ['PENDING', 'CONFIRMED', 'BOOKED']
+                    in: ['PENDING', 'CONFIRMED', 'BOOKED', 'COMPLETED']
                 }
             },
             select: {
