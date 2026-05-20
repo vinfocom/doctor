@@ -169,7 +169,13 @@ export default function LoginPage() {
 
             <div className="fixed top-6 inset-x-0 z-50 px-4 sm:px-6 lg:px-10">
                 <div className="mx-auto flex w-full max-w-[1440px] items-start justify-between gap-3 sm:gap-4 xl:gap-6">
-                    <div className="brand-logo-shell brand-logo-left shrink-0">
+                    <a
+                        href="https://vinfocom.co.in/"
+                        className="brand-logo-shell brand-logo-left shrink-0"
+                        aria-label="Visit Vinfocom website"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
                         <Image
                             src="/vinfocom-logo.png"
                             alt="Vinfocom logo"
@@ -178,8 +184,12 @@ export default function LoginPage() {
                             className="h-12 w-auto object-contain sm:h-14 lg:h-16"
                             priority
                         />
-                    </div>
-                    <div className="brand-logo-shell brand-logo-right shrink-0">
+                    </a>
+                    <a
+                        href="/"
+                        className="brand-logo-shell brand-logo-right shrink-0"
+                        aria-label="Go to Dapto home"
+                    >
                         <Image
                             src="/dapto-logo.png"
                             alt="Dapto logo"
@@ -188,7 +198,7 @@ export default function LoginPage() {
                             className="h-12 w-auto object-contain sm:h-14 lg:h-16"
                             priority
                         />
-                    </div>
+                    </a>
                 </div>
             </div>
 

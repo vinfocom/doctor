@@ -16,10 +16,12 @@ export default function Navbar({ className }: { className?: string }) {
       transition={{ duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94] }}
     >
       <div className="mx-auto flex w-full max-w-[1440px] items-start justify-between gap-3 sm:gap-4 xl:gap-6">
-        <Link
-          href="/"
+        <a
+          href="https://vinfocom.co.in/"
           className="brand-logo-shell brand-logo-left shrink-0"
-          aria-label="Vinfocom home"
+          aria-label="Visit Vinfocom website"
+          target="_blank"
+          rel="noopener noreferrer"
         >
           <Image
             src="/vinfocom-logo.png"
@@ -29,7 +31,7 @@ export default function Navbar({ className }: { className?: string }) {
             className="h-12 w-auto object-contain sm:h-14 lg:h-16"
             priority
           />
-        </Link>
+        </a>
 
         <div className="flex min-w-0 flex-1 justify-center px-1 sm:px-3 lg:px-6">
           <Menu setActive={setActive}>
