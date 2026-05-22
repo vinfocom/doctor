@@ -156,17 +156,8 @@ function formatDoctorName(value: string | null | undefined) {
 
 function formatDoctorMeta(education: string | null | undefined, specialization: string | null | undefined) {
     const cleanedEducation = String(education || "").trim();
-    const cleanedSpecialization = String(specialization || "").trim();
-
-    if (!cleanedEducation && !cleanedSpecialization) {
-        return "";
-    }
-
-    if (cleanedEducation && cleanedSpecialization) {
-        return `${cleanedEducation} (${cleanedSpecialization})`;
-    }
-
-    return cleanedEducation || `(${cleanedSpecialization})`;
+    void specialization;
+    return cleanedEducation;
 }
 
 function splitIntoPages<T>(items: T[], pageSize: number) {
