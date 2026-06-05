@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -39,6 +40,7 @@ interface Doctor {
     whatsapp_numbers?: WhatsAppNum[];
     user?: { email: string | null } | null;
     sms_service?: DoctorSmsService | null;
+    emr_prescription_enabled?: boolean;
 }
 
 type DoctorDisplayStatus = "ACTIVE" | "INACTIVE" | "NEED_APPROVAL";
@@ -130,6 +132,13 @@ const getSmsRowBadge = (sms?: DoctorSmsService | null) => {
         className: "bg-emerald-50 text-emerald-700 border-emerald-200",
     };
 };
+
+const getEmrRowBadge = (enabled?: boolean) => ({
+    label: enabled ? "EMR Pad On" : "EMR Pad Off",
+    className: enabled
+        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+        : "bg-gray-50 text-gray-600 border-gray-200",
+});
 
 /* ───────────── Reusable upload component ───────────── */
 function FileUploadBox({
@@ -258,6 +267,7 @@ export default function AdminDoctorsPage() {
         gst_number: "", pan_number: "", address: "", registration_no: "", education: "",
         chat_id: "", telegram_userid: "", num_clinics: "0", active_from: "", active_to: "",
         email: "", password: "",
+        emr_prescription_enabled: false,
         sms_service_enabled: false, sms_recharge_credits: "0", sms_recharge_remarks: "",
     });
     const [editError, setEditError] = useState("");
@@ -396,6 +406,7 @@ export default function AdminDoctorsPage() {
             active_to: toDateInput(doc.active_to),
             email: doc.user?.email || "",
             password: "", // Password is blank by default for security
+            emr_prescription_enabled: Boolean(doc.emr_prescription_enabled),
             sms_service_enabled: Boolean(doc.sms_service?.enabled),
             sms_recharge_credits: "0",
             sms_recharge_remarks: "",
@@ -446,6 +457,7 @@ export default function AdminDoctorsPage() {
                     active_from: editForm.active_from || null,
                     active_to: editForm.active_to || null,
                     whatsapp_numbers: editWaNums.filter(n => n.trim()).map(n => ({ whatsapp_number: n.trim() })),
+                    emr_prescription_enabled: editForm.emr_prescription_enabled,
                     sms_service_enabled: editForm.sms_service_enabled,
                     sms_recharge_credits: Number(editForm.sms_recharge_credits || 0),
                     sms_recharge_remarks: editForm.sms_recharge_remarks || null,
@@ -584,6 +596,7 @@ export default function AdminDoctorsPage() {
                                 {doctors.map((doc, i) => {
                                     const pending = getPendingFields(doc);
                                     const smsBadge = getSmsRowBadge(doc.sms_service);
+                                    const emrBadge = getEmrRowBadge(doc.emr_prescription_enabled);
                                     return (
                                         <motion.tr
                                             key={doc.doctor_id}
@@ -602,10 +615,16 @@ export default function AdminDoctorsPage() {
                                                     )}
                                                     <div className="min-w-0">
                                                         <span className="block text-gray-800 font-medium group-hover:text-indigo-600 group-hover:underline transition-colors">Dr. {doc.doctor_name}</span>
-                                                        <span className={`mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${smsBadge.className}`}>
-                                                            <MessageSquareText size={12} />
-                                                            {smsBadge.label}
-                                                        </span>
+                                                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                                            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${smsBadge.className}`}>
+                                                                <MessageSquareText size={12} />
+                                                                {smsBadge.label}
+                                                            </span>
+                                                            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${emrBadge.className}`}>
+                                                                <FileText size={12} />
+                                                                {emrBadge.label}
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </td>
@@ -649,6 +668,13 @@ export default function AdminDoctorsPage() {
                                                     >
                                                         <Pencil size={15} />
                                                     </motion.button>
+                                                    <Link
+                                                        href={`/dashboard/admin/doctors/${doc.doctor_id}/emr-layout`}
+                                                        className="p-2 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                                                        title="EMR Layout"
+                                                    >
+                                                        <FileText size={15} />
+                                                    </Link>
                                                     <motion.button
                                                         onClick={() => {
                                                             setStatusToggleDoc({ ...doc, status: getEffectiveStatus(doc) });
@@ -1056,6 +1082,37 @@ export default function AdminDoctorsPage() {
                                                 onFileChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f, setEditDocFile, setEditDocUrl, setEditUploading, setEditUploadError); }}
                                                 onClear={() => { setEditDocFile(null); setEditDocUrl(""); if (editFileRef.current) editFileRef.current.value = ""; }}
                                             />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-3 flex items-center gap-1.5"><FileText size={14} /> EMR Prescription Pad</p>
+                                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+                                            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-sm font-semibold text-gray-900">Enable structured EMR prescription pad</p>
+                                                    <p className="text-xs text-gray-500">This is separate from the existing image prescription upload flow. When enabled, the doctor gets a dedicated View Pad entry in appointments.</p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    role="switch"
+                                                    aria-checked={editForm.emr_prescription_enabled}
+                                                    onClick={() => setEditForm((prev) => ({ ...prev, emr_prescription_enabled: !prev.emr_prescription_enabled }))}
+                                                    className={`inline-flex shrink-0 flex-col items-center gap-1 self-start rounded-2xl border px-2.5 py-2 text-[11px] font-semibold transition-colors ${editForm.emr_prescription_enabled
+                                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                        : "border-gray-200 bg-white text-gray-600"
+                                                        }`}
+                                                >
+                                                    <span
+                                                        className={`relative h-5 w-10 rounded-full transition-colors ${editForm.emr_prescription_enabled ? "bg-emerald-500" : "bg-gray-300"}`}
+                                                    >
+                                                        <span
+                                                            className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${editForm.emr_prescription_enabled ? "translate-x-5" : "translate-x-0"}`}
+                                                        />
+                                                    </span>
+                                                    <span>{editForm.emr_prescription_enabled ? "Enabled" : "Disabled"}</span>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
 

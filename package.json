@@ -7,7 +7,8 @@
     "build": "npm run prisma:generate && next build",
     "prisma:generate": "prisma generate",
     "start": "NODE_ENV=production node server.js",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:emr-smoke": "node scripts/emr-regression-smoke.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.654.0",
@@ -15,14 +16,17 @@
     "@prisma/client": "^7.4.0",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
+    "dictionary-en": "^4.0.0",
     "dotenv": "^17.3.1",
     "exceljs": "^4.4.0",
+    "fuse.js": "^7.4.1",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.564.0",
     "motion": "^12.34.0",
     "mysql2": "^3.17.1",
     "next": "16.1.6",
     "nodemailer": "^7.0.13",
+    "nspell": "^2.1.5",
     "pdf-lib": "^1.17.1",
     "prisma": "^7.4.0",
     "react": "19.2.3",

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { getDoctorEmrEnabled } from "@/lib/emrFeatureGate";
 
 export async function GET() {
     try {
@@ -54,6 +55,7 @@ export async function GET() {
             staff_role: user.clinic_staff?.staff_role || null,
             staff_clinic_id: user.clinic_staff?.clinic_id || null,
             staff_doctor_id: user.clinic_staff?.doctor_id || null,
+            emr_prescription_enabled: false,
         };
 
         // Block inactive/expired doctors (token might be old)
@@ -75,6 +77,10 @@ export async function GET() {
                     return NextResponse.json({ error: "Your account access has expired." }, { status: 403 });
                 }
             }
+
+            responseUser.emr_prescription_enabled = doctor?.doctor_id
+                ? await getDoctorEmrEnabled(doctor.doctor_id)
+                : false;
         }
 
         return NextResponse.json({ user: responseUser });

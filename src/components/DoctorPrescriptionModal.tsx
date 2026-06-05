@@ -86,6 +86,17 @@ export default function DoctorPrescriptionModal({
         return () => setPortalReady(false);
     }, []);
 
+    React.useEffect(() => {
+        if (!isOpen) return;
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    }, [isOpen]);
+
     const closeViewer = useCallback(() => {
         setViewerOpen(false);
         setSelectedPrescription(null);
@@ -283,7 +294,7 @@ export default function DoctorPrescriptionModal({
 
     return createPortal(
         <>
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-2 sm:px-4">
+            <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm px-2 py-4 sm:px-4">
                 <motion.div
                     initial={{ opacity: 0, scale: 0.96 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -481,7 +492,7 @@ export default function DoctorPrescriptionModal({
             </div>
 
             {viewerOpen && selectedPrescription && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm px-2 sm:px-4">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/80 backdrop-blur-sm px-2 py-4 sm:px-4">
                     <motion.div
                         initial={{ opacity: 0, scale: 0.96 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -590,8 +601,8 @@ export default function DoctorPrescriptionModal({
             )}
 
             {selectedUploadPreview && (
-                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 px-2 sm:px-4">
-                    <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-slate-950 text-white shadow-2xl">
+                <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-black/85 px-2 py-4 sm:px-4">
+                    <div className="w-full max-w-3xl max-h-[92vh] overflow-hidden rounded-2xl bg-slate-950 text-white shadow-2xl">
                         <div className="flex items-start justify-between border-b border-white/10 px-4 py-4 sm:px-6">
                             <div>
                                 <h3 className="text-lg font-bold">Selected Page Preview</h3>

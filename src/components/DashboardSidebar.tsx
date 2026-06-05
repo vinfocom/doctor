@@ -21,9 +21,15 @@ interface SidebarProps {
     role: "SUPER_ADMIN" | "ADMIN" | "DOCTOR" | "CLINIC_STAFF";
     userName: string;
     staffRole?: string | null;
+    emrPrescriptionEnabled?: boolean;
 }
 
-export default function DashboardSidebar({ role, userName, staffRole }: SidebarProps) {
+export default function DashboardSidebar({
+    role,
+    userName,
+    staffRole,
+    emrPrescriptionEnabled = false,
+}: SidebarProps) {
     const pathname = usePathname();
     const router = useRouter();
     const [openPathname, setOpenPathname] = useState<string | null>(null);
@@ -87,6 +93,9 @@ export default function DashboardSidebar({ role, userName, staffRole }: SidebarP
             { href: "/dashboard/doctor/live", label: "Live", icon: <MonitorPlay size={20} /> },
             { href: "/dashboard/doctor/live/ads", label: "Live Ads", icon: <MonitorPlay size={20} /> },
             { href: "/dashboard/doctor/patients", label: "Patients", icon: <Users size={20} /> },
+            ...(emrPrescriptionEnabled
+                ? [{ href: "/dashboard/doctor/emr-layout", label: "EMR Layout", icon: <Building2 size={20} /> }]
+                : []),
             { href: "/dashboard/doctor/users", label: "Users", icon: <UserPlus size={20} /> },
             { href: "/dashboard/doctor/profile", label: "Profile", icon: <UserPlus size={20} /> },
 

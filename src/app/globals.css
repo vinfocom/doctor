@@ -59,6 +59,80 @@ body {
     radial-gradient(circle at 85% 30%, rgba(124, 58, 237, 0.04), transparent 25%);
 }
 
+.emr-print-surface {
+  box-sizing: border-box;
+  font-size: var(--emr-print-font-size, 14px);
+}
+
+.emr-print-surface .text-xs {
+  font-size: calc(var(--emr-print-font-size, 14px) * 0.78);
+}
+
+.emr-print-surface .text-sm {
+  font-size: var(--emr-print-font-size, 14px);
+}
+
+.emr-print-surface .text-base {
+  font-size: calc(var(--emr-print-font-size, 14px) * 1.12);
+}
+
+.emr-print-surface .text-lg {
+  font-size: calc(var(--emr-print-font-size, 14px) * 1.25);
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: auto;
+    min-height: auto;
+    margin: 0;
+    padding: 0;
+    background: #ffffff !important;
+    background-image: none !important;
+  }
+
+  .dashboard-sidebar,
+  .dashboard-mobile-toggle {
+    display: none !important;
+  }
+
+  .dashboard-layout,
+  .dashboard-main {
+    display: block !important;
+    width: auto !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .emr-a4-print-page {
+    width: 210mm;
+    min-height: auto;
+    height: auto;
+    margin: 0 auto;
+    background: #ffffff;
+    overflow: visible !important;
+  }
+
+  .emr-print-surface {
+    box-sizing: border-box;
+  }
+
+  .emr-print-section,
+  .emr-print-header-strip,
+  .emr-print-footer-strip,
+  .emr-print-table {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+}
+
 /* Glassmorphism Utilities */
 .glass-panel {
   background: var(--glass-bg);

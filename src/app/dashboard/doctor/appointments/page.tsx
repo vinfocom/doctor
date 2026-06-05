@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { Check, UserX, CalendarSync, Trash2, X, Filter, RotateCcw, Stethoscope, User, Download, ChevronDown, Upload, ImagePlus, ZoomIn, ZoomOut, FileText } from "lucide-react";
+import { Check, UserX, CalendarSync, Trash2, X, Filter, RotateCcw, Stethoscope, User, Download, ChevronDown, Upload, ImagePlus, ZoomIn, ZoomOut, FileText, Search } from "lucide-react";
 import AppointmentExportModal from "@/components/AppointmentExportModal";
 import DoctorPrescriptionModal, { type PrescriptionModalTarget } from "@/components/DoctorPrescriptionModal";
 
@@ -196,11 +196,13 @@ export default function DoctorAppointmentsPage() {
     const [statusFilter, setStatusFilter] = useState("ALL");
     const [customFrom, setCustomFrom] = useState("");
     const [customTo, setCustomTo] = useState("");
+    const [searchTerm, setSearchTerm] = useState("");
     const [isExportOpen, setIsExportOpen] = useState(false);
     const [prescriptionTarget, setPrescriptionTarget] = useState<PrescriptionModalTarget | null>(null);
 
     const [userRole, setUserRole] = useState<string>("DOCTOR");
     const [staffRole, setStaffRole] = useState<string>("");
+    const [emrPadEnabled, setEmrPadEnabled] = useState(false);
 
     const fetchData = useCallback(async () => {
         try {
@@ -247,6 +249,7 @@ export default function DoctorAppointmentsPage() {
             setUser(meData.user);
             setUserRole(meData.user.role);
             setStaffRole(meData.user.staff_role || "");
+            setEmrPadEnabled(Boolean(meData.user.emr_prescription_enabled));
             if (aptRes.ok) { const data = await aptRes.json(); setAppointments(data || []); }
         } catch { router.push("/login"); } finally { setLoading(false); }
     }, [router, datePreset, customFrom, customTo, statusFilter]);
@@ -291,9 +294,28 @@ export default function DoctorAppointmentsPage() {
         });
     }, [appointments]);
 
+    const filteredAppointments = useMemo(() => {
+        const query = searchTerm.trim().toLowerCase();
+        if (!query) {
+            return sortedAppointments;
+        }
+
+        const normalizedQueryPhone = query.replace(/\D/g, "");
+
+        return sortedAppointments.filter((appointment) => {
+            const normalizedName = String(appointment.patient?.full_name || "").toLowerCase();
+            const normalizedPhone = String(appointment.patient?.phone || "").replace(/\D/g, "");
+
+            return (
+                normalizedName.includes(query) ||
+                (normalizedQueryPhone.length > 0 && normalizedPhone.includes(normalizedQueryPhone))
+            );
+        });
+    }, [searchTerm, sortedAppointments]);
+
     const groupedByClinic = useMemo(() => {
         const groups = new Map<string, { name: string; appointments: Appointment[] }>();
-        sortedAppointments.forEach((apt) => {
+        filteredAppointments.forEach((apt) => {
             const clinicName = apt.clinic?.clinic_name?.trim() || "Unknown Clinic";
             const key = apt.clinic?.clinic_id ? `clinic-${apt.clinic.clinic_id}` : `clinic-${clinicName}`;
             if (!groups.has(key)) {
@@ -302,7 +324,7 @@ export default function DoctorAppointmentsPage() {
             groups.get(key)?.appointments.push(apt);
         });
         return Array.from(groups.values());
-    }, [sortedAppointments]);
+    }, [filteredAppointments]);
 
     const handleStatusUpdate = async (appointmentId: number, status: string) => {
         const body: Record<string, unknown> = { appointmentId, status };
@@ -342,7 +364,7 @@ export default function DoctorAppointmentsPage() {
 
     return (
         <div className="w-full">
-            <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-8 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
                     <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Appointments</h1>
                     <p className="text-gray-500 mt-1 text-sm">
@@ -350,7 +372,38 @@ export default function DoctorAppointmentsPage() {
                     </p>
                 </motion.div>
                 {/* Only DOCTOR or HAVE_ACCESS staff can add appointments */}
-                <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end">
+                <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center lg:w-auto lg:justify-end">
+                    <motion.div
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.05 }}
+                        className="w-full sm:max-w-sm"
+                    >
+                        <div className="relative">
+                            <Search
+                                size={16}
+                                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                            />
+                            <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={(event) => setSearchTerm(event.target.value)}
+                                placeholder="Search by patient name or phone"
+                                className="w-full rounded-2xl border border-gray-200 bg-white py-3 pl-11 pr-11 text-sm text-gray-700 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                            />
+                            {searchTerm ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchTerm("")}
+                                    className="absolute right-3 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                                    aria-label="Clear appointment search"
+                                    title="Clear"
+                                >
+                                    <X size={15} />
+                                </button>
+                            ) : null}
+                        </div>
+                    </motion.div>
                     <motion.button
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
@@ -369,7 +422,7 @@ export default function DoctorAppointmentsPage() {
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
                             onClick={() => setIsModalOpen(true)}
-                            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white shadow-lg shadow-indigo-200 transition-colors hover:bg-indigo-700"
+                            className="inline-flex shrink-0 whitespace-nowrap items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white shadow-lg shadow-indigo-200 transition-colors hover:bg-indigo-700"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                                 <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
@@ -561,6 +614,11 @@ export default function DoctorAppointmentsPage() {
                     <div className="text-center py-12">
                         <p className="text-gray-400">No appointments yet</p>
                     </div>
+                ) : groupedByClinic.length === 0 ? (
+                    <div className="text-center py-12">
+                        <p className="text-lg font-semibold text-gray-700">No matching appointments</p>
+                        <p className="mt-2 text-sm text-gray-400">Try searching by another name or phone number.</p>
+                    </div>
                 ) : (
                     <div className="flex flex-col gap-4">
                         {groupedByClinic.map((group, gi) => (
@@ -639,6 +697,37 @@ export default function DoctorAppointmentsPage() {
                                                                     {/* Only show action buttons for DOCTOR or HAVE_ACCESS staff */}
                                                                     {(userRole === "DOCTOR" || staffRole === "HAVE_ACCESS") && (
                                                                         <>
+                                                                            {userRole === "DOCTOR" && (
+                                                                                emrPadEnabled ? (
+                                                                                <motion.button
+                                                                                    onClick={() => {
+                                                                                        if (!apt.patient?.patient_id) return;
+                                                                                        window.open(
+                                                                                            `/dashboard/doctor/appointments/${apt.appointment_id}/pad`,
+                                                                                            "_blank",
+                                                                                            "noopener,noreferrer"
+                                                                                        );
+                                                                                    }}
+                                                                                    disabled={!apt.patient?.patient_id}
+                                                                                    className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors ${
+                                                                                        apt.patient?.patient_id
+                                                                                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                                                                            : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                                                                                    }`}
+                                                                                    whileHover={apt.patient?.patient_id ? { scale: 1.03 } : undefined}
+                                                                                    whileTap={apt.patient?.patient_id ? { scale: 0.97 } : undefined}
+                                                                                    title={
+                                                                                        !apt.patient?.patient_id
+                                                                                            ? "Patient context is required to open the EMR pad"
+                                                                                            : "View EMR Pad"
+                                                                                    }
+                                                                                    aria-label="View EMR Pad"
+                                                                                >
+                                                                                    <Stethoscope size={14} />
+                                                                                    View Pad
+                                                                                </motion.button>
+                                                                                ) : null
+                                                                            )}
                                                                             {apt.status !== "COMPLETED" && apt.status !== "CANCELLED" && apt.status !== "PENDING" && (
                                                                                 <>
                                                                                     <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "COMPLETED")} className="text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Complete" aria-label="Complete">

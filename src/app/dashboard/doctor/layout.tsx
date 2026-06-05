@@ -1,6 +1,7 @@
 import { getSession } from "@/lib/auth";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import prisma from "@/lib/prisma";
+import { getDoctorEmrEnabled } from "@/lib/emrFeatureGate";
 import { redirect } from "next/navigation";
 
 export default async function DoctorLayout({
@@ -16,13 +17,17 @@ export default async function DoctorLayout({
     const fallbackUserName = session.email?.split("@")[0] || (session.role === "DOCTOR" ? "Doctor" : "Staff");
     let userName = fallbackUserName;
     let staffRole: string | null = null;
+    let emrPrescriptionEnabled = false;
 
     if (session.role === "DOCTOR") {
         const doctor = await prisma.doctors.findUnique({
             where: { user_id: session.userId },
-            select: { doctor_name: true },
+            select: { doctor_id: true, doctor_name: true },
         });
         userName = doctor?.doctor_name?.trim() || userName;
+        emrPrescriptionEnabled = doctor?.doctor_id
+            ? await getDoctorEmrEnabled(doctor.doctor_id)
+            : false;
     }
 
     if (session.role === "CLINIC_STAFF") {
@@ -41,7 +46,12 @@ export default async function DoctorLayout({
 
     return (
         <div className="dashboard-layout">
-            <DashboardSidebar role={session.role} userName={userName} staffRole={staffRole} />
+            <DashboardSidebar
+                role={session.role}
+                userName={userName}
+                staffRole={staffRole}
+                emrPrescriptionEnabled={emrPrescriptionEnabled}
+            />
             <div className="dashboard-main">
                 {children}
             </div>

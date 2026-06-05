@@ -48,6 +48,8 @@ model users {
   password_reset_otps user_password_otps[]
   user_tokens  user_tokens[]
   uploaded_prescriptions prescription_records[] @relation("prescription_uploaded_by_user")
+  emr_deleted_prescriptions prescriptions[] @relation("emr_prescription_deleted_by")
+  reviewed_emr_master_logs  prescription_master_review_logs[]
 }
 
 model admins {
@@ -126,6 +128,15 @@ model doctors {
   user                   users?                    @relation(fields: [user_id], references: [user_id])
   patients               patients[]
   prescriptions          prescription_records[] @relation("prescription_record_doctor")
+  emr_settings           doctor_emr_settings?
+  emr_prescriptions      prescriptions[] @relation("emr_prescription_doctor")
+  medicines_master       medicines_master[] @relation("emr_medicines_master_created_by")
+  complaints_master      complaints_master[] @relation("emr_complaints_master_created_by")
+  diagnosis_master       diagnosis_master[] @relation("emr_diagnosis_master_created_by")
+  tests_master           tests_master[] @relation("emr_tests_master_created_by")
+  advice_master          advice_master[] @relation("emr_advice_master_created_by")
+  prescription_audit_logs prescription_audit_logs[] @relation("emr_prescription_audit_doctor")
+  prescription_layout_settings prescription_layout_settings[]
 
   @@index([admin_id], map: "doctors_admin_id_fkey")
 }
@@ -233,6 +244,8 @@ model clinics {
   doctor       doctors?                 @relation(fields: [doctor_id], references: [doctor_id])
   liveQueueAds live_queue_side_ads[]
   prescriptions prescription_records[] @relation("prescription_record_clinic")
+  emr_prescriptions prescriptions[] @relation("emr_prescription_clinic")
+  prescription_layout_settings prescription_layout_settings[]
   schedules    doctor_clinic_schedule[]
   clinic_staff clinic_staff[]
 
@@ -261,6 +274,8 @@ model patients {
   password_otps           patient_password_otps[]
   prescriptions           prescription_records[] @relation("prescription_record_patient")
   uploaded_prescriptions  prescription_records[] @relation("prescription_uploaded_by_patient")
+  emr_prescriptions       prescriptions[] @relation("emr_prescription_patient")
+  emr_prescription_audit_logs prescription_audit_logs[] @relation("emr_prescription_audit_patient")
   whatsapp_numbers        patient_whatsapp_numbers[]
   admin                   admins                             @relation(fields: [admin_id], references: [admin_id])
   doctor                  doctors?                           @relation(fields: [doctor_id], references: [doctor_id])
@@ -374,6 +389,7 @@ model appointment {
   patient                     patients?                      @relation(fields: [patient_id], references: [patient_id])
   appointmentNotificationLogs appointment_notification_log[]
   prescriptions               prescription_records[] @relation("prescription_record_appointment")
+  emr_prescriptions           prescriptions[] @relation("emr_prescription_appointment")
 
   @@unique([doctor_id, appointment_date, start_time])
   @@index([appointment_date])
@@ -428,6 +444,374 @@ model prescription_pages {
 
   @@unique([prescription_id, page_number], map: "uq_prescription_page_number")
   @@index([prescription_id], map: "idx_prescription_pages_prescription")
+}
+
+model doctor_emr_settings {
+  id                        Int      @id @default(autoincrement())
+  doctor_id                 Int      @unique
+  emr_prescription_enabled  Boolean  @default(false)
+  created_at                DateTime @default(now()) @db.Timestamp(0)
+  updated_at                DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  doctor                    doctors  @relation(fields: [doctor_id], references: [doctor_id], onDelete: Cascade)
+}
+
+model medicines_master {
+  id                   Int             @id @default(autoincrement())
+  name                 String          @db.VarChar(255)
+  normalized_name      String          @unique(map: "uq_medicines_master_normalized_name") @db.VarChar(255)
+  status               emr_master_status @default(approved)
+  created_by_doctor_id Int?
+  usage_count          Int             @default(0)
+  type                 String?         @db.VarChar(100)
+  strength             String?         @db.VarChar(100)
+  salt_composition     String?         @db.VarChar(255)
+  company              String?         @db.VarChar(255)
+  created_at           DateTime        @default(now()) @db.Timestamp(0)
+  updated_at           DateTime        @default(now()) @updatedAt @db.Timestamp(0)
+  created_by_doctor    doctors?        @relation("emr_medicines_master_created_by", fields: [created_by_doctor_id], references: [doctor_id], onDelete: SetNull)
+  prescription_medicines prescription_medicines[]
+
+  @@index([name], map: "idx_medicines_master_name")
+  @@index([status], map: "idx_medicines_master_status")
+  @@index([created_by_doctor_id], map: "idx_medicines_master_created_by_doctor_id")
+}
+
+model complaints_master {
+  id                   Int               @id @default(autoincrement())
+  name                 String            @db.VarChar(255)
+  normalized_name      String            @unique(map: "uq_complaints_master_normalized_name") @db.VarChar(255)
+  status               emr_master_status @default(approved)
+  created_by_doctor_id Int?
+  usage_count          Int               @default(0)
+  created_at           DateTime          @default(now()) @db.Timestamp(0)
+  updated_at           DateTime          @default(now()) @updatedAt @db.Timestamp(0)
+  created_by_doctor    doctors?          @relation("emr_complaints_master_created_by", fields: [created_by_doctor_id], references: [doctor_id], onDelete: SetNull)
+  prescription_complaints prescription_complaints[]
+
+  @@index([name], map: "idx_complaints_master_name")
+  @@index([status], map: "idx_complaints_master_status")
+  @@index([created_by_doctor_id], map: "idx_complaints_master_created_by_doctor_id")
+}
+
+model diagnosis_master {
+  id                   Int               @id @default(autoincrement())
+  name                 String            @db.VarChar(255)
+  normalized_name      String            @unique(map: "uq_diagnosis_master_normalized_name") @db.VarChar(255)
+  status               emr_master_status @default(approved)
+  created_by_doctor_id Int?
+  usage_count          Int               @default(0)
+  created_at           DateTime          @default(now()) @db.Timestamp(0)
+  updated_at           DateTime          @default(now()) @updatedAt @db.Timestamp(0)
+  created_by_doctor    doctors?          @relation("emr_diagnosis_master_created_by", fields: [created_by_doctor_id], references: [doctor_id], onDelete: SetNull)
+  prescription_diagnosis prescription_diagnosis[]
+
+  @@index([name], map: "idx_diagnosis_master_name")
+  @@index([status], map: "idx_diagnosis_master_status")
+  @@index([created_by_doctor_id], map: "idx_diagnosis_master_created_by_doctor_id")
+}
+
+model tests_master {
+  id                   Int               @id @default(autoincrement())
+  name                 String            @db.VarChar(255)
+  normalized_name      String            @unique(map: "uq_tests_master_normalized_name") @db.VarChar(255)
+  status               emr_master_status @default(approved)
+  created_by_doctor_id Int?
+  usage_count          Int               @default(0)
+  created_at           DateTime          @default(now()) @db.Timestamp(0)
+  updated_at           DateTime          @default(now()) @updatedAt @db.Timestamp(0)
+  created_by_doctor    doctors?          @relation("emr_tests_master_created_by", fields: [created_by_doctor_id], references: [doctor_id], onDelete: SetNull)
+  prescription_tests   prescription_tests[]
+
+  @@index([name], map: "idx_tests_master_name")
+  @@index([status], map: "idx_tests_master_status")
+  @@index([created_by_doctor_id], map: "idx_tests_master_created_by_doctor_id")
+}
+
+model advice_master {
+  id                   Int               @id @default(autoincrement())
+  name                 String            @db.VarChar(255)
+  normalized_name      String            @unique(map: "uq_advice_master_normalized_name") @db.VarChar(255)
+  status               emr_master_status @default(approved)
+  created_by_doctor_id Int?
+  usage_count          Int               @default(0)
+  created_at           DateTime          @default(now()) @db.Timestamp(0)
+  updated_at           DateTime          @default(now()) @updatedAt @db.Timestamp(0)
+  created_by_doctor    doctors?          @relation("emr_advice_master_created_by", fields: [created_by_doctor_id], references: [doctor_id], onDelete: SetNull)
+  prescription_advice  prescription_advice[]
+
+  @@index([name], map: "idx_advice_master_name")
+  @@index([status], map: "idx_advice_master_status")
+  @@index([created_by_doctor_id], map: "idx_advice_master_created_by_doctor_id")
+}
+
+model prescriptions {
+  id                         Int                       @id @default(autoincrement())
+  prescription_no            String                    @unique(map: "uq_prescriptions_prescription_no") @db.VarChar(30)
+  doctor_sequence_no         Int?
+  doctor_id                  Int
+  patient_id                 Int
+  appointment_id             Int?
+  clinic_id                  Int?
+  visit_date                 DateTime                  @db.DateTime(0)
+  next_visit_date            DateTime?                 @db.DateTime(0)
+  timezone                   String                    @default("Asia/Kolkata") @db.VarChar(64)
+  status                     emr_prescription_status   @default(draft)
+  pdf_url                    String?                   @db.VarChar(1000)
+  finalized_at               DateTime?                 @db.DateTime(0)
+  previous_version_id        Int?
+  copied_from_prescription_id Int?
+  version_number             Int                       @default(1)
+  edit_reason                String?                   @db.VarChar(500)
+  is_deleted                 Boolean                   @default(false)
+  deleted_at                 DateTime?                 @db.DateTime(0)
+  deleted_by                 Int?
+  last_saved_at              DateTime?                 @db.DateTime(0)
+  created_at                 DateTime                  @default(now()) @db.Timestamp(0)
+  updated_at                 DateTime                  @default(now()) @updatedAt @db.Timestamp(0)
+  doctor                     doctors                   @relation("emr_prescription_doctor", fields: [doctor_id], references: [doctor_id], onDelete: Restrict)
+  patient                    patients                  @relation("emr_prescription_patient", fields: [patient_id], references: [patient_id], onDelete: Restrict)
+  appointment                appointment?              @relation("emr_prescription_appointment", fields: [appointment_id], references: [appointment_id], onDelete: SetNull)
+  clinic                     clinics?                  @relation("emr_prescription_clinic", fields: [clinic_id], references: [clinic_id], onDelete: SetNull)
+  previous_version           prescriptions?            @relation("emr_prescription_versions", fields: [previous_version_id], references: [id], onDelete: SetNull)
+  next_versions              prescriptions[]           @relation("emr_prescription_versions")
+  copied_from_prescription   prescriptions?            @relation("emr_prescription_copies", fields: [copied_from_prescription_id], references: [id], onDelete: SetNull)
+  copied_prescriptions       prescriptions[]           @relation("emr_prescription_copies")
+  deleted_by_user            users?                    @relation("emr_prescription_deleted_by", fields: [deleted_by], references: [user_id], onDelete: SetNull)
+  vitals                     prescription_vitals?
+  complaints                 prescription_complaints[]
+  diagnosis                  prescription_diagnosis[]
+  medicines                  prescription_medicines[]
+  tests                      prescription_tests[]
+  advice                     prescription_advice[]
+  custom_fields              prescription_custom_fields[]
+  audit_logs                 prescription_audit_logs[]
+
+  @@index([doctor_id, patient_id, visit_date], map: "idx_prescriptions_doctor_patient_visit_date")
+  @@index([appointment_id], map: "idx_prescriptions_appointment_id")
+  @@index([clinic_id], map: "idx_prescriptions_clinic_id")
+  @@index([status], map: "idx_prescriptions_status")
+  @@index([previous_version_id], map: "idx_prescriptions_previous_version_id")
+  @@index([copied_from_prescription_id], map: "idx_prescriptions_copied_from_prescription_id")
+  @@index([deleted_by], map: "idx_prescriptions_deleted_by")
+  @@index([doctor_id, patient_id, appointment_id, status], map: "idx_prescriptions_doctor_patient_appointment_status")
+  @@index([doctor_id, doctor_sequence_no], map: "idx_prescriptions_doctor_sequence_lookup")
+  @@unique([doctor_id, doctor_sequence_no], map: "uq_prescriptions_doctor_sequence")
+}
+
+model prescription_vitals {
+  id              Int           @id @default(autoincrement())
+  prescription_id Int           @unique(map: "uq_prescription_vitals_prescription_id")
+  bp              String?       @db.VarChar(50)
+  pulse           String?       @db.VarChar(50)
+  height          String?       @db.VarChar(50)
+  weight          String?       @db.VarChar(50)
+  temperature     String?       @db.VarChar(50)
+  spo2            String?       @db.VarChar(50)
+  bmi             String?       @db.VarChar(50)
+  created_at      DateTime      @default(now()) @db.Timestamp(0)
+  updated_at      DateTime      @default(now()) @updatedAt @db.Timestamp(0)
+  prescription    prescriptions @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+}
+
+model prescription_complaints {
+  id                Int               @id @default(autoincrement())
+  prescription_id   Int
+  complaint_master_id Int?
+  complaint_name    String            @db.VarChar(255)
+  normalized_name   String            @db.VarChar(255)
+  sort_order        Int               @default(0)
+  notes             String?           @db.VarChar(500)
+  created_at        DateTime          @default(now()) @db.Timestamp(0)
+  updated_at        DateTime          @default(now()) @updatedAt @db.Timestamp(0)
+  prescription      prescriptions     @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+  complaint_master  complaints_master? @relation(fields: [complaint_master_id], references: [id], onDelete: SetNull)
+
+  @@index([prescription_id], map: "idx_prescription_complaints_prescription_id")
+  @@index([complaint_master_id], map: "idx_prescription_complaints_master_id")
+  @@index([normalized_name], map: "idx_prescription_complaints_normalized_name")
+}
+
+model prescription_diagnosis {
+  id                 Int               @id @default(autoincrement())
+  prescription_id    Int
+  diagnosis_master_id Int?
+  diagnosis_name     String            @db.VarChar(255)
+  normalized_name    String            @db.VarChar(255)
+  sort_order         Int               @default(0)
+  notes              String?           @db.VarChar(500)
+  created_at         DateTime          @default(now()) @db.Timestamp(0)
+  updated_at         DateTime          @default(now()) @updatedAt @db.Timestamp(0)
+  prescription       prescriptions     @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+  diagnosis_master   diagnosis_master? @relation(fields: [diagnosis_master_id], references: [id], onDelete: SetNull)
+
+  @@index([prescription_id], map: "idx_prescription_diagnosis_prescription_id")
+  @@index([diagnosis_master_id], map: "idx_prescription_diagnosis_master_id")
+  @@index([normalized_name], map: "idx_prescription_diagnosis_normalized_name")
+}
+
+model prescription_medicines {
+  id                Int                    @id @default(autoincrement())
+  prescription_id   Int
+  medicine_master_id Int?
+  type              String?                @db.VarChar(100)
+  medicine_name     String                 @db.VarChar(255)
+  normalized_name   String                 @db.VarChar(255)
+  salt_composition  String?                @db.VarChar(255)
+  strength          String?                @db.VarChar(100)
+  dose              String?                @db.VarChar(100)
+  timing            String?                @db.VarChar(100)
+  frequency         String?                @db.VarChar(100)
+  duration_value    Int?
+  duration_unit     emr_duration_unit?
+  duration_text     String?                @db.VarChar(100)
+  notes             String?                @db.VarChar(500)
+  sort_order        Int                    @default(0)
+  created_at        DateTime               @default(now()) @db.Timestamp(0)
+  updated_at        DateTime               @default(now()) @updatedAt @db.Timestamp(0)
+  prescription      prescriptions          @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+  medicine_master   medicines_master?      @relation(fields: [medicine_master_id], references: [id], onDelete: SetNull)
+
+  @@index([prescription_id], map: "idx_prescription_medicines_prescription_id")
+  @@index([medicine_master_id], map: "idx_prescription_medicines_master_id")
+  @@index([normalized_name], map: "idx_prescription_medicines_normalized_name")
+}
+
+model prescription_tests {
+  id              Int           @id @default(autoincrement())
+  prescription_id Int
+  test_master_id  Int?
+  test_name       String        @db.VarChar(255)
+  normalized_name String        @db.VarChar(255)
+  sort_order      Int           @default(0)
+  notes           String?       @db.VarChar(500)
+  created_at      DateTime      @default(now()) @db.Timestamp(0)
+  updated_at      DateTime      @default(now()) @updatedAt @db.Timestamp(0)
+  prescription    prescriptions @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+  test_master     tests_master? @relation(fields: [test_master_id], references: [id], onDelete: SetNull)
+
+  @@index([prescription_id], map: "idx_prescription_tests_prescription_id")
+  @@index([test_master_id], map: "idx_prescription_tests_master_id")
+  @@index([normalized_name], map: "idx_prescription_tests_normalized_name")
+}
+
+model prescription_advice {
+  id               Int           @id @default(autoincrement())
+  prescription_id  Int
+  advice_master_id Int?
+  advice_name      String        @db.VarChar(255)
+  normalized_name  String        @db.VarChar(255)
+  sort_order       Int           @default(0)
+  notes            String?       @db.VarChar(500)
+  created_at       DateTime      @default(now()) @db.Timestamp(0)
+  updated_at       DateTime      @default(now()) @updatedAt @db.Timestamp(0)
+  prescription     prescriptions @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+  advice_master    advice_master? @relation(fields: [advice_master_id], references: [id], onDelete: SetNull)
+
+  @@index([prescription_id], map: "idx_prescription_advice_prescription_id")
+  @@index([advice_master_id], map: "idx_prescription_advice_master_id")
+  @@index([normalized_name], map: "idx_prescription_advice_normalized_name")
+}
+
+model prescription_custom_fields {
+  id              Int                   @id @default(autoincrement())
+  prescription_id Int
+  field_key       String                @db.VarChar(100)
+  field_label     String                @db.VarChar(255)
+  field_type      emr_custom_field_type @default(text)
+  field_value     String?               @db.Text
+  sort_order      Int                   @default(0)
+  created_at      DateTime              @default(now()) @db.Timestamp(0)
+  updated_at      DateTime              @default(now()) @updatedAt @db.Timestamp(0)
+  prescription    prescriptions         @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+
+  @@index([prescription_id], map: "idx_prescription_custom_fields_prescription_id")
+  @@index([field_key], map: "idx_prescription_custom_fields_field_key")
+}
+
+model prescription_audit_logs {
+  id              BigInt         @id @default(autoincrement())
+  action          String         @db.VarChar(100)
+  doctor_id       Int
+  patient_id      Int?
+  prescription_id Int?
+  entity_type     String         @db.VarChar(100)
+  entity_id       Int?
+  old_value       Json?
+  new_value       Json?
+  created_at      DateTime       @default(now()) @db.Timestamp(0)
+  doctor          doctors        @relation("emr_prescription_audit_doctor", fields: [doctor_id], references: [doctor_id], onDelete: Restrict)
+  patient         patients?      @relation("emr_prescription_audit_patient", fields: [patient_id], references: [patient_id], onDelete: SetNull)
+  prescription    prescriptions? @relation(fields: [prescription_id], references: [id], onDelete: SetNull)
+
+  @@index([doctor_id], map: "idx_prescription_audit_logs_doctor_id")
+  @@index([patient_id], map: "idx_prescription_audit_logs_patient_id")
+  @@index([prescription_id], map: "idx_prescription_audit_logs_prescription_id")
+  @@index([entity_type, entity_id], map: "idx_prescription_audit_logs_entity_type_entity_id")
+  @@index([created_at], map: "idx_prescription_audit_logs_created_at")
+}
+
+model prescription_layout_settings {
+  id                     Int      @id @default(autoincrement())
+  doctor_id              Int
+  clinic_id              Int?
+  section_order_json     Json?
+  section_visibility_json Json?
+  print_visibility_json  Json?
+  custom_fields_json     Json?
+  page_margin_json       Json?
+  pdf_margin_json        Json?
+  font_family            String?  @db.VarChar(100)
+  font_size              String?  @db.VarChar(50)
+  header_image_url       String?  @db.VarChar(1000)
+  footer_image_url       String?  @db.VarChar(1000)
+  clinic_logo_url        String?  @db.VarChar(1000)
+  doctor_signature_url   String?  @db.VarChar(1000)
+  header_height          String?  @db.VarChar(50)
+  footer_height          String?  @db.VarChar(50)
+  created_at             DateTime @default(now()) @db.Timestamp(0)
+  updated_at             DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  doctor                 doctors  @relation(fields: [doctor_id], references: [doctor_id], onDelete: Cascade)
+  clinic                 clinics? @relation(fields: [clinic_id], references: [clinic_id], onDelete: Cascade)
+  custom_fields          prescription_layout_custom_fields[]
+
+  @@unique([doctor_id, clinic_id], map: "uq_prescription_layout_settings_doctor_clinic")
+  @@index([clinic_id], map: "idx_prescription_layout_settings_clinic_id")
+}
+
+model prescription_layout_custom_fields {
+  id                Int                     @id @default(autoincrement())
+  layout_setting_id Int
+  field_key         String                  @db.VarChar(100)
+  field_label       String                  @db.VarChar(255)
+  field_type        emr_custom_field_type   @default(text)
+  placeholder       String?                 @db.VarChar(255)
+  default_value     String?                 @db.VarChar(500)
+  is_required       Boolean                 @default(false)
+  show_in_pad       Boolean                 @default(true)
+  show_in_print     Boolean                 @default(true)
+  sort_order        Int                     @default(0)
+  created_at        DateTime                @default(now()) @db.Timestamp(0)
+  updated_at        DateTime                @default(now()) @updatedAt @db.Timestamp(0)
+  layout_setting    prescription_layout_settings @relation(fields: [layout_setting_id], references: [id], onDelete: Cascade)
+
+  @@unique([layout_setting_id, field_key], map: "uq_prescription_layout_custom_fields_layout_field_key")
+  @@index([layout_setting_id], map: "idx_prescription_layout_custom_fields_layout_setting_id")
+}
+
+model prescription_master_review_logs {
+  id            BigInt                    @id @default(autoincrement())
+  master_type   emr_master_type
+  master_id     Int
+  action        emr_master_review_action
+  admin_user_id Int
+  notes         String?                   @db.VarChar(500)
+  old_value     Json?
+  new_value     Json?
+  created_at    DateTime                  @default(now()) @db.Timestamp(0)
+  admin_user    users                     @relation(fields: [admin_user_id], references: [user_id], onDelete: Restrict)
+
+  @@index([master_type, master_id], map: "idx_prescription_master_review_logs_master_type_master_id")
+  @@index([admin_user_id], map: "idx_prescription_master_review_logs_admin_user_id")
 }
 
 model appointment_notification_log {
@@ -776,4 +1160,46 @@ enum SmsServiceStatus {
   DISABLED
   ACTIVE
   EXHAUSTED
+}
+
+enum emr_master_status {
+  pending
+  approved
+  rejected
+}
+
+enum emr_prescription_status {
+  draft
+  final
+  cancelled
+  abandoned
+}
+
+enum emr_duration_unit {
+  day
+  week
+  month
+  year
+  custom
+}
+
+enum emr_custom_field_type {
+  text
+  textarea
+  number
+  date
+  checkbox
+}
+
+enum emr_master_type {
+  medicine
+  complaint
+  diagnosis
+  test
+  advice
+}
+
+enum emr_master_review_action {
+  approved
+  rejected
 }

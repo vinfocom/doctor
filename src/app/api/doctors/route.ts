@@ -7,6 +7,11 @@ import bcrypt from "bcryptjs";
 import { toDoctorSmsPayload, deriveDoctorSmsSnapshot } from "@/lib/doctorSms";
 import { sendDoctorApprovalEmail } from "@/lib/doctorApprovalEmail";
 import { isMissingPrismaTable } from "@/lib/prismaErrors";
+import {
+    EmrFeatureAccessError,
+    getDoctorEmrEnabledMap,
+    upsertDoctorEmrEnabled,
+} from "@/lib/emrFeatureGate";
 
 // GET: List doctors
 export async function GET(req: NextRequest) {
@@ -67,10 +72,15 @@ export async function GET(req: NextRequest) {
                 JSON.stringify(value, (_key, v) => (typeof v === "bigint" ? v.toString() : v))
             ) as T;
 
+        const emrEnabledMap = await getDoctorEmrEnabledMap(
+            doctors.map((doc) => doc.doctor_id)
+        );
+
         const serializedDoctors = doctors.map(doc => ({
             ...doc,
             chat_id: doc.chat_id ? String(doc.chat_id) : null,
             sms_service: toDoctorSmsPayload(doc.sms_service ?? null),
+            emr_prescription_enabled: emrEnabledMap.get(doc.doctor_id) ?? false,
         }));
 
         return NextResponse.json({ doctors: jsonSafe(serializedDoctors) });
@@ -184,6 +194,7 @@ export async function PATCH(req: NextRequest) {
             sms_service_enabled,
             sms_recharge_credits,
             sms_recharge_remarks,
+            emr_prescription_enabled,
         } = body;
 
         if (!doctor_id) {
@@ -359,6 +370,14 @@ export async function PATCH(req: NextRequest) {
                 }
             }
 
+            if (emr_prescription_enabled !== undefined) {
+                await upsertDoctorEmrEnabled(
+                    tx,
+                    Number(doctor_id),
+                    Boolean(emr_prescription_enabled)
+                );
+            }
+
             return doc;
         });
 
@@ -386,6 +405,8 @@ export async function PATCH(req: NextRequest) {
                 },
             });
         }
+
+        const emrEnabledMap = await getDoctorEmrEnabledMap([Number(doctor_id)]);
 
         const jsonSafe = <T,>(value: T): T =>
             JSON.parse(
@@ -417,9 +438,13 @@ export async function PATCH(req: NextRequest) {
                 ...full,
                 chat_id: full?.chat_id ? String(full.chat_id) : null,
                 sms_service: toDoctorSmsPayload(full?.sms_service ?? null),
+                emr_prescription_enabled: emrEnabledMap.get(Number(doctor_id)) ?? false,
             }),
         });
     } catch (error) {
+        if (error instanceof EmrFeatureAccessError) {
+            return NextResponse.json({ error: error.message }, { status: error.status });
+        }
         console.error("Update doctor error:", error);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
