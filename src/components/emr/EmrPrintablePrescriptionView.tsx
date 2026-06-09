@@ -6,6 +6,7 @@ import { useMemo, useState, type CSSProperties } from "react";
 import EmrPrintActions from "@/components/emr/EmrPrintActions";
 import type {
   EmrClinicalHistorySection,
+  EmrLayoutSectionKey,
   EmrPrintablePrescription,
 } from "@/lib/emr";
 
@@ -898,7 +899,7 @@ function getVitalsSummaryEntries(vitals: Record<string, string | null | undefine
     { key: "PULSE", value: vitals.pulse?.trim(), unit: "bpm" },
     { key: "HEIGHT", value: vitals.height?.trim(), unit: "cm" },
     { key: "WEIGHT", value: vitals.weight?.trim(), unit: "kg" },
-    { key: "TEMP", value: vitals.temperature?.trim(), unit: "F" },
+    { key: "TEMP", value: vitals.temperature?.trim(), unit: "°F" },
     { key: "SPO2", value: vitals.spo2?.trim(), unit: "%" },
     { key: "BMI", value: vitals.bmi?.trim(), unit: "kg/m2" },
   ].filter((entry) => Boolean(entry.value));
@@ -915,7 +916,7 @@ function formatPatientSummary(patient: {
     gender?.toLowerCase() === "male"
       ? "M"
       : gender?.toLowerCase() === "female"
-        ? "F"
+        ? "°F"
         : gender?.toLowerCase() === "other"
           ? "O"
           : gender?.toLowerCase() === "prefer not to say"
@@ -1232,6 +1233,165 @@ export default function EmrPrintablePrescriptionView({
   const hasNextVisit = Boolean(
     prescription.follow_up_appointment || prescription.next_visit_date
   );
+  const visiblePrintSectionOrder = layout.section_order_json.filter(
+    (section) => printVisibility[section]
+  );
+
+  const renderPrintSection = (section: EmrLayoutSectionKey) => {
+    switch (section) {
+      case "vitals":
+        return vitalsSummaryEntries.length > 0 ? (
+          <section key={section} className="emr-print-section space-y-3 print:space-y-2">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+              {toUpperText(t.vitals)}
+            </h2>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-0 py-0 text-sm text-gray-700">
+              {vitalsSummaryEntries.map((entry) => (
+                <span key={entry.key} className="whitespace-nowrap">
+                  <span className="font-semibold uppercase text-gray-500">{entry.key}</span>{" "}
+                  <span className="font-medium text-gray-900">{entry.value}</span>
+                  {entry.unit ? (
+                    <span className="ml-1 text-xs text-gray-500">{entry.unit}</span>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : null;
+      case "complaints":
+        return prescription.complaints.length > 0 ? (
+          <section key={section} className="emr-print-section space-y-2 print:space-y-1">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+              {toUpperText(t.complaints)}
+            </h2>
+            <p className="text-sm text-gray-700">{toUpperListDisplay(prescription.complaints)}</p>
+          </section>
+        ) : null;
+      case "diagnosis":
+        return prescription.diagnosis.length > 0 ? (
+          <section key={section} className="emr-print-section space-y-2 print:space-y-1">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+              {toUpperText(t.diagnosis)}
+            </h2>
+            <p className="text-sm text-gray-700">{toUpperListDisplay(prescription.diagnosis)}</p>
+          </section>
+        ) : null;
+      case "medicines":
+        return prescription.medicines.length > 0 ? (
+          <section key={section} className="emr-print-section space-y-3 print:space-y-2">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+              {toUpperText(t.medicines)}
+            </h2>
+            <div className="emr-print-table overflow-hidden rounded-2xl border border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
+                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.type)}</th>
+                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.medicine)}</th>
+                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.dose)}</th>
+                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.when)}</th>
+                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.frequency)}</th>
+                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.duration)}</th>
+                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.notes)}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white">
+                  {prescription.medicines.map((medicine, index) => (
+                    <tr key={`print-medicine-${index}`} className="align-top text-sm text-gray-700">
+                      <td className="px-3 py-2 print:px-2 print:py-1.5">{toUpperDisplayValue(medicine.type, "-")}</td>
+                      <td className="px-3 py-2 print:px-2 print:py-1.5">
+                        <p className="font-semibold text-gray-900">
+                          {medicine.medicine_name?.trim().toUpperCase() || "-"}
+                        </p>
+                        {medicine.salt_composition?.trim() ? (
+                          <p className="mt-1 text-xs text-gray-500 print:mt-0.5">
+                            {medicine.salt_composition.trim().toUpperCase()}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2 print:px-2 print:py-1.5">
+                        <p className="font-medium leading-snug text-gray-900">
+                          {getDoseExplanation(medicine.dose, language) ||
+                            toUpperDisplayValue(formatDoseInput(medicine.dose), "-")}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2 print:px-2 print:py-1.5">
+                        {translateControlledValue(
+                          medicine.timing,
+                          language,
+                          CONTROLLED_TIMING_TRANSLATIONS
+                        )}
+                      </td>
+                      <td className="px-3 py-2 print:px-2 print:py-1.5">
+                        {translateControlledValue(
+                          medicine.frequency,
+                          language,
+                          CONTROLLED_FREQUENCY_TRANSLATIONS
+                        )}
+                      </td>
+                      <td className="px-3 py-2 print:px-2 print:py-1.5">{formatDuration(medicine, language)}</td>
+                      <td className="px-3 py-2 print:px-2 print:py-1.5">{toUpperDisplayValue(medicine.notes, "-")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null;
+      case "advice":
+        return prescription.advice.length > 0 ? (
+          <section key={section} className="emr-print-section space-y-2 print:space-y-1">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+              {toUpperText(t.advice)}
+            </h2>
+            <p className="text-sm text-gray-700">{toUpperListDisplay(prescription.advice)}</p>
+          </section>
+        ) : null;
+      case "tests":
+        return prescription.tests.length > 0 ? (
+          <section key={section} className="emr-print-section space-y-2 print:space-y-1">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+              {toUpperText(t.testsRequested)}
+            </h2>
+            <p className="text-sm text-gray-700">{toUpperListDisplay(prescription.tests)}</p>
+          </section>
+        ) : null;
+      case "next_visit":
+        return hasNextVisit ? (
+          <section key={section} className="emr-print-section space-y-2 print:space-y-1">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+              {toUpperText(t.nextVisit)}
+            </h2>
+            <p className="text-sm text-gray-700">
+              {prescription.follow_up_appointment
+                ? toUpperText(formatFollowUpSummary(prescription.follow_up_appointment))
+                : prescription.next_visit_date
+                  ? toUpperText(formatDateDdMmYyyy(prescription.next_visit_date))
+                  : ""}
+            </p>
+          </section>
+        ) : null;
+      default:
+        if (CLINICAL_HISTORY_SECTIONS.includes(section as EmrClinicalHistorySection)) {
+          const clinicalSection = section as EmrClinicalHistorySection;
+          const details = getClinicalHistoryDetails(prescription, clinicalSection);
+          if (details.length === 0) return null;
+
+          return (
+            <section key={section} className="emr-print-section space-y-2 print:space-y-1">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+                {toUpperText(getClinicalHistoryHeading(clinicalSection, language))}
+              </h2>
+              <p className="whitespace-pre-wrap text-sm text-gray-700">
+                {toUpperText(details.join(", "))}
+              </p>
+            </section>
+          );
+        }
+
+        return null;
+    }
+  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 print:max-w-none print:space-y-0 print:px-0 print:py-0">
@@ -1289,7 +1449,7 @@ export default function EmrPrintablePrescriptionView({
         ) : null}
 
         <div
-          className="emr-print-content space-y-6"
+          className="emr-print-content space-y-6 print:space-y-3"
           style={{
             paddingTop: `calc(${pageTop} + ${offsetY})`,
             paddingRight: `calc(${pageRight} + ${rightStripSpace})`,
@@ -1297,8 +1457,8 @@ export default function EmrPrintablePrescriptionView({
             paddingLeft: `calc(${pageLeft} + ${leftStripSpace} + ${offsetX})`,
           }}
         >
-          <header className="emr-print-section border-b border-gray-200 pb-4">
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-700">
+          <header className="emr-print-section border-b border-gray-200 pb-4 print:pb-2.5">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-700 print:gap-x-4 print:gap-y-1">
               <p className="font-semibold text-gray-900">
                 {formatPatientSummary(printable.patient)}
               </p>
@@ -1308,72 +1468,19 @@ export default function EmrPrintablePrescriptionView({
               <p>
                 {toUpperText(t.visitDate)}: {toUpperText(formatDateDdMmYyyy(prescription.visit_date))}
               </p>
+              {showPrescriptionNumber ? (
+                <p className="whitespace-nowrap font-medium text-gray-700">
+                  {toUpperText(
+                    `PRESCRIPTION NO.: ${formatDoctorSpecificPrescriptionNumber(
+                      prescription
+                    )}`
+                  )}
+                </p>
+              ) : null}
             </div>
-            {showPrescriptionNumber ? (
-              <p className="mt-2 text-xs font-medium tracking-[0.12em] text-gray-500">
-                {toUpperText(
-                  `PRESCRIPTION NO.: ${formatDoctorSpecificPrescriptionNumber(
-                    prescription
-                  )}`
-                )}
-              </p>
-            ) : null}
           </header>
 
-          {printVisibility.vitals && vitalsSummaryEntries.length > 0 ? (
-            <section className="emr-print-section space-y-3">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-                {toUpperText(t.vitals)}
-              </h2>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                {vitalsSummaryEntries.map((entry) => (
-                  <span key={entry.key} className="whitespace-nowrap">
-                    <span className="font-semibold uppercase text-gray-500">{entry.key}</span>{" "}
-                    <span className="font-medium text-gray-900">{entry.value}</span>
-                    {entry.unit ? (
-                      <span className="ml-1 text-xs text-gray-500">{entry.unit}</span>
-                    ) : null}
-                  </span>
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          {printVisibility.complaints && prescription.complaints.length > 0 ? (
-            <section className="emr-print-section space-y-2">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-                {toUpperText(t.complaints)}
-              </h2>
-              <p className="text-sm text-gray-700">{toUpperListDisplay(prescription.complaints)}</p>
-            </section>
-          ) : null}
-
-          {printVisibility.diagnosis && prescription.diagnosis.length > 0 ? (
-            <section className="emr-print-section space-y-2">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-                {toUpperText(t.diagnosis)}
-              </h2>
-              <p className="text-sm text-gray-700">{toUpperListDisplay(prescription.diagnosis)}</p>
-            </section>
-          ) : null}
-
-          {CLINICAL_HISTORY_SECTIONS.map((section) => {
-            if (!printVisibility[section]) return null;
-
-            const details = getClinicalHistoryDetails(prescription, section);
-            if (details.length === 0) return null;
-
-            return (
-              <section key={section} className="emr-print-section space-y-2">
-                <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-                  {toUpperText(getClinicalHistoryHeading(section, language))}
-                </h2>
-                <p className="whitespace-pre-wrap text-sm text-gray-700">
-                  {toUpperText(details.join(", "))}
-                </p>
-              </section>
-            );
-          })}
+          {visiblePrintSectionOrder.map((section) => renderPrintSection(section))}
 
           {layout.custom_fields
             .filter((field) => field.show_in_print !== false)
@@ -1386,7 +1493,7 @@ export default function EmrPrintablePrescriptionView({
               if (!displayValue) return null;
 
               return (
-                <section key={`print-custom-${field.field_key}`} className="emr-print-section space-y-2">
+                <section key={`print-custom-${field.field_key}`} className="emr-print-section space-y-2 print:space-y-1">
                   <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
                     {toUpperText(field.field_label)}
                   </h2>
@@ -1395,105 +1502,8 @@ export default function EmrPrintablePrescriptionView({
               );
             })}
 
-          {printVisibility.medicines && prescription.medicines.length > 0 ? (
-            <section className="emr-print-section space-y-3">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-                {toUpperText(t.medicines)}
-              </h2>
-              <div className="emr-print-table overflow-hidden rounded-2xl border border-gray-200">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
-                      <th className="px-3 py-2">{toUpperText(t.type)}</th>
-                      <th className="px-3 py-2">{toUpperText(t.medicine)}</th>
-                      <th className="px-3 py-2">{toUpperText(t.dose)}</th>
-                      <th className="px-3 py-2">{toUpperText(t.when)}</th>
-                      <th className="px-3 py-2">{toUpperText(t.frequency)}</th>
-                      <th className="px-3 py-2">{toUpperText(t.duration)}</th>
-                      <th className="px-3 py-2">{toUpperText(t.notes)}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 bg-white">
-                    {prescription.medicines.map((medicine, index) => (
-                      <tr key={`print-medicine-${index}`} className="align-top text-sm text-gray-700">
-                        <td className="px-3 py-2">{toUpperDisplayValue(medicine.type, "-")}</td>
-                        <td className="px-3 py-2">
-                          <p className="font-semibold text-gray-900">
-                            {medicine.medicine_name?.trim().toUpperCase() || "-"}
-                          </p>
-                          {medicine.salt_composition?.trim() ? (
-                            <p className="mt-1 text-xs text-gray-500">
-                              {medicine.salt_composition.trim().toUpperCase()}
-                            </p>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-2">
-                          <p className="font-medium leading-snug text-gray-900">
-                            {getDoseExplanation(medicine.dose, language) ||
-                              toUpperDisplayValue(formatDoseInput(medicine.dose), "-")}
-                          </p>
-                        </td>
-                        <td className="px-3 py-2">
-                          {translateControlledValue(
-                            medicine.timing,
-                            language,
-                            CONTROLLED_TIMING_TRANSLATIONS
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {translateControlledValue(
-                            medicine.frequency,
-                            language,
-                            CONTROLLED_FREQUENCY_TRANSLATIONS
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {formatDuration(medicine, language)}
-                        </td>
-                        <td className="px-3 py-2">{toUpperDisplayValue(medicine.notes, "-")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          ) : null}
-
-          {printVisibility.advice && prescription.advice.length > 0 ? (
-            <section className="emr-print-section space-y-2">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-                {toUpperText(t.advice)}
-              </h2>
-              <p className="text-sm text-gray-700">{toUpperListDisplay(prescription.advice)}</p>
-            </section>
-          ) : null}
-
-          {printVisibility.tests && prescription.tests.length > 0 ? (
-            <section className="emr-print-section space-y-2">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-                {toUpperText(t.testsRequested)}
-              </h2>
-              <p className="text-sm text-gray-700">{toUpperListDisplay(prescription.tests)}</p>
-            </section>
-          ) : null}
-
-          {printVisibility.next_visit && hasNextVisit ? (
-            <section className="emr-print-section space-y-2">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-                {toUpperText(t.nextVisit)}
-              </h2>
-              <p className="text-sm text-gray-700">
-                {prescription.follow_up_appointment
-                  ? toUpperText(formatFollowUpSummary(prescription.follow_up_appointment))
-                  : prescription.next_visit_date
-                    ? toUpperText(formatDateDdMmYyyy(prescription.next_visit_date))
-                    : ""}
-              </p>
-            </section>
-          ) : null}
-
           {prescriptionValidityTill ? (
-            <section className="emr-print-section border-t border-gray-200 pt-3">
+            <section className="emr-print-section border-t border-gray-200 pt-3 print:pt-2">
               <p className="text-[11px] text-gray-500">
                 {toUpperText(
                   `${PRESCRIPTION_VALIDITY_NOTE_TRANSLATIONS[language]} ${formatDateDdMmYyyy(

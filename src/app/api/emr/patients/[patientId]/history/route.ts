@@ -5,6 +5,7 @@ import {
   getEmrAccessErrorResponse,
   getPrescriptionRecord,
   listPrescriptionHistory,
+  type EmrNamedItemPayload,
   type EmrClinicalHistoryPayload,
   type EmrPrescriptionHistoryItem,
 } from "@/lib/emr";
@@ -18,6 +19,8 @@ type HistoryGroup = {
 
 type EmrPatientHistoryItem = EmrPrescriptionHistoryItem & {
   clinical_history: EmrClinicalHistoryPayload[];
+  complaints: EmrNamedItemPayload[];
+  diagnosis: EmrNamedItemPayload[];
 };
 
 function groupHistoryByDate(items: EmrPatientHistoryItem[]): HistoryGroup[] {
@@ -116,6 +119,8 @@ export async function GET(
         return {
           ...item,
           clinical_history: record?.clinical_history ?? [],
+          complaints: record?.complaints ?? [],
+          diagnosis: record?.diagnosis ?? [],
         };
       })
     );

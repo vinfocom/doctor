@@ -109,6 +109,14 @@ type MasterCorrectionSuggestion = {
   masterSuggestion: EmrMasterItem | null;
   spellSuggestion: string | null;
 };
+type VitalInputKey =
+  | "bp_systolic"
+  | "bp_diastolic"
+  | "pulse"
+  | "height"
+  | "weight"
+  | "temperature"
+  | "spo2";
 
 const EMPTY_MEDICINE_ROW: EmrMedicinePayload = {
   type: "",
@@ -138,6 +146,16 @@ const DOSE_PATTERNS = [
 ] as const;
 
 const DOSE_SEPARATOR = " . ";
+
+const VITAL_INPUT_ORDER: VitalInputKey[] = [
+  "bp_systolic",
+  "bp_diastolic",
+  "pulse",
+  "height",
+  "weight",
+  "temperature",
+  "spo2",
+];
 
 const DOSE_SUGGESTIONS = DOSE_PATTERNS.map((pattern) => pattern.join(DOSE_SEPARATOR)).concat("SOS");
 
@@ -216,6 +234,28 @@ const CLINICAL_HISTORY_SECTIONS: EmrClinicalHistorySection[] = [
 const COLLAPSIBLE_CLINICAL_HISTORY_SECTIONS: EmrClinicalHistorySection[] = [
   ...CLINICAL_HISTORY_SECTIONS,
 ];
+
+function getInitialClinicalHistoryExpansionState(
+  sectionOrder: EmrLayoutSectionKey[]
+): Partial<Record<EmrClinicalHistorySection, boolean>> {
+  const lastNonCollapsibleIndex = sectionOrder.reduce((lastIndex, section, index) => {
+    if (
+      isClinicalHistorySection(section) &&
+      COLLAPSIBLE_CLINICAL_HISTORY_SECTIONS.includes(section)
+    ) {
+      return lastIndex;
+    }
+
+    return index;
+  }, -1);
+
+  return Object.fromEntries(
+    COLLAPSIBLE_CLINICAL_HISTORY_SECTIONS.map((section) => {
+      const sectionIndex = sectionOrder.indexOf(section);
+      return [section, sectionIndex !== -1 && sectionIndex <= lastNonCollapsibleIndex];
+    })
+  ) as Partial<Record<EmrClinicalHistorySection, boolean>>;
+}
 
 const ALLOWED_UI_ERROR_MESSAGES = new Set([
   "Patient name and phone are required to book the follow-up appointment.",
@@ -403,7 +443,7 @@ function getVitalsSummaryEntries(vitals: Required<EmrVitalsPayload> | EmrVitalsP
     { key: "PULSE", value: vitals.pulse?.trim(), unit: "bpm" },
     { key: "HEIGHT", value: vitals.height?.trim(), unit: "cm" },
     { key: "WEIGHT", value: vitals.weight?.trim(), unit: "kg" },
-    { key: "TEMP", value: vitals.temperature?.trim(), unit: "F" },
+    { key: "TEMP", value: vitals.temperature?.trim(), unit: "°F" },
     { key: "SPO2", value: vitals.spo2?.trim(), unit: "%" },
     { key: "BMI", value: vitals.bmi?.trim(), unit: "kg/m²" },
   ].filter((entry) => Boolean(entry.value));
@@ -1803,7 +1843,7 @@ function ClinicalHistorySection({
         style={{ textTransform: "uppercase" }}
       >
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900">
             {CLINICAL_HISTORY_LABELS[section]}
           </h2>
           {onCollapse ? (
@@ -1826,7 +1866,7 @@ function ClinicalHistorySection({
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-900">
           {CLINICAL_HISTORY_LABELS[section]}
         </h3>
         {onCollapse ? (
@@ -1957,6 +1997,7 @@ export default function DoctorAppointmentPadPage() {
   const [expandedClinicalHistorySections, setExpandedClinicalHistorySections] = useState<
     Partial<Record<EmrClinicalHistorySection, boolean>>
   >({});
+  const clinicalHistoryDefaultsAppliedRef = useRef(false);
   const [activeMedicineSuggestionIndex, setActiveMedicineSuggestionIndex] =
     useState<number | null>(null);
   const [activeDurationSuggestionIndex, setActiveDurationSuggestionIndex] =
@@ -1977,8 +2018,11 @@ export default function DoctorAppointmentPadPage() {
   const frequencyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const durationInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const durationAnchorRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const vitalInputRefs = useRef<Partial<Record<VitalInputKey, HTMLInputElement | null>>>({});
   const historyStripRef = useRef<HTMLDivElement | null>(null);
   const historyGroupRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const prescriptionContentRef = useRef<HTMLDivElement | null>(null);
+  const pendingHistoryScrollPrescriptionIdRef = useRef<number | null>(null);
   const [historyCanScrollOlder, setHistoryCanScrollOlder] = useState(false);
   const [historyCanScrollNewer, setHistoryCanScrollNewer] = useState(false);
   const [activeHistoryGroupIndex, setActiveHistoryGroupIndex] = useState(0);
@@ -2137,14 +2181,7 @@ export default function DoctorAppointmentPadPage() {
       latestStateRef.current = nextState;
       lastSerializedRef.current = serializePayload(data.draft, nextState);
       setBookedFollowUpSummary(data.draft.follow_up_appointment ?? null);
-      setExpandedClinicalHistorySections(
-        Object.fromEntries(
-          COLLAPSIBLE_CLINICAL_HISTORY_SECTIONS.map((section) => [
-            section,
-            nextState.clinical_history.some((item) => item.section === section),
-          ])
-        ) as Partial<Record<EmrClinicalHistorySection, boolean>>
-      );
+      clinicalHistoryDefaultsAppliedRef.current = false;
     } else {
       setEditorState(null);
       setWarnings([]);
@@ -2152,6 +2189,7 @@ export default function DoctorAppointmentPadPage() {
       lastSerializedRef.current = "";
       setBookedFollowUpSummary(null);
       setExpandedClinicalHistorySections({});
+      clinicalHistoryDefaultsAppliedRef.current = false;
     }
     dirtyRef.current = false;
     hasHydratedRef.current = true;
@@ -3376,19 +3414,11 @@ export default function DoctorAppointmentPadPage() {
         "tests",
         "next_visit",
       ] as EmrLayoutSectionKey[]);
+  const initialClinicalHistoryExpansion = useMemo(
+    () => getInitialClinicalHistoryExpansionState(visibleSectionOrder),
+    [visibleSectionOrder]
+  );
 
-  const visiblePrimarySectionOrder = visibleSectionOrder.filter(
-    (section) =>
-      !(
-        isClinicalHistorySection(section) &&
-        COLLAPSIBLE_CLINICAL_HISTORY_SECTIONS.includes(section)
-      )
-  );
-  const visibleClinicalHistorySections = visibleSectionOrder.filter(
-    (section): section is EmrClinicalHistorySection =>
-      isClinicalHistorySection(section) &&
-      COLLAPSIBLE_CLINICAL_HISTORY_SECTIONS.includes(section)
-  );
   const visiblePadCustomFields = useMemo(
     () =>
       [...(layoutSettings?.custom_fields ?? [])]
@@ -3424,6 +3454,49 @@ export default function DoctorAppointmentPadPage() {
     });
   }, [editorState, visiblePadCustomFields]);
 
+  useEffect(() => {
+    if (!editorState || clinicalHistoryDefaultsAppliedRef.current) return;
+
+    setExpandedClinicalHistorySections(initialClinicalHistoryExpansion);
+    clinicalHistoryDefaultsAppliedRef.current = true;
+  }, [editorState, initialClinicalHistoryExpansion]);
+
+  useEffect(() => {
+    const pendingPrescriptionId = pendingHistoryScrollPrescriptionIdRef.current;
+    if (!pendingPrescriptionId || contextData?.draft?.id !== pendingPrescriptionId) return;
+
+    prescriptionContentRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    pendingHistoryScrollPrescriptionIdRef.current = null;
+  }, [contextData?.draft?.id]);
+
+  const focusNextVitalInput = useCallback((currentKey: VitalInputKey) => {
+    const currentIndex = VITAL_INPUT_ORDER.indexOf(currentKey);
+    if (currentIndex === -1) return;
+
+    const nextKey = VITAL_INPUT_ORDER[currentIndex + 1];
+    if (!nextKey) return;
+
+    const nextInput = vitalInputRefs.current[nextKey];
+    if (!nextInput) return;
+
+    nextInput.focus();
+    nextInput.select();
+  }, []);
+
+  const openPrescriptionFromHistory = useCallback(
+    (prescriptionId: number) => {
+      pendingHistoryScrollPrescriptionIdRef.current = prescriptionId;
+      router.replace(
+        `/dashboard/doctor/appointments/${appointmentId}/pad?prescriptionId=${prescriptionId}`,
+        { scroll: false }
+      );
+    },
+    [appointmentId, router]
+  );
+
   const renderConfiguredSection = (section: EmrLayoutSectionKey) => {
     switch (section) {
       case "vitals":
@@ -3438,6 +3511,9 @@ export default function DoctorAppointmentPadPage() {
                   </span>
                   <div className="flex items-center gap-2">
                     <input
+                      ref={(node) => {
+                        vitalInputRefs.current.bp_systolic = node;
+                      }}
                       type="text"
                       inputMode="numeric"
                       maxLength={3}
@@ -3445,11 +3521,19 @@ export default function DoctorAppointmentPadPage() {
                       onChange={(event) =>
                         updateBloodPressurePart("systolic", event.target.value)
                       }
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        focusNextVitalInput("bp_systolic");
+                      }}
                       className="h-9 w-14 rounded-md border border-slate-200 bg-white px-2 text-center font-semibold text-slate-900 outline-none focus:border-indigo-400"
                       placeholder="120"
                     />
                     <span className="font-semibold text-slate-400">/</span>
                     <input
+                      ref={(node) => {
+                        vitalInputRefs.current.bp_diastolic = node;
+                      }}
                       type="text"
                       inputMode="numeric"
                       maxLength={3}
@@ -3457,6 +3541,11 @@ export default function DoctorAppointmentPadPage() {
                       onChange={(event) =>
                         updateBloodPressurePart("diastolic", event.target.value)
                       }
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        focusNextVitalInput("bp_diastolic");
+                      }}
                       className="h-9 w-14 rounded-md border border-slate-200 bg-white px-2 text-center font-semibold text-slate-900 outline-none focus:border-indigo-400"
                       placeholder="80"
                     />
@@ -3483,6 +3572,10 @@ export default function DoctorAppointmentPadPage() {
                     </span>
                     <div className="flex items-center gap-2">
                       <input
+                        ref={(node) => {
+                          vitalInputRefs.current[key as Exclude<VitalInputKey, "bp_systolic" | "bp_diastolic">] =
+                            node;
+                        }}
                         type="text"
                         inputMode={key === "weight" ? "decimal" : "numeric"}
                         maxLength={
@@ -3494,6 +3587,13 @@ export default function DoctorAppointmentPadPage() {
                         }
                         value={editorState?.vitals[key] ?? ""}
                         onChange={(event) => updateVitalField(key, event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") return;
+                          event.preventDefault();
+                          focusNextVitalInput(
+                            key as Exclude<VitalInputKey, "bp_systolic" | "bp_diastolic">
+                          );
+                        }}
                         className="h-9 w-16 rounded-md border border-slate-200 bg-white px-2 text-center font-semibold text-slate-900 outline-none focus:border-indigo-400"
                       />
                       <span className="text-xs text-slate-500">{suffix}</span>
@@ -3582,11 +3682,46 @@ export default function DoctorAppointmentPadPage() {
       case "treatment_history":
       case "allergies":
       case "personal_social_history":
+        if (COLLAPSIBLE_CLINICAL_HISTORY_SECTIONS.includes(section)) {
+          const isExpanded = expandedClinicalHistorySections[section] ?? false;
+
+          if (!isExpanded) {
+            return (
+              <section
+                key={`collapsed-${section}`}
+                className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3"
+              >
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedClinicalHistorySections((current) => ({
+                        ...current,
+                        [section]: true,
+                      }))
+                    }
+                    className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-indigo-700 hover:bg-indigo-50"
+                  >
+                    <Plus size={14} />
+                    {CLINICAL_HISTORY_LABELS[section]}
+                  </button>
+                </div>
+              </section>
+            );
+          }
+        }
+
         return (
           <ClinicalHistorySection
             key={section}
             section={section}
             items={editorState?.clinical_history ?? []}
+            onCollapse={() =>
+              setExpandedClinicalHistorySections((current) => ({
+                ...current,
+                [section]: false,
+              }))
+            }
             onChange={(items) =>
               setEditorState((current) =>
                 current ? { ...current, clinical_history: items } : current
@@ -4209,6 +4344,134 @@ export default function DoctorAppointmentPadPage() {
     }
   };
 
+  const renderFinalizedSummarySection = (section: EmrLayoutSectionKey) => {
+    if (!editorState || !printableSectionVisibility) return null;
+
+    switch (section) {
+      case "vitals":
+        return printableSectionVisibility.vitals &&
+          getVitalsSummaryEntries(editorState.vitals).length > 0 ? (
+          <div key={`summary-${section}`}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-900">Vitals</p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              {getVitalsSummaryEntries(editorState.vitals).map((entry) => (
+                <span key={entry.key} className="whitespace-nowrap">
+                  <span className="font-semibold uppercase text-gray-500">{entry.key}</span>{" "}
+                  <span className="font-medium text-gray-900">{entry.value}</span>
+                  {entry.unit ? (
+                    <span className="ml-1 text-xs text-gray-500">{entry.unit}</span>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null;
+      case "complaints":
+        return printableSectionVisibility.complaints && editorState.complaints.length > 0 ? (
+          <div key={`summary-${section}`}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-900">Complaints</p>
+            <p className="mt-1 text-sm text-gray-700">{toUpperListDisplay(editorState.complaints)}</p>
+          </div>
+        ) : null;
+      case "diagnosis":
+        return printableSectionVisibility.diagnosis && editorState.diagnosis.length > 0 ? (
+          <div key={`summary-${section}`}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-900">Diagnosis</p>
+            <p className="mt-1 text-sm text-gray-700">{toUpperListDisplay(editorState.diagnosis)}</p>
+          </div>
+        ) : null;
+      case "medicines":
+        return printableSectionVisibility.medicines && editorState.medicines.length > 0 ? (
+          <div key={`summary-${section}`}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-900">Medicines</p>
+            <div className="mt-3 overflow-x-auto rounded-xl border border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr className="text-left text-xs uppercase tracking-wide text-gray-900">
+                    <th className="px-3 py-2">Type</th>
+                    <th className="px-3 py-2">Medicine</th>
+                    <th className="px-3 py-2">Dose</th>
+                    <th className="px-3 py-2">When</th>
+                    <th className="px-3 py-2">Frequency</th>
+                    <th className="px-3 py-2">Duration</th>
+                    <th className="px-3 py-2">Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white">
+                  {editorState.medicines.map((medicine, index) => (
+                    <tr key={`final-summary-${index}`} className="align-top text-sm text-gray-700">
+                      <td className="px-3 py-2">{toUpperDisplayValue(medicine.type)}</td>
+                      <td className="px-3 py-2">
+                        <p className="font-semibold text-gray-900">
+                          {[medicine.medicine_name?.trim(), medicine.strength?.trim()]
+                            .filter(Boolean)
+                            .join(" ")
+                            .toUpperCase() || "-"}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {toUpperDisplayValue(medicine.salt_composition)}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2">{toUpperDisplayValue(medicine.dose)}</td>
+                      <td className="px-3 py-2">{toUpperDisplayValue(medicine.timing)}</td>
+                      <td className="px-3 py-2">{toUpperDisplayValue(medicine.frequency)}</td>
+                      <td className="px-3 py-2">
+                        {toUpperDisplayValue(
+                          medicine.duration_text ||
+                            (medicine.duration_value && medicine.duration_unit
+                              ? getDurationLabel(medicine.duration_value, medicine.duration_unit)
+                              : "")
+                        )}
+                      </td>
+                      <td className="px-3 py-2">{toUpperDisplayValue(medicine.notes)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null;
+      case "advice":
+        return printableSectionVisibility.advice && editorState.advice.length > 0 ? (
+          <div key={`summary-${section}`}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-900">Advice</p>
+            <p className="mt-1 text-sm text-gray-700">{toUpperListDisplay(editorState.advice)}</p>
+          </div>
+        ) : null;
+      case "tests":
+        return printableSectionVisibility.tests && editorState.tests.length > 0 ? (
+          <div key={`summary-${section}`}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-900">Tests Requested</p>
+            <p className="mt-1 text-sm text-gray-700">{toUpperListDisplay(editorState.tests)}</p>
+          </div>
+        ) : null;
+      case "next_visit":
+        return printableSectionVisibility.next_visit &&
+          finalizedNextVisitSummary !== "NOT SCHEDULED" ? (
+          <div key={`summary-${section}`}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-900">Next Visit</p>
+            <p className="mt-1 text-sm text-gray-700">{toUpperText(finalizedNextVisitSummary)}</p>
+          </div>
+        ) : null;
+      default:
+        if (isClinicalHistorySection(section)) {
+          const displayValue = toUpperClinicalHistoryDisplay(editorState.clinical_history, section);
+          if (!printableSectionVisibility[section] || !displayValue) return null;
+
+          return (
+            <div key={`summary-${section}`}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-900">
+                {CLINICAL_HISTORY_LABELS[section]}
+              </p>
+              <p className="mt-1 text-sm text-gray-700">{displayValue}</p>
+            </div>
+          );
+        }
+
+        return null;
+    }
+  };
+
   useEffect(() => {
     if (!contextData || !editorState || !dirtyRef.current || isReadOnly) return;
     const timer = window.setTimeout(() => {
@@ -4581,12 +4844,7 @@ export default function DoctorAppointmentPadPage() {
                             >
                               <button
                                 type="button"
-                                onClick={() =>
-                                  router.replace(
-                                    `/dashboard/doctor/appointments/${appointmentId}/pad?prescriptionId=${item.id}`,
-                                    { scroll: false }
-                                  )
-                                }
+                                onClick={() => openPrescriptionFromHistory(item.id)}
                                 disabled={isCurrentViewed}
                                 className="w-full text-left disabled:cursor-not-allowed"
                               >
@@ -4625,12 +4883,7 @@ export default function DoctorAppointmentPadPage() {
                               <div className="mt-3 flex flex-wrap gap-1.5">
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    router.replace(
-                                      `/dashboard/doctor/appointments/${appointmentId}/pad?prescriptionId=${item.id}`,
-                                      { scroll: false }
-                                    )
-                                  }
+                                  onClick={() => openPrescriptionFromHistory(item.id)}
                                   disabled={isCurrentViewed}
                                   title="View prescription"
                                   aria-label="View prescription"
@@ -4693,7 +4946,7 @@ export default function DoctorAppointmentPadPage() {
         </div>
       </SectionCard>
 
-      <div className="space-y-4">
+      <div ref={prescriptionContentRef} className="space-y-4">
           {!hasActiveDraft ? (
             <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/60 p-5">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -4761,58 +5014,7 @@ export default function DoctorAppointmentPadPage() {
                 </p>
               </div>
             </div>
-            {printableSectionVisibility?.vitals && getVitalsSummaryEntries(editorState!.vitals).length > 0 ? (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Vitals</p>
-                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                  {getVitalsSummaryEntries(editorState!.vitals).map((entry) => (
-                    <span key={entry.key} className="whitespace-nowrap">
-                      <span className="font-semibold uppercase text-gray-500">{entry.key}</span>{" "}
-                      <span className="font-medium text-gray-900">{entry.value}</span>
-                      {entry.unit ? (
-                        <span className="ml-1 text-xs text-gray-500">{entry.unit}</span>
-                      ) : null}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            {printableSectionVisibility?.complaints && editorState!.complaints.length > 0 ? (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Complaints</p>
-                <p className="mt-1 text-sm text-gray-700">
-                  {toUpperListDisplay(editorState!.complaints)}
-                </p>
-              </div>
-            ) : null}
-            {printableSectionVisibility?.diagnosis && editorState!.diagnosis.length > 0 ? (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Diagnosis</p>
-                <p className="mt-1 text-sm text-gray-700">
-                  {toUpperListDisplay(editorState!.diagnosis)}
-                </p>
-              </div>
-            ) : null}
-            {(
-              CLINICAL_HISTORY_SECTIONS
-            ).map((section) => {
-              const displayValue = toUpperClinicalHistoryDisplay(
-                editorState!.clinical_history,
-                section
-              );
-              if (!printableSectionVisibility?.[section] || !displayValue) return null;
-
-              return (
-                <div key={`summary-${section}`}>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                    {CLINICAL_HISTORY_LABELS[section]}
-                  </p>
-                  <p className="mt-1 text-sm text-gray-700">
-                    {displayValue}
-                  </p>
-                </div>
-              );
-            })}
+            {visibleSectionOrder.map((section) => renderFinalizedSummarySection(section))}
             {visiblePrintCustomFields.map((field) => {
               const displayValue = formatCustomFieldValueForDisplay(
                 field.field_type,
@@ -4831,87 +5033,13 @@ export default function DoctorAppointmentPadPage() {
                 </div>
               );
             })}
-            {printableSectionVisibility?.medicines && editorState!.medicines.length > 0 ? (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Medicines</p>
-                <div className="mt-3 overflow-x-auto rounded-xl border border-gray-200">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
-                        <th className="px-3 py-2">Type</th>
-                        <th className="px-3 py-2">Medicine</th>
-                        <th className="px-3 py-2">Dose</th>
-                        <th className="px-3 py-2">When</th>
-                        <th className="px-3 py-2">Frequency</th>
-                        <th className="px-3 py-2">Duration</th>
-                        <th className="px-3 py-2">Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 bg-white">
-                      {editorState!.medicines.map((medicine, index) => (
-                        <tr key={`final-summary-${index}`} className="align-top text-sm text-gray-700">
-                          <td className="px-3 py-2">{toUpperDisplayValue(medicine.type)}</td>
-                          <td className="px-3 py-2">
-                            <p className="font-semibold text-gray-900">
-                              {[medicine.medicine_name?.trim(), medicine.strength?.trim()]
-                                .filter(Boolean)
-                                .join(" ")
-                                .toUpperCase() || "-"}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {toUpperDisplayValue(medicine.salt_composition)}
-                            </p>
-                          </td>
-                          <td className="px-3 py-2">{toUpperDisplayValue(medicine.dose)}</td>
-                          <td className="px-3 py-2">{toUpperDisplayValue(medicine.timing)}</td>
-                          <td className="px-3 py-2">{toUpperDisplayValue(medicine.frequency)}</td>
-                          <td className="px-3 py-2">
-                            {toUpperDisplayValue(
-                              medicine.duration_text ||
-                                (medicine.duration_value && medicine.duration_unit
-                                  ? getDurationLabel(medicine.duration_value, medicine.duration_unit)
-                                  : "")
-                            )}
-                          </td>
-                          <td className="px-3 py-2">{toUpperDisplayValue(medicine.notes)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ) : null}
-            {printableSectionVisibility?.advice && editorState!.advice.length > 0 ? (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Advice</p>
-                <p className="mt-1 text-sm text-gray-700">
-                  {toUpperListDisplay(editorState!.advice)}
-                </p>
-              </div>
-            ) : null}
-            {printableSectionVisibility?.tests && editorState!.tests.length > 0 ? (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Tests Requested</p>
-                <p className="mt-1 text-sm text-gray-700">
-                  {toUpperListDisplay(editorState!.tests)}
-                </p>
-              </div>
-            ) : null}
-            {printableSectionVisibility?.next_visit && finalizedNextVisitSummary !== "NOT SCHEDULED" ? (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Next Visit</p>
-                <p className="mt-1 text-sm text-gray-700">
-                  {toUpperText(finalizedNextVisitSummary)}
-                </p>
-              </div>
-            ) : null}
               </div>
             </SectionCard>
           ) : null}
 
               {!isReadOnly ? (
                 <>
-                  {visiblePrimarySectionOrder.map((section) => renderConfiguredSection(section))}
+                  {visibleSectionOrder.map((section) => renderConfiguredSection(section))}
 
                   {visiblePadCustomFields.map((field) => (
                     <CustomFieldSection
@@ -4937,64 +5065,6 @@ export default function DoctorAppointmentPadPage() {
                       }
                     />
                   ))}
-
-              {visibleClinicalHistorySections.length > 0 ? (
-                <>
-                  {visibleClinicalHistorySections.map((section) => {
-                    const isExpanded = expandedClinicalHistorySections[section] ?? false;
-                    if (!isExpanded) return null;
-
-                    return (
-                      <ClinicalHistorySection
-                        key={section}
-                        section={section}
-                        items={editorState?.clinical_history ?? []}
-                        onCollapse={() =>
-                          setExpandedClinicalHistorySections((current) => ({
-                            ...current,
-                            [section]: false,
-                          }))
-                        }
-                        onChange={(items) =>
-                          setEditorState((current) =>
-                            current ? { ...current, clinical_history: items } : current
-                          )
-                        }
-                      />
-                    );
-                  })}
-
-                  {visibleClinicalHistorySections.some(
-                    (section) => !(expandedClinicalHistorySections[section] ?? false)
-                  ) ? (
-                    <section className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3">
-                      <div className="flex flex-wrap items-center gap-3">
-                        {visibleClinicalHistorySections.map((section) => {
-                          const isExpanded = expandedClinicalHistorySections[section] ?? false;
-                          if (isExpanded) return null;
-
-                          return (
-                            <button
-                              key={`expand-${section}`}
-                              type="button"
-                              onClick={() =>
-                                setExpandedClinicalHistorySections((current) => ({
-                                  ...current,
-                                  [section]: true,
-                                }))
-                              }
-                              className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-indigo-700 hover:bg-indigo-50"
-                            >
-                              <Plus size={14} />
-                              {CLINICAL_HISTORY_LABELS[section]}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  ) : null}
-                </>
-              ) : null}
 
                   <AddMasterItemModal
                     open={medicineAddModalIndex !== null}

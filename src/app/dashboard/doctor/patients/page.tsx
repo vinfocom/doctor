@@ -5,10 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { Search, X } from "lucide-react";
 import DoctorPrescriptionModal, { type PrescriptionModalTarget } from "@/components/DoctorPrescriptionModal";
-import type {
-    EmrClinicalHistoryPayload,
-    EmrClinicalHistorySection,
-} from "@/lib/emr";
+import type { EmrClinicalHistoryPayload, EmrNamedItemPayload } from "@/lib/emr";
 
 interface Patient {
     patient_id: number;
@@ -21,6 +18,7 @@ interface Patient {
 
 interface EmrHistoryItem {
     id: number;
+    prescription_no: string;
     visit_date: string;
     status: "final";
     finalized_at: string | null;
@@ -34,6 +32,8 @@ interface EmrHistoryItem {
         clinic_id: number | null;
         clinic_name: string | null;
     } | null;
+    complaints: EmrNamedItemPayload[];
+    diagnosis: EmrNamedItemPayload[];
     clinical_history: EmrClinicalHistoryPayload[];
 }
 
@@ -49,28 +49,6 @@ interface EmrHistoryPatientSummary {
     gender: string | null;
     phone: string | null;
 }
-
-const CLINICAL_HISTORY_LABELS: Record<EmrClinicalHistorySection, string> = {
-    examination_findings: "Examination Findings",
-    investigation_findings: "Investigation Findings",
-    past_medical_history: "Past Medical History",
-    family_history: "Family History",
-    surgical_history: "Surgical History",
-    treatment_history: "Treatment History",
-    allergies: "Allergies",
-    personal_social_history: "Personal / Social History",
-};
-
-const CLINICAL_HISTORY_SECTIONS: EmrClinicalHistorySection[] = [
-    "examination_findings",
-    "investigation_findings",
-    "past_medical_history",
-    "family_history",
-    "surgical_history",
-    "treatment_history",
-    "allergies",
-    "personal_social_history",
-];
 
 function formatHistoryDate(value: string) {
     const date = new Date(`${value}T00:00:00+05:30`);
@@ -128,14 +106,12 @@ function formatFollowUpSummary(
         .join(" | ");
 }
 
-function getClinicalHistoryDetails(
-    item: EmrHistoryItem,
-    section: EmrClinicalHistorySection
-) {
-    return (item.clinical_history ?? [])
-        .filter((entry) => entry.section === section)
-        .map((entry) => entry.details.trim())
-        .filter(Boolean);
+function formatNamedItemSummary(items: EmrNamedItemPayload[]) {
+    const values = items
+        .map((item) => item.name?.trim())
+        .filter((value): value is string => Boolean(value));
+
+    return values.length > 0 ? values.join(", ").toUpperCase() : "";
 }
 
 export default function DoctorPatientsPage() {
@@ -469,16 +445,12 @@ export default function DoctorPatientsPage() {
                                                     .sort((left, right) => {
                                                         const leftTime = new Date(left.finalized_at ?? left.updated_at).getTime();
                                                         const rightTime = new Date(right.finalized_at ?? right.updated_at).getTime();
-                                                        return leftTime - rightTime;
+                                                        return rightTime - leftTime;
                                                     })
                                                     .map((item) => {
                                                         const followUpLabel = formatFollowUpSummary(item.follow_up_appointment);
-                                                        const visibleClinicalHistorySections = CLINICAL_HISTORY_SECTIONS
-                                                            .map((section) => ({
-                                                                section,
-                                                                details: getClinicalHistoryDetails(item, section),
-                                                            }))
-                                                            .filter((entry) => entry.details.length > 0);
+                                                        const complaintSummary = formatNamedItemSummary(item.complaints);
+                                                        const diagnosisSummary = formatNamedItemSummary(item.diagnosis);
 
                                                         return (
                                                         <div
@@ -489,6 +461,9 @@ export default function DoctorPatientsPage() {
                                                                 <div>
                                                                     <p className="text-sm font-semibold text-gray-900">
                                                                         Final Prescription • Version {item.version_number}
+                                                                    </p>
+                                                                    <p className="mt-1 text-xs text-gray-500">
+                                                                        Prescription No.: {item.prescription_no || "-"} | Complaint: {complaintSummary || "-"} | Diagnosis: {diagnosisSummary || "-"}
                                                                     </p>
                                                                     <p className="mt-1 text-xs text-gray-500">
                                                                         Finalized {formatHistoryTime(item.finalized_at ?? item.updated_at)}
@@ -502,23 +477,6 @@ export default function DoctorPatientsPage() {
                                                                         <p className="mt-2 text-xs font-medium text-indigo-700">
                                                                             Follow-up {followUpLabel}
                                                                         </p>
-                                                                    ) : null}
-                                                                    {visibleClinicalHistorySections.length > 0 ? (
-                                                                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                                                                            {visibleClinicalHistorySections.map(({ section, details }) => (
-                                                                                <div
-                                                                                    key={`${item.id}-${section}`}
-                                                                                    className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2"
-                                                                                >
-                                                                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                                                                                        {CLINICAL_HISTORY_LABELS[section]}
-                                                                                    </p>
-                                                                                    <p className="mt-1 text-xs text-gray-700">
-                                                                                        {details.join(", ")}
-                                                                                    </p>
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
                                                                     ) : null}
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
