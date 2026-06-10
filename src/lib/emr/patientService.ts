@@ -1,3 +1,4 @@
+import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import {
   getPrescriptionRecord,
@@ -5,6 +6,7 @@ import {
 import type {
   EmrPatientPrescriptionDetail,
   EmrPatientPrescriptionSummary,
+  EmrNamedItemPayload,
 } from "@/lib/emr/types";
 
 type PatientPrescriptionRow = {
@@ -16,8 +18,34 @@ type PatientPrescriptionRow = {
   finalized_at: Date | null;
   pdf_url: string | null;
   version_number: number;
+  prescription_no: string;
   doctor_name: string | null;
   clinic_name: string | null;
+};
+
+type PatientHistoryNamedRow = {
+  prescription_id: number;
+  id: number;
+  name: string;
+  normalized_name: string;
+  notes: string | null;
+  sort_order: number;
+};
+
+export type EmrPatientDoctorPrescriptionHistoryItem = {
+  prescription_id: number;
+  patient_id: number;
+  doctor_id: number;
+  appointment_id: number | null;
+  prescription_no: string;
+  visit_date: string;
+  finalized_at: string | null;
+  doctor_name: string | null;
+  clinic_name: string | null;
+  pdf_url: string | null;
+  version_number: number;
+  complaints: EmrNamedItemPayload[];
+  diagnosis: EmrNamedItemPayload[];
 };
 
 function toIsoString(value: Date | null) {
@@ -32,6 +60,7 @@ function mapPatientPrescriptionSummary(
     patient_id: row.patient_id,
     doctor_id: row.doctor_id,
     appointment_id: row.appointment_id,
+    prescription_no: row.prescription_no,
     visit_date: row.visit_date.toISOString(),
     finalized_at: toIsoString(row.finalized_at),
     doctor_name: row.doctor_name,
@@ -50,6 +79,7 @@ export async function listPatientFinalizedPrescriptions(
       p.patient_id,
       p.doctor_id,
       p.appointment_id,
+      p.prescription_no,
       p.visit_date,
       p.finalized_at,
       p.pdf_url,
@@ -78,6 +108,7 @@ export async function getPatientFinalizedPrescriptionDetail(input: {
       p.patient_id,
       p.doctor_id,
       p.appointment_id,
+      p.prescription_no,
       p.visit_date,
       p.finalized_at,
       p.pdf_url,
@@ -123,4 +154,109 @@ export async function getPatientFinalizedPrescriptionDetail(input: {
     follow_up_appointment: record.follow_up_appointment,
     pdf_url: record.pdf_url,
   };
+}
+
+export async function listPatientFinalizedPrescriptionsForDoctor(input: {
+  patientId: number;
+  doctorId: number;
+}): Promise<EmrPatientDoctorPrescriptionHistoryItem[]> {
+  const rows = await prisma.$queryRaw<PatientPrescriptionRow[]>`
+    SELECT
+      p.id,
+      p.patient_id,
+      p.doctor_id,
+      p.appointment_id,
+      p.prescription_no,
+      p.visit_date,
+      p.finalized_at,
+      p.pdf_url,
+      p.version_number,
+      d.doctor_name,
+      c.clinic_name
+    FROM prescriptions p
+    INNER JOIN doctors d ON d.doctor_id = p.doctor_id
+    LEFT JOIN clinics c ON c.clinic_id = p.clinic_id
+    WHERE p.patient_id = ${input.patientId}
+      AND p.doctor_id = ${input.doctorId}
+      AND p.status = 'final'
+      AND p.is_deleted = 0
+    ORDER BY COALESCE(p.finalized_at, p.visit_date) DESC, p.id DESC
+  `;
+
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const prescriptionIds = rows.map((row) => row.id);
+
+  const [complaintRows, diagnosisRows] = await Promise.all([
+    prisma.$queryRaw<PatientHistoryNamedRow[]>`
+      SELECT
+        prescription_id,
+        id,
+        complaint_name AS name,
+        normalized_name,
+        notes,
+        sort_order
+      FROM prescription_complaints
+      WHERE prescription_id IN (${Prisma.join(prescriptionIds)})
+      ORDER BY prescription_id ASC, sort_order ASC, id ASC
+    `,
+    prisma.$queryRaw<PatientHistoryNamedRow[]>`
+      SELECT
+        prescription_id,
+        id,
+        diagnosis_name AS name,
+        normalized_name,
+        notes,
+        sort_order
+      FROM prescription_diagnosis
+      WHERE prescription_id IN (${Prisma.join(prescriptionIds)})
+      ORDER BY prescription_id ASC, sort_order ASC, id ASC
+    `,
+  ]);
+
+  const complaintMap = new Map<number, EmrNamedItemPayload[]>();
+  for (const row of complaintRows) {
+    const current = complaintMap.get(row.prescription_id) ?? [];
+    current.push({
+      id: row.id,
+      name: row.name,
+      normalized_name: row.normalized_name,
+      notes: row.notes,
+      sort_order: row.sort_order,
+    });
+    complaintMap.set(row.prescription_id, current);
+  }
+
+  const diagnosisMap = new Map<number, EmrNamedItemPayload[]>();
+  for (const row of diagnosisRows) {
+    const current = diagnosisMap.get(row.prescription_id) ?? [];
+    current.push({
+      id: row.id,
+      name: row.name,
+      normalized_name: row.normalized_name,
+      notes: row.notes,
+      sort_order: row.sort_order,
+    });
+    diagnosisMap.set(row.prescription_id, current);
+  }
+
+  const enriched = rows.map((row) => ({
+    prescription_id: row.id,
+    patient_id: row.patient_id,
+    doctor_id: row.doctor_id,
+    appointment_id: row.appointment_id,
+    prescription_no: row.prescription_no,
+    visit_date: row.visit_date.toISOString(),
+    finalized_at: toIsoString(row.finalized_at),
+    doctor_name: row.doctor_name,
+    clinic_name: row.clinic_name,
+    pdf_url: row.pdf_url,
+    version_number: row.version_number,
+    complaints: complaintMap.get(row.id) ?? [],
+    diagnosis: diagnosisMap.get(row.id) ?? [],
+  } satisfies EmrPatientDoctorPrescriptionHistoryItem));
+
+  return enriched;
 }

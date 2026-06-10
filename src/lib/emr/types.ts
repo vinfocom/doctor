@@ -291,6 +291,7 @@ export type EmrPatientPrescriptionSummary = {
   patient_id: number;
   doctor_id: number;
   appointment_id: number | null;
+  prescription_no: string;
   visit_date: string;
   finalized_at: string | null;
   doctor_name: string | null;

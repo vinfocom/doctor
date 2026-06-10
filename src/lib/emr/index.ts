@@ -8,5 +8,7 @@ export * from "@/lib/emr/layoutService";
 export * from "@/lib/emr/prescriptionService";
 export * from "@/lib/emr/printService";
 export * from "@/lib/emr/patientService";
+export * from "@/lib/emr/patientDocumentToken";
+export * from "@/lib/emr/patientPdfService";
 export * from "@/lib/emr/rateLimit";
 export * from "@/lib/emr/ops";
