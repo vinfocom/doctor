@@ -247,12 +247,12 @@ function getVitalsSummaryEntries(vitals: Record<string, string | null | undefine
   if (!vitals) return [];
 
   return [
-    { key: "BP", value: vitals.bp?.trim(), unit: "mmHg" },
     { key: "PULSE", value: vitals.pulse?.trim(), unit: "bpm" },
+    { key: "BP", value: vitals.bp?.trim(), unit: "mmHg" },
+    { key: "SPO2", value: vitals.spo2?.trim(), unit: "%" },
+    { key: "TEMP", value: vitals.temperature?.trim(), unit: "°F" },
     { key: "HEIGHT", value: vitals.height?.trim(), unit: "cm" },
     { key: "WEIGHT", value: vitals.weight?.trim(), unit: "kg" },
-    { key: "TEMP", value: vitals.temperature?.trim(), unit: "°F" },
-    { key: "SPO2", value: vitals.spo2?.trim(), unit: "%" },
     { key: "BMI", value: vitals.bmi?.trim(), unit: "kg/m2" },
   ].filter((entry) => Boolean(entry.value));
 }

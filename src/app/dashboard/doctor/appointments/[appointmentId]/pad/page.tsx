@@ -148,13 +148,13 @@ const DOSE_PATTERNS = [
 const DOSE_SEPARATOR = " . ";
 
 const VITAL_INPUT_ORDER: VitalInputKey[] = [
+  "pulse",
   "bp_systolic",
   "bp_diastolic",
-  "pulse",
+  "spo2",
+  "temperature",
   "height",
   "weight",
-  "temperature",
-  "spo2",
 ];
 
 const DOSE_SUGGESTIONS = DOSE_PATTERNS.map((pattern) => pattern.join(DOSE_SEPARATOR)).concat("SOS");
@@ -439,12 +439,12 @@ function getVitalsSummaryEntries(vitals: Required<EmrVitalsPayload> | EmrVitalsP
   if (!vitals) return [];
 
   return [
-    { key: "BP", value: vitals.bp?.trim(), unit: "mmHg" },
     { key: "PULSE", value: vitals.pulse?.trim(), unit: "bpm" },
+    { key: "BP", value: vitals.bp?.trim(), unit: "mmHg" },
+    { key: "SPO2", value: vitals.spo2?.trim(), unit: "%" },
+    { key: "TEMP", value: vitals.temperature?.trim(), unit: "°F" },
     { key: "HEIGHT", value: vitals.height?.trim(), unit: "cm" },
     { key: "WEIGHT", value: vitals.weight?.trim(), unit: "kg" },
-    { key: "TEMP", value: vitals.temperature?.trim(), unit: "°F" },
-    { key: "SPO2", value: vitals.spo2?.trim(), unit: "%" },
     { key: "BMI", value: vitals.bmi?.trim(), unit: "kg/m²" },
   ].filter((entry) => Boolean(entry.value));
 }
@@ -3505,7 +3505,7 @@ export default function DoctorAppointmentPadPage() {
           <SectionCard key={section} title="Vitals">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-3 text-sm text-slate-700">
-                <label className="flex items-center gap-2">
+                <label className="order-2 flex items-center gap-2">
                   <span className="font-semibold text-slate-700">
                     BP
                   </span>
@@ -3557,15 +3557,25 @@ export default function DoctorAppointmentPadPage() {
                 {(
                   [
                     ["pulse", "Pulse", "bpm"],
+                    ["spo2", "SpO2", "%"],
+                    ["temperature", "Temp", "°F"],
                     ["height", "Height", "cm"],
                     ["weight", "Weight", "kg"],
-                    ["temperature", "Temp", "F"],
-                    ["spo2", "SpO2", "%"],
                   ] as Array<[keyof DraftEditorState["vitals"], string, string]>
                 ).map(([key, label, suffix]) => (
                   <label
                     key={key}
-                    className="flex items-center gap-2"
+                    className={`flex items-center gap-2 ${
+                      key === "pulse"
+                        ? "order-1"
+                        : key === "spo2"
+                          ? "order-3"
+                          : key === "temperature"
+                            ? "order-4"
+                            : key === "height"
+                              ? "order-5"
+                              : "order-6"
+                    }`}
                   >
                     <span className="font-semibold text-slate-700">
                       {label}
@@ -3600,7 +3610,7 @@ export default function DoctorAppointmentPadPage() {
                     </div>
                   </label>
                 ))}
-                <p className="flex items-center gap-2 font-semibold text-slate-700">
+                <p className="order-7 flex items-center gap-2 font-semibold text-slate-700">
                   BMI{" "}
                   <span className="font-bold text-slate-900">
                     {editorState?.vitals.bmi || "--"}
@@ -5002,7 +5012,6 @@ export default function DoctorAppointmentPadPage() {
                 <p className="mt-1 text-sm font-semibold text-gray-900">
                   {formatPatientNameWithMeta(contextData.context.patient)}
                 </p>
-                <p className="text-sm text-gray-600">{toUpperText(contextData.context.patient?.phone, "PHONE NOT AVAILABLE")}</p>
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Visit Details</p>

@@ -126,8 +126,56 @@ body {
 
   .emr-print-section,
   .emr-print-header-strip,
-  .emr-print-footer-strip,
+  .emr-print-footer-strip {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  .emr-print-table,
+  .emr-print-table table,
+  .emr-print-table tbody {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
   .emr-print-table {
+    overflow: visible !important;
+  }
+
+  .emr-print-medicines-section .emr-print-table {
+    display: contents;
+  }
+
+  .emr-print-table thead {
+    display: table-header-group;
+  }
+
+  .emr-print-table tfoot {
+    display: table-footer-group;
+  }
+
+  .emr-print-table tr {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  .emr-print-medicines-section {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .emr-print-medicines-section > h2 {
+    break-after: avoid-page;
+    page-break-after: avoid;
+  }
+
+  .emr-print-rx-grid,
+  .emr-print-rx-grid-header {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .emr-print-rx-grid-row {
     break-inside: avoid-page;
     page-break-inside: avoid;
   }

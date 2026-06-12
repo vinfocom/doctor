@@ -59,6 +59,8 @@ const CLINICAL_HISTORY_SECTIONS: EmrClinicalHistorySection[] = [
   "personal_social_history",
 ];
 
+const MEDICINE_PRINT_GRID_COLUMNS = "0.75fr 2.4fr 1.4fr 1fr 1fr 0.9fr 1fr";
+
 const DOSE_SEPARATOR = " . ";
 
 function formatCustomFieldPrintValue(
@@ -679,6 +681,70 @@ Object.assign(CONTROLLED_FREQUENCY_TRANSLATIONS.sos, {
   bho: "\u091c\u0930\u0942\u0930\u0924 \u092a\u0921\u093c\u0947 \u092a\u0930",
   pa: "\u0a1c\u0a26\u0a4b\u0a02 \u0a32\u0a4b\u0a5c \u0a2a\u0a35\u0a47",
 });
+Object.assign(CONTROLLED_FREQUENCY_TRANSLATIONS, {
+  stat: {
+    hi: "तुरंत",
+    bn: "তৎক্ষণাৎ",
+    mr: "तात्काळ",
+    gu: "તરત જ",
+    ta: "உடனே",
+    te: "వెంటనే",
+    kn: "ತಕ್ಷಣ",
+    ml: "ഉടനെ",
+    bho: "तुरंत",
+    pa: "ਤੁਰੰਤ",
+  },
+});
+Object.assign(CONTROLLED_FREQUENCY_TRANSLATIONS, {
+  "alternate day": {
+    hi: "एक दिन छोड़कर",
+    bn: "একদিন অন্তর",
+    mr: "एक दिवस आड",
+    gu: "એક દિવસ છોડીને",
+    ta: "ஒரு நாள் விட்டு ஒரு நாள்",
+    te: "ఒక రోజు విడిచి ఒక రోజు",
+    kn: "ಒಂದು ದಿನ ಬಿಟ್ಟು ಒಂದು ದಿನ",
+    ml: "ഒരു ദിവസം ഇടവിട്ട്",
+    bho: "एक दिन छोड़ के",
+    pa: "ਇੱਕ ਦਿਨ ਛੱਡ ਕੇ",
+  },
+  fortnight: {
+    hi: "पंद्रह दिन में एक बार",
+    bn: "পাক্ষিক",
+    mr: "पंधरा दिवसातून एकदा",
+    gu: "પંદર દિવસે એક વાર",
+    ta: "பதினைந்து நாளுக்கு ஒருமுறை",
+    te: "పదిహేను రోజులకు ఒకసారి",
+    kn: "ಹದಿನೈದು ದಿನಕ್ಕೊಮ್ಮೆ",
+    ml: "പതിനഞ്ച് ദിവസത്തിലൊരിക്കൽ",
+    bho: "पंद्रह दिन पर एक बेर",
+    pa: "ਪੰਦਰਾਂ ਦਿਨਾਂ ਵਿੱਚ ਇੱਕ ਵਾਰ",
+  },
+  "weekly twice": {
+    hi: "सप्ताह में दो बार",
+    bn: "সপ্তাহে দুইবার",
+    mr: "आठवड्यातून दोनदा",
+    gu: "અઠવાડિયામાં બે વાર",
+    ta: "வாரத்தில் இரண்டு முறை",
+    te: "వారానికి రెండు సార్లు",
+    kn: "ವಾರಕ್ಕೆ ಎರಡು ಬಾರಿ",
+    ml: "ആഴ്ചയിൽ രണ്ട് പ്രാവശ്യം",
+    bho: "हप्ता में दू बेर",
+    pa: "ਹਫ਼ਤੇ ਵਿੱਚ ਦੋ ਵਾਰ",
+  },
+  "weekly thrice": {
+    hi: "सप्ताह में तीन बार",
+    bn: "সপ্তাহে তিনবার",
+    mr: "आठवड्यातून तीनदा",
+    gu: "અઠવાડિયામાં ત્રણ વાર",
+    ta: "வாரத்தில் மூன்று முறை",
+    te: "వారానికి మూడు సార్లు",
+    kn: "ವಾರಕ್ಕೆ ಮೂರು ಬಾರಿ",
+    ml: "ആഴ്ചയിൽ മൂന്ന് പ്രാവശ്യം",
+    bho: "हप्ता में तीन बेर",
+    pa: "ਹਫ਼ਤੇ ਵਿੱਚ ਤਿੰਨ ਵਾਰ",
+  },
+});
 
 Object.assign(DURATION_UNIT_TRANSLATIONS.day, {
   mr: "\u0926\u093f\u0935\u0938",
@@ -891,17 +957,48 @@ function getClinicalHistoryDetails(
     .filter(Boolean);
 }
 
-function getVitalsSummaryEntries(vitals: Record<string, string | null | undefined> | null | undefined) {
+function getVitalsSummaryEntries(
+  vitals: Record<string, string | null | undefined> | null | undefined,
+  language: PrintLanguage
+) {
   if (!vitals) return [];
 
   return [
-    { key: "BP", value: vitals.bp?.trim(), unit: "mmHg" },
-    { key: "PULSE", value: vitals.pulse?.trim(), unit: "bpm" },
-    { key: "HEIGHT", value: vitals.height?.trim(), unit: "cm" },
-    { key: "WEIGHT", value: vitals.weight?.trim(), unit: "kg" },
-    { key: "TEMP", value: vitals.temperature?.trim(), unit: "°F" },
-    { key: "SPO2", value: vitals.spo2?.trim(), unit: "%" },
-    { key: "BMI", value: vitals.bmi?.trim(), unit: "kg/m2" },
+    {
+      key: VITAL_LABEL_TRANSLATIONS.PULSE[language].toUpperCase(),
+      value: vitals.pulse?.trim(),
+      unit: "bpm",
+    },
+    {
+      key: VITAL_LABEL_TRANSLATIONS.BP[language].toUpperCase(),
+      value: vitals.bp?.trim(),
+      unit: "mmHg",
+    },
+    {
+      key: VITAL_LABEL_TRANSLATIONS.SPO2[language].toUpperCase(),
+      value: vitals.spo2?.trim(),
+      unit: "%",
+    },
+    {
+      key: VITAL_LABEL_TRANSLATIONS.TEMP[language].toUpperCase(),
+      value: vitals.temperature?.trim(),
+      unit: "°F",
+    },
+    {
+      key: VITAL_LABEL_TRANSLATIONS.HEIGHT[language].toUpperCase(),
+      value: vitals.height?.trim(),
+      unit: "cm",
+    },
+    {
+      key: VITAL_LABEL_TRANSLATIONS.WEIGHT[language].toUpperCase(),
+      value: vitals.weight?.trim(),
+      unit: "kg",
+    },
+    {
+      key: VITAL_LABEL_TRANSLATIONS.BMI[language].toUpperCase(),
+      value: vitals.bmi?.trim(),
+      unit: "kg/m2",
+    },
   ].filter((entry) => Boolean(entry.value));
 }
 
@@ -930,6 +1027,135 @@ function formatPatientSummary(patient: {
 
   return (meta.length > 0 ? `${name} (${meta.join(", ")})` : name).toUpperCase();
 }
+
+const PRESCRIPTION_NUMBER_LABEL_TRANSLATIONS: Record<PrintLanguage, string> = {
+  en: "Prescription No.",
+  hi: "प्रिस्क्रिप्शन नंबर",
+  bn: "প্রেসক্রিপশন নম্বর",
+  mr: "प्रिस्क्रिप्शन क्रमांक",
+  gu: "પ્રિસ્ક્રિપ્શન નંબર",
+  ta: "பரிந்துரை எண்",
+  te: "ప్రిస్క్రిప్షన్ నంబర్",
+  kn: "ಪ್ರಿಸ್ಕ್ರಿಪ್ಷನ್ ಸಂಖ್ಯೆ",
+  ml: "പ്രിസ്ക്രിപ്ഷൻ നമ്പർ",
+  bho: "प्रिस्क्रिप्शन नंबर",
+  pa: "ਪ੍ਰਿਸਕ੍ਰਿਪਸ਼ਨ ਨੰਬਰ",
+};
+
+const DOSE_SPECIAL_TRANSLATIONS: Record<
+  string,
+  Partial<Record<Exclude<PrintLanguage, "en">, string>>
+> = {
+  sos: {
+    hi: "ज़रूरत पड़ने पर",
+    bn: "প্রয়োজন হলে",
+    mr: "गरजेनुसार",
+    gu: "જરૂર પડે ત્યારે",
+    ta: "தேவைப்பட்டால்",
+    te: "అవసరం ఉంటే",
+    kn: "ಅಗತ್ಯವಿದ್ದಾಗ",
+    ml: "ആവശ്യമുണ്ടെങ്കിൽ",
+    bho: "जरूरत पड़े पर",
+    pa: "ਜਦੋਂ ਲੋੜ ਪਵੇ",
+  },
+};
+
+const VITAL_LABEL_TRANSLATIONS: Record<
+  "PULSE" | "BP" | "SPO2" | "TEMP" | "HEIGHT" | "WEIGHT" | "BMI",
+  Record<PrintLanguage, string>
+> = {
+  PULSE: {
+    en: "Pulse",
+    hi: "नाड़ी",
+    bn: "পালস",
+    mr: "नाडी",
+    gu: "નાડી",
+    ta: "நாடி",
+    te: "నాడి",
+    kn: "ನಾಡಿ",
+    ml: "നാടി",
+    bho: "नाड़ी",
+    pa: "ਨਬਜ਼",
+  },
+  BP: {
+    en: "BP",
+    hi: "बीपी",
+    bn: "বিপি",
+    mr: "बीपी",
+    gu: "બીપી",
+    ta: "பிபி",
+    te: "బీపీ",
+    kn: "ಬಿಪಿ",
+    ml: "ബി.പി",
+    bho: "बीपी",
+    pa: "ਬੀਪੀ",
+  },
+  SPO2: {
+    en: "SpO2",
+    hi: "एसपीओ2",
+    bn: "এসপিও2",
+    mr: "एसपीओ2",
+    gu: "એસપીઓ2",
+    ta: "எஸ்பிஓ2",
+    te: "ఎస్పీఓ2",
+    kn: "ಎಸ್‌ಪಿಒ2",
+    ml: "എസ്‌പിഒ2",
+    bho: "एसपीओ2",
+    pa: "ਐਸਪੀਓ2",
+  },
+  TEMP: {
+    en: "Temp",
+    hi: "तापमान",
+    bn: "তাপমাত্রা",
+    mr: "तापमान",
+    gu: "તાપમાન",
+    ta: "வெப்பநிலை",
+    te: "ఉష్ణోగ్రత",
+    kn: "ತಾಪಮಾನ",
+    ml: "താപനില",
+    bho: "तापमान",
+    pa: "ਤਾਪਮਾਨ",
+  },
+  HEIGHT: {
+    en: "Height",
+    hi: "लंबाई",
+    bn: "উচ্চতা",
+    mr: "उंची",
+    gu: "ઊંચાઈ",
+    ta: "உயரம்",
+    te: "ఎత్తు",
+    kn: "ಎತ್ತರ",
+    ml: "ഉയരം",
+    bho: "लंबाई",
+    pa: "ਕੱਦ",
+  },
+  WEIGHT: {
+    en: "Weight",
+    hi: "वजन",
+    bn: "ওজন",
+    mr: "वजन",
+    gu: "વજન",
+    ta: "எடை",
+    te: "బరువు",
+    kn: "ತೂಕ",
+    ml: "ഭാരം",
+    bho: "वजन",
+    pa: "ਵਜ਼ਨ",
+  },
+  BMI: {
+    en: "BMI",
+    hi: "बीएमआई",
+    bn: "বিএমআই",
+    mr: "बीएमआय",
+    gu: "બીએમઆઈ",
+    ta: "பிஎம்ஐ",
+    te: "బిఎంఐ",
+    kn: "ಬಿಎಂಐ",
+    ml: "ബി.എം.ഐ",
+    bho: "बीएमआई",
+    pa: "ਬੀਐਮਆਈ",
+  },
+};
 
 function cssLength(value: string | null | undefined, fallback: string) {
   const normalized = value?.trim();
@@ -1123,6 +1349,11 @@ function getDoseExplanation(
     return labels.fullDose.toUpperCase();
   }
 
+  if (compact === "sos") {
+    if (language === "en") return "SOS";
+    return (DOSE_SPECIAL_TRANSLATIONS.sos[language] ?? "SOS").toUpperCase();
+  }
+
   const fourPartMatch = normalized.match(
     /^\s*([0-9/]+)\s*[.\-]\s*([0-9/]+)\s*[.\-]\s*([0-9/]+)\s*[.\-]\s*([0-9/]+)\s*$/
   );
@@ -1229,7 +1460,7 @@ export default function EmrPrintablePrescriptionView({
         unit: printPlacement.prescription_validity_unit ?? null,
       })
     : null;
-  const vitalsSummaryEntries = getVitalsSummaryEntries(prescription.vitals || null);
+  const vitalsSummaryEntries = getVitalsSummaryEntries(prescription.vitals || null, language);
   const hasNextVisit = Boolean(
     prescription.follow_up_appointment || prescription.next_visit_date
   );
@@ -1241,11 +1472,14 @@ export default function EmrPrintablePrescriptionView({
     switch (section) {
       case "vitals":
         return vitalsSummaryEntries.length > 0 ? (
-          <section key={section} className="emr-print-section space-y-3 print:space-y-2">
+          <section
+            key={section}
+            className="emr-print-section space-y-3 print:space-y-1"
+          >
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.vitals)}
             </h2>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-0 py-0 text-sm text-gray-700">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-0 py-0 text-sm text-gray-700 print:gap-x-3 print:gap-y-1">
               {vitalsSummaryEntries.map((entry) => (
                 <span key={entry.key} className="whitespace-nowrap">
                   <span className="font-semibold uppercase text-gray-500">{entry.key}</span>{" "}
@@ -1260,7 +1494,7 @@ export default function EmrPrintablePrescriptionView({
         ) : null;
       case "complaints":
         return prescription.complaints.length > 0 ? (
-          <section key={section} className="emr-print-section space-y-2 print:space-y-1">
+          <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.complaints)}
             </h2>
@@ -1269,7 +1503,7 @@ export default function EmrPrintablePrescriptionView({
         ) : null;
       case "diagnosis":
         return prescription.diagnosis.length > 0 ? (
-          <section key={section} className="emr-print-section space-y-2 print:space-y-1">
+          <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.diagnosis)}
             </h2>
@@ -1278,69 +1512,81 @@ export default function EmrPrintablePrescriptionView({
         ) : null;
       case "medicines":
         return prescription.medicines.length > 0 ? (
-          <section key={section} className="emr-print-section space-y-3 print:space-y-2">
+            <section
+              key={section}
+            className="emr-print-section emr-print-medicines-section space-y-3 print:space-y-1"
+          >
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.medicines)}
             </h2>
-            <div className="emr-print-table overflow-hidden rounded-2xl border border-gray-200">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
-                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.type)}</th>
-                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.medicine)}</th>
-                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.dose)}</th>
-                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.when)}</th>
-                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.frequency)}</th>
-                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.duration)}</th>
-                    <th className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.notes)}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white">
-                  {prescription.medicines.map((medicine, index) => (
-                    <tr key={`print-medicine-${index}`} className="align-top text-sm text-gray-700">
-                      <td className="px-3 py-2 print:px-2 print:py-1.5">{toUpperDisplayValue(medicine.type, "-")}</td>
-                      <td className="px-3 py-2 print:px-2 print:py-1.5">
-                        <p className="font-semibold text-gray-900">
-                          {medicine.medicine_name?.trim().toUpperCase() || "-"}
+            <div className="emr-print-rx-grid overflow-hidden rounded-2xl border border-gray-200 bg-white print:overflow-visible print:rounded-none">
+              <div
+                className="emr-print-rx-grid-header grid border-b border-gray-200 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500"
+                style={{ gridTemplateColumns: MEDICINE_PRINT_GRID_COLUMNS }}
+              >
+                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.type)}</div>
+                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.medicine)}</div>
+                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.dose)}</div>
+                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.when)}</div>
+                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.frequency)}</div>
+                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.duration)}</div>
+                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.notes)}</div>
+              </div>
+              <div className="divide-y divide-gray-100 bg-white">
+                {prescription.medicines.map((medicine, index) => (
+                  <div
+                    key={`print-medicine-${index}`}
+                    className="emr-print-rx-grid-row grid items-start text-sm text-gray-700"
+                    style={{ gridTemplateColumns: MEDICINE_PRINT_GRID_COLUMNS }}
+                  >
+                    <div className="px-3 py-2 print:px-2 print:py-1">
+                      {toUpperDisplayValue(medicine.type, "-")}
+                    </div>
+                    <div className="px-3 py-2 print:px-2 print:py-1">
+                      <p className="font-semibold text-gray-900">
+                        {medicine.medicine_name?.trim().toUpperCase() || "-"}
+                      </p>
+                      {medicine.salt_composition?.trim() ? (
+                        <p className="mt-1 text-xs text-gray-500 print:mt-0">
+                          {medicine.salt_composition.trim().toUpperCase()}
                         </p>
-                        {medicine.salt_composition?.trim() ? (
-                          <p className="mt-1 text-xs text-gray-500 print:mt-0.5">
-                            {medicine.salt_composition.trim().toUpperCase()}
-                          </p>
-                        ) : null}
-                      </td>
-                      <td className="px-3 py-2 print:px-2 print:py-1.5">
-                        <p className="font-medium leading-snug text-gray-900">
-                          {getDoseExplanation(medicine.dose, language) ||
-                            toUpperDisplayValue(formatDoseInput(medicine.dose), "-")}
-                        </p>
-                      </td>
-                      <td className="px-3 py-2 print:px-2 print:py-1.5">
-                        {translateControlledValue(
-                          medicine.timing,
-                          language,
-                          CONTROLLED_TIMING_TRANSLATIONS
-                        )}
-                      </td>
-                      <td className="px-3 py-2 print:px-2 print:py-1.5">
-                        {translateControlledValue(
-                          medicine.frequency,
-                          language,
-                          CONTROLLED_FREQUENCY_TRANSLATIONS
-                        )}
-                      </td>
-                      <td className="px-3 py-2 print:px-2 print:py-1.5">{formatDuration(medicine, language)}</td>
-                      <td className="px-3 py-2 print:px-2 print:py-1.5">{toUpperDisplayValue(medicine.notes, "-")}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      ) : null}
+                    </div>
+                    <div className="px-3 py-2 print:px-2 print:py-1">
+                      <p className="font-medium leading-snug text-gray-900">
+                        {getDoseExplanation(medicine.dose, language) ||
+                          toUpperDisplayValue(formatDoseInput(medicine.dose), "-")}
+                      </p>
+                    </div>
+                    <div className="px-3 py-2 print:px-2 print:py-1">
+                      {translateControlledValue(
+                        medicine.timing,
+                        language,
+                        CONTROLLED_TIMING_TRANSLATIONS
+                      )}
+                    </div>
+                    <div className="px-3 py-2 print:px-2 print:py-1">
+                      {translateControlledValue(
+                        medicine.frequency,
+                        language,
+                        CONTROLLED_FREQUENCY_TRANSLATIONS
+                      )}
+                    </div>
+                    <div className="px-3 py-2 print:px-2 print:py-1">
+                      {formatDuration(medicine, language)}
+                    </div>
+                    <div className="break-words px-3 py-2 print:px-2 print:py-1">
+                      {toUpperDisplayValue(medicine.notes, "-")}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
         ) : null;
       case "advice":
         return prescription.advice.length > 0 ? (
-          <section key={section} className="emr-print-section space-y-2 print:space-y-1">
+          <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.advice)}
             </h2>
@@ -1349,7 +1595,7 @@ export default function EmrPrintablePrescriptionView({
         ) : null;
       case "tests":
         return prescription.tests.length > 0 ? (
-          <section key={section} className="emr-print-section space-y-2 print:space-y-1">
+          <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.testsRequested)}
             </h2>
@@ -1358,7 +1604,7 @@ export default function EmrPrintablePrescriptionView({
         ) : null;
       case "next_visit":
         return hasNextVisit ? (
-          <section key={section} className="emr-print-section space-y-2 print:space-y-1">
+          <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.nextVisit)}
             </h2>
@@ -1378,7 +1624,7 @@ export default function EmrPrintablePrescriptionView({
           if (details.length === 0) return null;
 
           return (
-            <section key={section} className="emr-print-section space-y-2 print:space-y-1">
+            <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">
               <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
                 {toUpperText(getClinicalHistoryHeading(clinicalSection, language))}
               </h2>
@@ -1437,7 +1683,7 @@ export default function EmrPrintablePrescriptionView({
               />
             ) : null}
             {showClinicLogo ? (
-              <div className="px-0 py-4">
+              <div className="px-0 py-4 print:py-2">
                 <img
                   src={layout.clinic_logo_url!}
                   alt="Clinic logo"
@@ -1449,7 +1695,7 @@ export default function EmrPrintablePrescriptionView({
         ) : null}
 
         <div
-          className="emr-print-content space-y-6 print:space-y-3"
+          className="emr-print-content space-y-6 print:space-y-2"
           style={{
             paddingTop: `calc(${pageTop} + ${offsetY})`,
             paddingRight: `calc(${pageRight} + ${rightStripSpace})`,
@@ -1457,13 +1703,10 @@ export default function EmrPrintablePrescriptionView({
             paddingLeft: `calc(${pageLeft} + ${leftStripSpace} + ${offsetX})`,
           }}
         >
-          <header className="emr-print-section border-b border-gray-200 pb-4 print:pb-2.5">
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-700 print:gap-x-4 print:gap-y-1">
+          <header className="emr-print-section border-b border-gray-200 pb-4 print:pb-1.5">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-700 print:gap-x-3 print:gap-y-0.5">
               <p className="font-semibold text-gray-900">
                 {formatPatientSummary(printable.patient)}
-              </p>
-              <p>
-                {toUpperText(t.phone)}: {toUpperText(printable.patient.phone)}
               </p>
               <p>
                 {toUpperText(t.visitDate)}: {toUpperText(formatDateDdMmYyyy(prescription.visit_date))}
@@ -1471,7 +1714,7 @@ export default function EmrPrintablePrescriptionView({
               {showPrescriptionNumber ? (
                 <p className="whitespace-nowrap font-medium text-gray-700">
                   {toUpperText(
-                    `PRESCRIPTION NO.: ${formatDoctorSpecificPrescriptionNumber(
+                    `${PRESCRIPTION_NUMBER_LABEL_TRANSLATIONS[language]}: ${formatDoctorSpecificPrescriptionNumber(
                       prescription
                     )}`
                   )}
@@ -1493,7 +1736,7 @@ export default function EmrPrintablePrescriptionView({
               if (!displayValue) return null;
 
               return (
-                <section key={`print-custom-${field.field_key}`} className="emr-print-section space-y-2 print:space-y-1">
+                <section key={`print-custom-${field.field_key}`} className="emr-print-section space-y-2 print:space-y-0.5">
                   <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
                     {toUpperText(field.field_label)}
                   </h2>
@@ -1503,7 +1746,7 @@ export default function EmrPrintablePrescriptionView({
             })}
 
           {prescriptionValidityTill ? (
-            <section className="emr-print-section border-t border-gray-200 pt-3 print:pt-2">
+            <section className="emr-print-section border-t border-gray-200 pt-3 print:pt-1.5">
               <p className="text-[11px] text-gray-500">
                 {toUpperText(
                   `${PRESCRIPTION_VALIDITY_NOTE_TRANSLATIONS[language]} ${formatDateDdMmYyyy(
