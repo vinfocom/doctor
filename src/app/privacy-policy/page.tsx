@@ -1,19 +1,19 @@
 import type { Metadata } from "next";
+import { LEGAL_CONTACT_EMAILS, PRIVACY_POLICY_LAST_UPDATED } from "@/lib/legal";
 
 export const metadata: Metadata = {
   title: "Privacy Policy | Dapto",
   description: "Privacy Policy for the Dapto mobile and web application.",
 };
 
-const LAST_UPDATED = "April 2, 2026";
-const CONTACT_EMAIL = "dapptosupport@gmail.com";
+const CONTACT_EMAIL = LEGAL_CONTACT_EMAILS[0];
 
 export default function PrivacyPolicyPage() {
   return (
     <main className="min-h-screen bg-gray-50 py-10 px-4">
       <div className="mx-auto max-w-4xl rounded-2xl border border-gray-200 bg-white p-6 md:p-10">
         <h1 className="text-3xl font-bold text-gray-900">Privacy Policy</h1>
-        <p className="mt-2 text-sm text-gray-600">Last Updated: {LAST_UPDATED}</p>
+        <p className="mt-2 text-sm text-gray-600">Last Updated: {PRIVACY_POLICY_LAST_UPDATED}</p>
         <p className="mt-6 text-gray-700 leading-7">
           This Privacy Policy describes how Dapto (“we”, “us”, or “our”), operated by an independent development team led by Kanika, collects, uses, discloses, and safeguards your information when you use the Dapto mobile application and related services.
         </p>

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { validateLoginChallengeProof } from "@/lib/loginChallenge";
 import { sanitizeFilename, uploadBufferToS3 } from "@/lib/s3";
 
 function normalizeText(value: unknown) {
@@ -10,29 +9,10 @@ export async function POST(req: NextRequest) {
     try {
         const formData = await req.formData();
         const file = formData.get("file") as File | null;
-        const challengeId = normalizeText(formData.get("challengeId"));
-        const challengeVerificationToken = normalizeText(formData.get("challengeVerificationToken"));
         const uploadType = normalizeText(formData.get("uploadType")) === "profile_pic" ? "profile_pic" : "document";
 
         if (!file) {
             return NextResponse.json({ error: "No file provided" }, { status: 400 });
-        }
-
-        if (!challengeId || !challengeVerificationToken) {
-            return NextResponse.json(
-                { error: "Verified calculation is required before uploading a document" },
-                { status: 400 }
-            );
-        }
-
-        const challengeResult = validateLoginChallengeProof(challengeId, challengeVerificationToken);
-        if (!challengeResult.ok) {
-            const message =
-                challengeResult.reason === "expired"
-                    ? "Calculation expired. Please generate a new one."
-                    : "Please verify the calculation before uploading a document.";
-
-            return NextResponse.json({ error: message }, { status: 400 });
         }
 
         const documentTypes = [

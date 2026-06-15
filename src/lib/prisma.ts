@@ -48,6 +48,12 @@ function getPrismaClient() {
   return client;
 }
 
+export function resetPrismaClient() {
+  const client = globalForPrisma.prisma;
+  globalForPrisma.prisma = undefined;
+  return client?.$disconnect().catch(() => undefined);
+}
+
 const prisma = new Proxy({} as PrismaClient, {
   get(_target, prop, receiver) {
     const client = getPrismaClient();

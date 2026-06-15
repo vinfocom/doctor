@@ -3,7 +3,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { validateLoginChallengeProof } from "@/lib/loginChallenge";
+import {
+    consumeDoctorSignupVerificationToken,
+    isDoctorSignupOtpChannel,
+    normalizeDoctorSignupOtpTarget,
+    validateDoctorSignupVerificationToken,
+} from "@/lib/doctorSignupOtp";
 
 const DEFAULT_DOCTOR_ADMIN_ID = 1;
 
@@ -15,8 +20,16 @@ function normalizeText(value: unknown) {
     return String(value || "").trim();
 }
 
+function normalizeUppercaseText(value: unknown) {
+    return String(value || "").trim().toUpperCase();
+}
+
 function sanitizePhone(value: unknown) {
     return String(value || "").replace(/[^\d+]/g, "").trim();
+}
+
+function normalizePhoneDigits(value: unknown) {
+    return String(value || "").replace(/\D/g, "");
 }
 
 function normalizeClinicCount(value: unknown) {
@@ -37,15 +50,16 @@ export async function POST(req: NextRequest) {
         const num_clinics = normalizeClinicCount(body?.num_clinics);
         const whatsapp_number = sanitizePhone(body?.whatsapp_number);
         const specialization = normalizeText(body?.specialization);
-        const registration_no = normalizeText(body?.registration_no);
-        const education = normalizeText(body?.education);
+        const registration_no = normalizeUppercaseText(body?.registration_no);
+        const education = normalizeUppercaseText(body?.education);
         const document_url = normalizeText(body?.document_url);
         const profile_pic_url = normalizeText(body?.profile_pic_url);
         const address = normalizeText(body?.address);
         const gst_number = normalizeText(body?.gst_number);
         const pan_number = normalizeText(body?.pan_number);
-        const challengeId = normalizeText(body?.challengeId);
-        const challengeVerificationToken = normalizeText(body?.challengeVerificationToken);
+        const verificationChannel = normalizeText(body?.verificationChannel).toUpperCase();
+        const verificationTarget = normalizeText(body?.verificationTarget);
+        const verificationToken = normalizeText(body?.verificationToken);
 
         if (
             !email ||
@@ -53,20 +67,42 @@ export async function POST(req: NextRequest) {
             !confirmPassword ||
             !doctor_name ||
             !phone ||
-            !whatsapp_number ||
             !specialization ||
             !registration_no ||
-            !education ||
-            !document_url ||
             !address ||
-            !challengeId ||
-            !challengeVerificationToken
+            !verificationChannel ||
+            !verificationTarget ||
+            !verificationToken
         ) {
             return NextResponse.json(
                 {
                     error:
-                        "Email, password, confirm password, doctor name, phone, WhatsApp number, specialization, registration number, education, degree document, address, and verified calculation are required",
+                        "Email, password, confirm password, doctor name, phone, specialization, registration number, address, and account verification are required",
                 },
+                { status: 400 }
+            );
+        }
+
+        if (!isDoctorSignupOtpChannel(verificationChannel)) {
+            return NextResponse.json(
+                { error: "Invalid account verification method" },
+                { status: 400 }
+            );
+        }
+
+        const normalizedVerificationTarget = normalizeDoctorSignupOtpTarget(
+            verificationChannel,
+            verificationTarget
+        );
+        const expectedVerificationTarget =
+            verificationChannel === "EMAIL" ? email : normalizePhoneDigits(phone);
+
+        if (
+            !normalizedVerificationTarget ||
+            normalizedVerificationTarget !== expectedVerificationTarget
+        ) {
+            return NextResponse.json(
+                { error: "Account verification does not match the current signup details" },
                 { status: 400 }
             );
         }
@@ -83,19 +119,6 @@ export async function POST(req: NextRequest) {
                 { error: "Password must be at least 6 characters long" },
                 { status: 400 }
             );
-        }
-
-        const challengeResult = validateLoginChallengeProof(
-            challengeId,
-            challengeVerificationToken
-        );
-        if (!challengeResult.ok) {
-            const message =
-                challengeResult.reason === "expired"
-                    ? "Calculation expired. Please generate a new one."
-                    : "Please verify the calculation before signing up.";
-
-            return NextResponse.json({ error: message }, { status: 400 });
         }
 
         const admin = await prisma.admins.findUnique({
@@ -118,6 +141,40 @@ export async function POST(req: NextRequest) {
             return NextResponse.json(
                 { error: "A user with this email already exists" },
                 { status: 409 }
+            );
+        }
+
+        const existingDoctors = await prisma.doctors.findMany({
+            where: { phone: { not: null } },
+            select: { phone: true },
+        });
+        const existingDoctorWithPhone = existingDoctors.some((doctor) => {
+            const currentPhone = normalizePhoneDigits(doctor.phone);
+            const nextPhone = normalizePhoneDigits(phone);
+            if (!currentPhone || !nextPhone) return false;
+            if (currentPhone === nextPhone) return true;
+            return currentPhone.length >= 10 &&
+                nextPhone.length >= 10 &&
+                currentPhone.slice(-10) === nextPhone.slice(-10);
+        });
+
+        if (existingDoctorWithPhone) {
+            return NextResponse.json(
+                { error: "A doctor with this phone number already exists" },
+                { status: 409 }
+            );
+        }
+
+        const signupVerification = await validateDoctorSignupVerificationToken({
+            channel: verificationChannel,
+            target: normalizedVerificationTarget,
+            verificationToken,
+        });
+
+        if (!signupVerification) {
+            return NextResponse.json(
+                { error: "Please verify your email or phone number before signing up" },
+                { status: 400 }
             );
         }
 
@@ -149,11 +206,11 @@ export async function POST(req: NextRequest) {
                     user_id: user.user_id,
                     doctor_name,
                     phone,
-                    whatsapp_number,
+                    whatsapp_number: whatsapp_number || null,
                     specialization,
                     registration_no,
-                    education,
-                    document_url,
+                    education: education || null,
+                    document_url: document_url || null,
                     profile_pic_url: profile_pic_url || null,
                     address,
                     gst_number,
@@ -182,17 +239,27 @@ export async function POST(req: NextRequest) {
                 },
             });
 
-            await tx.doctor_whatsapp_numbers.createMany({
-                data: (whatsappNumbers.length > 0 ? whatsappNumbers : [whatsapp_number]).map((number: string, index: number) => ({
-                    doctor_id: doctor.doctor_id,
-                    whatsapp_number: number,
-                    is_primary: index === 0,
-                    chat_id: null,
-                })),
-            });
+            const whatsappNumbersToCreate = whatsappNumbers.length > 0
+                ? whatsappNumbers
+                : whatsapp_number
+                    ? [whatsapp_number]
+                    : [];
+
+            if (whatsappNumbersToCreate.length > 0) {
+                await tx.doctor_whatsapp_numbers.createMany({
+                    data: whatsappNumbersToCreate.map((number: string, index: number) => ({
+                        doctor_id: doctor.doctor_id,
+                        whatsapp_number: number,
+                        is_primary: index === 0,
+                        chat_id: null,
+                    })),
+                });
+            }
 
             return { user, doctor };
         });
+
+        await consumeDoctorSignupVerificationToken(signupVerification.otp_id);
 
         return NextResponse.json(
             {
