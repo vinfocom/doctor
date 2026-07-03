@@ -7,6 +7,12 @@ import { cookies } from "next/headers";
 import { parseISTDate } from "@/lib/appointmentDateTime";
 import { Prisma } from "@/generated/prisma/client";
 import { attachBookingIds } from "@/lib/bookingId";
+import {
+    getActiveDoctorWhere,
+    getClinicStaffAccessBlockReason,
+    hasHospitalDoctorAccess,
+    resolveAssignedDoctorIds,
+} from "@/lib/clinicStaffAccess";
 
 export const runtime = "nodejs";
 
@@ -57,7 +63,7 @@ const summarizeStatuses = (appointments: Array<{ status: string | null }>) => {
 const buildPdfBuffer = async (payload: {
     rangeLabel: string;
     summary: { booked: number; cancelled: number; completed: number; pending: number };
-    rows: Array<{ name: string; appointmentNo: string; clinic: string; date: string; status: string }>;
+    rows: Array<{ name: string; doctor: string; appointmentNo: string; clinic: string; date: string; status: string }>;
 }) => {
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -65,14 +71,15 @@ const buildPdfBuffer = async (payload: {
 
     const pageSize: [number, number] = [595.28, 841.89]; // A4
     const margin = 40;
-    const lineHeight = 14;
+    const lineHeight = 13;
     const headerGap = 6;
     const columns = [
-        { label: "Patient Name", width: 160 },
-        { label: "Appointment No", width: 85 },
-        { label: "Clinic", width: 110 },
-        { label: "Appointment Date", width: 90 },
-        { label: "Status", width: 70 },
+        { label: "Patient Name", width: 120 },
+        { label: "Doctor", width: 90 },
+        { label: "Appt. No", width: 78 },
+        { label: "Clinic", width: 86 },
+        { label: "Appt. Date", width: 78 },
+        { label: "Status", width: 58 },
     ];
     const totalWidth = columns.reduce((s, c) => s + c.width, 0);
 
@@ -131,10 +138,10 @@ const buildPdfBuffer = async (payload: {
 
     let x = startX;
     for (const col of columns) {
-        drawText(col.label, x, y, 10, true, rgb(0.07, 0.09, 0.12));
+        drawText(col.label, x, y, 9, true, rgb(0.07, 0.09, 0.12));
         x += col.width;
     }
-    y -= 10 + 6;
+    y -= 9 + 6;
     drawLine(y);
     y -= 8;
 
@@ -143,10 +150,10 @@ const buildPdfBuffer = async (payload: {
             ({ page, y } = addPage());
         }
         x = startX;
-        const values = [row.name, row.appointmentNo, row.clinic, row.date, row.status];
+        const values = [row.name, row.doctor, row.appointmentNo, row.clinic, row.date, row.status];
         for (let i = 0; i < columns.length; i += 1) {
-            const value = truncateText(values[i] || "", columns[i].width - 4, 10);
-            drawText(value, x, y, 10, false, rgb(0.22, 0.24, 0.27));
+            const value = truncateText(values[i] || "", columns[i].width - 4, 9.5);
+            drawText(value, x, y, 9.5, false, rgb(0.22, 0.24, 0.27));
             x += columns[i].width;
         }
         y -= lineHeight;
@@ -159,7 +166,7 @@ const buildPdfBuffer = async (payload: {
 const buildExcelBuffer = async (payload: {
     rangeLabel: string;
     summary: { booked: number; cancelled: number; completed: number; pending: number };
-    rows: Array<{ name: string; appointmentNo: string; clinic: string; date: string; status: string }>;
+    rows: Array<{ name: string; doctor: string; appointmentNo: string; clinic: string; date: string; status: string }>;
 }) => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Appointments");
@@ -170,10 +177,10 @@ const buildExcelBuffer = async (payload: {
         `Summary: Booked ${payload.summary.booked} | Cancelled ${payload.summary.cancelled} | Completed ${payload.summary.completed} | Not Visited ${payload.summary.pending}`,
     ]);
     sheet.addRow([]);
-    sheet.addRow(["Patient Name", "Appointment No", "Clinic", "Appointment Date", "Appointment Status"]);
+    sheet.addRow(["Patient Name", "Doctor", "Appointment No", "Clinic", "Appointment Date", "Appointment Status"]);
 
     for (const row of payload.rows) {
-        sheet.addRow([row.name, row.appointmentNo, row.clinic, row.date, row.status]);
+        sheet.addRow([row.name, row.doctor, row.appointmentNo, row.clinic, row.date, row.status]);
     }
 
     sheet.getRow(1).font = { size: 16, bold: true };
@@ -182,6 +189,7 @@ const buildExcelBuffer = async (payload: {
     sheet.getRow(5).font = { bold: true };
     sheet.columns = [
         { width: 26 },
+        { width: 24 },
         { width: 18 },
         { width: 22 },
         { width: 18 },
@@ -198,6 +206,10 @@ export async function GET(request: Request) {
         const dateFrom = searchParams.get("dateFrom") || "";
         const dateTo = searchParams.get("dateTo") || "";
         const format = (searchParams.get("format") || "pdf").toLowerCase();
+        const selectedDoctorIds = searchParams
+            .getAll("doctorId")
+            .map((value) => Number(value))
+            .filter((value) => Number.isInteger(value) && value > 0);
 
         if (!dateFrom || !dateTo) {
             return NextResponse.json({ error: "dateFrom and dateTo required" }, { status: 400 });
@@ -226,6 +238,7 @@ export async function GET(request: Request) {
         let adminId: string | null = null;
         let isClinicStaff = false;
         let staffClinicId: number | null = null;
+        let assignedDoctorIds: number[] = [];
 
         if (user.role === "DOCTOR") {
             const doctor = await prisma.doctors.findUnique({
@@ -237,11 +250,44 @@ export async function GET(request: Request) {
         } else if (user.role === "CLINIC_STAFF") {
             const staff = await prisma.clinic_staff.findUnique({
                 where: { user_id: user.userId },
+                include: {
+                    clinics: {
+                        select: {
+                            hospital_group_code: true,
+                        },
+                    },
+                    doctor_access: {
+                        select: {
+                            doctor_id: true,
+                        },
+                    },
+                },
             });
             if (!staff) return NextResponse.json({ error: "Staff profile not found" }, { status: 404 });
+            const staffBlockReason = getClinicStaffAccessBlockReason(staff);
+            if (staffBlockReason) {
+                return NextResponse.json({ error: staffBlockReason }, { status: 403 });
+            }
             doctorId = String(staff.doctor_id);
             isClinicStaff = true;
             staffClinicId = staff.clinic_id;
+            const rawAssignedDoctorIds = resolveAssignedDoctorIds(staff);
+            const staffHospitalGroupCode = String(staff.clinics?.hospital_group_code || "").trim();
+            const canUseHospitalScope = hasHospitalDoctorAccess(staff) && Boolean(staffHospitalGroupCode);
+            const activeDoctors = await prisma.doctors.findMany({
+                where: {
+                    doctor_id: { in: rawAssignedDoctorIds },
+                    ...getActiveDoctorWhere(),
+                },
+                select: { doctor_id: true },
+            });
+            assignedDoctorIds = activeDoctors.map((doctor) => Number(doctor.doctor_id));
+            if (!canUseHospitalScope) {
+                assignedDoctorIds = assignedDoctorIds.filter((id) => id === Number(staff.doctor_id));
+            }
+            if (assignedDoctorIds.length === 0) {
+                return NextResponse.json({ error: "No active assigned doctors found" }, { status: 403 });
+            }
         } else if (user.role === "ADMIN") {
             const admin = await prisma.admins.findUnique({
                 where: { user_id: user.userId },
@@ -260,13 +306,61 @@ export async function GET(request: Request) {
         const where: Prisma.appointmentWhereInput = {
             appointment_date: range,
         };
-        if (doctorId) where.doctor_id = Number(doctorId);
+        if (isClinicStaff) {
+            if (selectedDoctorIds.length > 0) {
+                const invalidDoctorIds = selectedDoctorIds.filter((doctorId) => !assignedDoctorIds.includes(doctorId));
+                if (invalidDoctorIds.length > 0) {
+                    return NextResponse.json({ error: "Forbidden doctor selection" }, { status: 403 });
+                }
+                where.doctor_id = selectedDoctorIds.length === 1 ? selectedDoctorIds[0] : { in: selectedDoctorIds };
+            } else if (assignedDoctorIds.length > 1) {
+                where.doctor_id = { in: assignedDoctorIds };
+            } else if (doctorId) {
+                where.doctor_id = Number(doctorId);
+            }
+        } else if (doctorId) {
+            where.doctor_id = Number(doctorId);
+        }
         if (adminId) where.admin_id = Number(adminId);
-        if (isClinicStaff && staffClinicId) where.clinic_id = staffClinicId;
+        if (isClinicStaff) {
+            where.doctor = { is: getActiveDoctorWhere() };
+            where.clinic = { is: { status: "ACTIVE" } };
+        }
+        if (isClinicStaff && staffClinicId) {
+            const scopedClinic = await prisma.clinics.findUnique({
+                where: { clinic_id: staffClinicId },
+                select: { hospital_group_code: true },
+            });
+
+            const hospitalGroupCode = String(scopedClinic?.hospital_group_code || "").trim();
+
+            if (hospitalGroupCode && assignedDoctorIds.length > 1) {
+                const allowedClinics = await prisma.clinics.findMany({
+                    where: {
+                        doctor_id: { in: assignedDoctorIds },
+                        hospital_group_code: hospitalGroupCode,
+                        status: "ACTIVE",
+                    },
+                    select: { clinic_id: true },
+                });
+
+                const allowedClinicIds = allowedClinics
+                    .map((clinic) => Number(clinic.clinic_id))
+                    .filter((clinicId) => Number.isFinite(clinicId) && clinicId > 0);
+
+                if (allowedClinicIds.length > 0) {
+                    where.clinic_id = { in: allowedClinicIds };
+                } else {
+                    where.clinic_id = -1;
+                }
+            } else {
+                where.clinic_id = staffClinicId;
+            }
+        }
 
         const appointments = await prisma.appointment.findMany({
             where,
-            include: { patient: true, clinic: true },
+            include: { patient: true, clinic: true, doctor: true },
             orderBy: [{ appointment_date: "asc" }, { start_time: "asc" }],
         });
 
@@ -274,6 +368,9 @@ export async function GET(request: Request) {
 
         const rows = appointmentsWithBookingIds.map((apt) => ({
             name: apt.patient?.full_name || "Unknown",
+            doctor: apt.doctor?.doctor_name
+                ? (/^dr\.?\s/i.test(apt.doctor.doctor_name) ? apt.doctor.doctor_name : `Dr. ${apt.doctor.doctor_name}`)
+                : "N/A",
             appointmentNo: String(apt.booking_id ?? apt.appointment_id),
             clinic: apt.clinic?.clinic_name || "N/A",
             date: formatISTDate(apt.appointment_date),

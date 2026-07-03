@@ -79,9 +79,10 @@ export async function POST(req: Request) {
                     adminId = superAdminProfile?.admin_id ?? 1;
                 }
 
-                const resolvedChatId = specific_details?.chat_id
-                    ? BigInt(specific_details.chat_id)
-                    : BigInt(Math.floor(Date.now() / 1000) + newUser.user_id);
+                const rawChatId = specific_details?.chat_id;
+                const resolvedChatId = rawChatId !== undefined && rawChatId !== null && String(rawChatId).trim() !== ""
+                    ? BigInt(String(rawChatId).trim())
+                    : null;
 
                 const doctor = await tx.doctors.create({
                     data: {

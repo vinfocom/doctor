@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/request-auth";
 import bcrypt from "bcryptjs";
+import { resolveAssignedDoctorIds, resolveHospitalScopedDoctorAssignments } from "@/lib/clinicStaffAccess";
 
 export async function GET(req: Request) {
     try {
@@ -22,10 +23,20 @@ export async function GET(req: Request) {
         }
 
         const staffMembers = await prisma.clinic_staff.findMany({
-            where: { doctor_id: doctor.doctor_id },
+            where: {
+                OR: [
+                    { doctor_id: doctor.doctor_id },
+                    { doctor_access: { some: { doctor_id: doctor.doctor_id } } },
+                ],
+            },
             include: {
                 users: true,
-                clinics: true
+                clinics: true,
+                doctor_access: {
+                    select: {
+                        doctor_id: true,
+                    },
+                },
             },
             orderBy: { created_at: "desc" }
         });
@@ -42,7 +53,9 @@ export async function GET(req: Request) {
             created_at: staff.created_at,
             clinic_id: staff.clinic_id,
             clinic_name: staff.clinics?.clinic_name || null,
-            doctor_whatsapp_number: staff.whatsapp_number || null
+            doctor_whatsapp_number: staff.whatsapp_number || null,
+            assigned_doctor_ids: resolveAssignedDoctorIds(staff),
+            can_manage: staff.doctor_id === doctor.doctor_id,
         }));
 
         return NextResponse.json({ staff: formattedStaff });
@@ -69,7 +82,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { username, email, password, role, status, is_limited, valid_from, valid_to, clinic_id, doctor_whatsapp_number } = body;
+        const { username, email, password, role, status, is_limited, valid_from, valid_to, clinic_id, doctor_whatsapp_number, doctor_ids } = body;
 
         // Basic validation
         if (!email || !role || !username) {
@@ -83,6 +96,13 @@ export async function POST(req: Request) {
         }
 
         const hashedPassword = password ? await bcrypt.hash(password, 10) : undefined;
+        const parsedClinicId = clinic_id ? parseInt(clinic_id) : null;
+        const assignedDoctorIds = await resolveHospitalScopedDoctorAssignments(
+            prisma,
+            doctor.doctor_id,
+            doctor_ids,
+            parsedClinicId
+        );
 
         // Create User and Clinic Staff in a transaction
         const newStaff = await prisma.$transaction(async (tx) => {
@@ -103,7 +123,7 @@ export async function POST(req: Request) {
                 data: {
                     doctor_id: doctor.doctor_id,
                     user_id: newUser.user_id,
-                    clinic_id: clinic_id ? parseInt(clinic_id) : null,
+                    clinic_id: parsedClinicId,
                     staff_role: role,
                     status: status || "ACTIVE",
                     valid_from: fromDate,
@@ -111,6 +131,16 @@ export async function POST(req: Request) {
                     whatsapp_number: trimmedNumber || null
                 }
             });
+
+            if (assignedDoctorIds.length > 0) {
+                await tx.clinic_staff_doctor_access.createMany({
+                    data: assignedDoctorIds.map((doctorId) => ({
+                        staff_id: clinicStaff.staff_id,
+                        doctor_id: doctorId,
+                    })),
+                    skipDuplicates: true,
+                });
+            }
 
             if (trimmedNumber) {
                 const existing = await tx.doctor_whatsapp_numbers.findFirst({
@@ -132,12 +162,21 @@ export async function POST(req: Request) {
                 }
             }
 
-            return { user: newUser, staff: clinicStaff };
+            return { user: newUser, staff: clinicStaff, assignedDoctorIds };
         });
 
-        return NextResponse.json({ success: true, staff: newStaff.staff }, { status: 201 });
+        return NextResponse.json({
+            success: true,
+            staff: {
+                ...newStaff.staff,
+                assigned_doctor_ids: newStaff.assignedDoctorIds.length > 0
+                    ? newStaff.assignedDoctorIds
+                    : [doctor.doctor_id],
+            }
+        }, { status: 201 });
     } catch (error) {
         console.error("Create staff error:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        const message = error instanceof Error ? error.message : "Internal server error";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

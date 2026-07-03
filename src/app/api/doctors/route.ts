@@ -307,7 +307,7 @@ export async function PATCH(req: NextRequest) {
                     });
 
                     let totalCredits = service.sms_credit_total;
-                    let usedCredits = service.sms_credit_used;
+                    const usedCredits = service.sms_credit_used;
                     let currentPackTotal = (service as typeof service & { current_pack_total?: number | null }).current_pack_total ?? service.sms_credit_total;
                     let currentPackUsed = (service as typeof service & { current_pack_used?: number | null }).current_pack_used ?? service.sms_credit_used;
                     let enabled = service.sms_service_enabled;
@@ -361,8 +361,14 @@ export async function PATCH(req: NextRequest) {
                             current_pack_used: currentPackUsed,
                             sms_service_status: smsSnapshot.status,
                             last_recharged_at: lastRechargedAt,
+                            ...(rechargeCredits > 0
+                                ? {
+                                    low_pack_alert_sent_at: null,
+                                    exhausted_alert_sent_at: null,
+                                }
+                                : {}),
                         },
-                    });
+                    } as any);
                 } catch (error) {
                     if (!isMissingPrismaTable(error, "doctor_sms_service")) {
                         throw error;

@@ -4,6 +4,12 @@ import { verifyToken } from '@/lib/jwt';
 import { cookies } from 'next/headers';
 import { formatUTCDateToISTTime, getISTDayOfWeek, getISTNowYMD, parseISTDate } from '@/lib/appointmentDateTime';
 import { getDoctorFullDayLeave } from '@/lib/leaveAvailability';
+import {
+    getActiveDoctorWhere,
+    getClinicStaffAccessBlockReason,
+    hasHospitalDoctorAccess,
+    resolveAssignedDoctorIds,
+} from '@/lib/clinicStaffAccess';
 
 export async function GET(request: Request) {
     try {
@@ -33,8 +39,65 @@ export async function GET(request: Request) {
             const doctor = await prisma.doctors.findUnique({ where: { user_id: user.userId }, select: { doctor_id: true } });
             if (doctor) doctorId = String(doctor.doctor_id);
         } else if (user.role === 'CLINIC_STAFF') {
-            const staff = await prisma.clinic_staff.findUnique({ where: { user_id: user.userId }, select: { doctor_id: true } });
-            if (staff) doctorId = String(staff.doctor_id);
+            const staff = await prisma.clinic_staff.findUnique({
+                where: { user_id: user.userId },
+                select: {
+                    doctor_id: true,
+                    clinic_id: true,
+                    status: true,
+                    valid_from: true,
+                    valid_to: true,
+                    clinics: {
+                        select: { hospital_group_code: true },
+                    },
+                    doctor_access: {
+                        select: { doctor_id: true },
+                    },
+                },
+            });
+            if (staff) {
+                const staffBlockReason = getClinicStaffAccessBlockReason(staff);
+                if (staffBlockReason) {
+                    return NextResponse.json({ error: staffBlockReason }, { status: 403 });
+                }
+                const scopedHospitalGroupCode = String(staff.clinics?.hospital_group_code || "").trim() || null;
+                const hasHospitalDoctorMappings = hasHospitalDoctorAccess(staff) && Boolean(scopedHospitalGroupCode);
+                const rawAssignedDoctorIds = resolveAssignedDoctorIds(staff);
+                const activeDoctors = await prisma.doctors.findMany({
+                    where: {
+                        doctor_id: { in: rawAssignedDoctorIds },
+                        ...getActiveDoctorWhere(),
+                    },
+                    select: { doctor_id: true },
+                });
+                const assignedDoctorIds = hasHospitalDoctorMappings
+                    ? activeDoctors.map((doctor) => Number(doctor.doctor_id))
+                    : activeDoctors.map((doctor) => Number(doctor.doctor_id)).filter((id) => id === Number(staff.doctor_id));
+                const requestedClinicId = Number(clinicId);
+
+                if (!hasHospitalDoctorMappings && staff.clinic_id && requestedClinicId !== Number(staff.clinic_id)) {
+                    return NextResponse.json({ error: "Unauthorized for this clinic" }, { status: 403 });
+                }
+
+                const selectedClinic = await prisma.clinics.findFirst({
+                    where: {
+                        clinic_id: requestedClinicId,
+                        doctor_id: hasHospitalDoctorMappings ? { in: assignedDoctorIds } : staff.doctor_id,
+                        status: "ACTIVE",
+                        doctor: { is: getActiveDoctorWhere() },
+                        ...(hasHospitalDoctorMappings && scopedHospitalGroupCode
+                            ? { hospital_group_code: scopedHospitalGroupCode }
+                            : {}),
+                    },
+                    select: { doctor_id: true },
+                });
+
+                if (!selectedClinic?.doctor_id) {
+                    return NextResponse.json({ error: "Unauthorized for this clinic" }, { status: 403 });
+                }
+
+                doctorId = String(selectedClinic.doctor_id);
+            }
         }
 
         // 1. Get ALL Schedules for the specific day

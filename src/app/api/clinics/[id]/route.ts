@@ -26,7 +26,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     try {
         const { id } = await params;
         const clinicId = parseInt(id);
-        const { clinic_name, location, phone, status, schedule, barcode_url, qr_storage_url } = await req.json();
+        const { clinic_name, location, phone, status, schedule, barcode_url, qr_storage_url, hospital_group_code } = await req.json();
 
         const existingClinic = await prisma.clinics.findUnique({
             where: { clinic_id: clinicId },
@@ -37,6 +37,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         }
 
         const updatedClinic = await prisma.$transaction(async (tx) => {
+            const targetHospitalGroupCode = hospital_group_code !== undefined
+                ? String(hospital_group_code || "").trim() || null
+                : String(existingClinic.hospital_group_code || "").trim() || null;
+
             const clinic = await tx.clinics.update({
                 where: { clinic_id: clinicId },
                 data: {
@@ -45,8 +49,26 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
                     ...(phone !== undefined && { phone }),
                     ...(status !== undefined && { status }),
                     ...(barcode_url !== undefined && { barcode_url: barcode_url || null }),
+                    ...(hospital_group_code !== undefined && { hospital_group_code: targetHospitalGroupCode }),
                 },
             });
+
+            if (targetHospitalGroupCode && (barcode_url !== undefined || qr_storage_url !== undefined)) {
+                if (barcode_url !== undefined) {
+                    await tx.clinics.updateMany({
+                        where: { hospital_group_code: targetHospitalGroupCode },
+                        data: { barcode_url: barcode_url || null },
+                    });
+                }
+
+                if (qr_storage_url !== undefined) {
+                    await tx.$executeRaw`
+                        UPDATE clinics
+                        SET qr_storage_url = ${qr_storage_url || null}
+                        WHERE hospital_group_code = ${targetHospitalGroupCode}
+                    `;
+                }
+            }
 
             if (qr_storage_url !== undefined) {
                 await tx.$executeRaw`

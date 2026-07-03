@@ -4,6 +4,7 @@ import {
   getPrescriptionRecord,
 } from "@/lib/emr/prescriptionService";
 import type {
+  EmrComplaintPayload,
   EmrPatientPrescriptionDetail,
   EmrPatientPrescriptionSummary,
   EmrNamedItemPayload,
@@ -32,6 +33,20 @@ type PatientHistoryNamedRow = {
   sort_order: number;
 };
 
+type PatientHistoryComplaintRow = {
+  prescription_id: number;
+  id: number;
+  complaint_master_id: number | null;
+  name: string;
+  normalized_name: string;
+  severity: string | null;
+  frequency: string | null;
+  duration_value: number | null;
+  duration_unit: "day" | "week" | "month" | "year" | "custom" | null;
+  notes: string | null;
+  sort_order: number;
+};
+
 export type EmrPatientDoctorPrescriptionHistoryItem = {
   prescription_id: number;
   patient_id: number;
@@ -44,7 +59,7 @@ export type EmrPatientDoctorPrescriptionHistoryItem = {
   clinic_name: string | null;
   pdf_url: string | null;
   version_number: number;
-  complaints: EmrNamedItemPayload[];
+  complaints: EmrComplaintPayload[];
   diagnosis: EmrNamedItemPayload[];
 };
 
@@ -190,12 +205,17 @@ export async function listPatientFinalizedPrescriptionsForDoctor(input: {
   const prescriptionIds = rows.map((row) => row.id);
 
   const [complaintRows, diagnosisRows] = await Promise.all([
-    prisma.$queryRaw<PatientHistoryNamedRow[]>`
+    prisma.$queryRaw<PatientHistoryComplaintRow[]>`
       SELECT
         prescription_id,
         id,
+        complaint_master_id,
         complaint_name AS name,
         normalized_name,
+        severity,
+        frequency,
+        duration_value,
+        duration_unit,
         notes,
         sort_order
       FROM prescription_complaints
@@ -216,13 +236,18 @@ export async function listPatientFinalizedPrescriptionsForDoctor(input: {
     `,
   ]);
 
-  const complaintMap = new Map<number, EmrNamedItemPayload[]>();
+  const complaintMap = new Map<number, EmrComplaintPayload[]>();
   for (const row of complaintRows) {
     const current = complaintMap.get(row.prescription_id) ?? [];
     current.push({
       id: row.id,
+      complaint_master_id: row.complaint_master_id,
       name: row.name,
       normalized_name: row.normalized_name,
+      severity: row.severity,
+      frequency: row.frequency,
+      duration_value: row.duration_value,
+      duration_unit: row.duration_unit,
       notes: row.notes,
       sort_order: row.sort_order,
     });

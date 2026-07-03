@@ -41,6 +41,15 @@ export interface SendChatPushNotificationInput {
     body: string;
 }
 
+export interface SendDoctorSmsPackPushNotificationInput {
+    tokens: string[];
+    doctorId: number;
+    doctorName: string;
+    alertType: "LOW_PACK" | "EXHAUSTED";
+    remainingCredits: number;
+    totalCredits: number;
+}
+
 export function isExpoPushToken(value: string | null | undefined) {
     return Boolean(value && EXPO_PUSH_TOKEN_REGEX.test(String(value).trim()));
 }
@@ -180,6 +189,31 @@ export async function sendChatPushNotification(input: SendChatPushNotificationIn
             doctorId: input.doctorId,
             senderRole: input.senderRole,
             senderName: input.senderName,
+        },
+        sound: "default",
+        channelId: "default",
+        priority: "high",
+    });
+}
+
+export async function sendDoctorSmsPackPushNotification(input: SendDoctorSmsPackPushNotificationInput) {
+    const isExhausted = input.alertType === "EXHAUSTED";
+    const title = isExhausted ? "SMS pack exhausted" : "SMS pack running low";
+    const body = isExhausted
+        ? "Your SMS pack is exhausted. Please recharge to continue SMS service."
+        : `${input.remainingCredits}/${input.totalCredits} SMS credits are left in your current pack. Please recharge soon.`;
+
+    return sendExpoPushNotification({
+        to: input.tokens,
+        title,
+        body,
+        data: {
+            type: "sms_pack",
+            doctorId: input.doctorId,
+            doctorName: input.doctorName,
+            alertType: input.alertType,
+            remainingCredits: input.remainingCredits,
+            totalCredits: input.totalCredits,
         },
         sound: "default",
         channelId: "default",

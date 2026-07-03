@@ -11,6 +11,37 @@ function attachPatientType<T extends { profile_type?: "SELF" | "OTHER" | null }>
     }));
 }
 
+async function attachPrescriptionImageStatus<
+    T extends { patient_id: number }
+>(patients: T[], options?: { doctorId?: number | null }) {
+    if (patients.length === 0) {
+        return patients.map((patient) => ({
+            ...patient,
+            has_prescription_image: false,
+        }));
+    }
+
+    const patientIds = patients.map((patient) => patient.patient_id);
+    const records = await prisma.prescription_records.findMany({
+        where: {
+            patient_id: { in: patientIds },
+            status: { not: "DELETED" },
+            ...(options?.doctorId ? { doctor_id: options.doctorId } : {}),
+        },
+        select: {
+            patient_id: true,
+        },
+        distinct: ["patient_id"],
+    });
+
+    const patientsWithImages = new Set(records.map((record) => record.patient_id));
+
+    return patients.map((patient) => ({
+        ...patient,
+        has_prescription_image: patientsWithImages.has(patient.patient_id),
+    }));
+}
+
 export async function GET(req: Request) {
     try {
         const session = await getSessionFromRequest(req);
@@ -51,7 +82,10 @@ export async function GET(req: Request) {
                 profile_type: p.profile_type,
             }));
 
-            return NextResponse.json({ patients: attachPatientType(result) });
+            const patientsWithType = attachPatientType(result);
+            const patientsWithImageStatus = await attachPrescriptionImageStatus(patientsWithType);
+
+            return NextResponse.json({ patients: patientsWithImageStatus });
         }
 
         let doctorId: number | null = null;
@@ -121,7 +155,12 @@ export async function GET(req: Request) {
             patients.push(patient);
         }
 
-        return NextResponse.json({ patients: attachPatientType(patients) });
+        const patientsWithType = attachPatientType(patients);
+        const patientsWithImageStatus = await attachPrescriptionImageStatus(patientsWithType, {
+            doctorId,
+        });
+
+        return NextResponse.json({ patients: patientsWithImageStatus });
     } catch (error) {
         console.error("Get patients error:", error);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });

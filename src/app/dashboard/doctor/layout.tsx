@@ -2,6 +2,7 @@ import { getSession } from "@/lib/auth";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import prisma from "@/lib/prisma";
 import { getDoctorEmrEnabled } from "@/lib/emrFeatureGate";
+import { getClinicStaffAccessBlockReason, resolveEffectiveAssignedDoctorIds } from "@/lib/clinicStaffAccess";
 import { redirect } from "next/navigation";
 
 export default async function DoctorLayout({
@@ -18,6 +19,7 @@ export default async function DoctorLayout({
     let userName = fallbackUserName;
     let staffRole: string | null = null;
     let emrPrescriptionEnabled = false;
+    let assignedDoctorCount = 0;
 
     if (session.role === "DOCTOR") {
         const doctor = await prisma.doctors.findUnique({
@@ -34,13 +36,30 @@ export default async function DoctorLayout({
         const staff = await prisma.clinic_staff.findUnique({
             where: { user_id: session.userId },
             select: {
+                doctor_id: true,
                 staff_role: true,
+                status: true,
+                valid_from: true,
+                valid_to: true,
+                clinics: {
+                    select: {
+                        hospital_group_code: true,
+                    },
+                },
                 users: {
                     select: { name: true },
                 },
+                doctor_access: {
+                    select: { doctor_id: true },
+                },
             },
         });
+        const blockReason = staff ? getClinicStaffAccessBlockReason(staff) : "Staff profile not found.";
+        if (blockReason) {
+            redirect(`/login?error=${encodeURIComponent(blockReason)}`);
+        }
         staffRole = staff?.staff_role || null;
+        assignedDoctorCount = staff ? (await resolveEffectiveAssignedDoctorIds(prisma, staff)).length : 0;
         userName = staff?.users?.name?.trim() || userName;
     }
 
@@ -51,6 +70,7 @@ export default async function DoctorLayout({
                 userName={userName}
                 staffRole={staffRole}
                 emrPrescriptionEnabled={emrPrescriptionEnabled}
+                assignedDoctorCount={assignedDoctorCount}
             />
             <div className="dashboard-main">
                 {children}

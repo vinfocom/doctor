@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 import { cookies } from "next/headers";
+import {
+    getActiveDoctorWhere,
+    getClinicStaffAccessBlockReason,
+    getHospitalGroupCodesForDoctors,
+    hasHospitalDoctorAccess,
+    resolveAssignedDoctorIds,
+} from "@/lib/clinicStaffAccess";
 
 async function attachClinicQrStorageUrls<T extends { clinic_id: number }>(clinics: T[]) {
     if (clinics.length === 0) return clinics;
@@ -76,10 +83,41 @@ export async function GET(req: Request) {
         if (user.role === 'CLINIC_STAFF') {
             const staff = await prisma.clinic_staff.findUnique({
                 where: { user_id: user.userId },
-                include: { clinics: { include: { schedules: { orderBy: { day_of_week: 'asc' } } } }, doctors: { select: { doctor_id: true, doctor_name: true, profile_pic_url: true, num_clinics: true, specialization: true, education: true, status: true } } }
+                include: {
+                    clinics: { include: { schedules: { orderBy: { day_of_week: 'asc' } } } },
+                    doctors: { select: { doctor_id: true, doctor_name: true, profile_pic_url: true, num_clinics: true, specialization: true, education: true, status: true } },
+                    doctor_access: {
+                        select: {
+                            doctor_id: true,
+                        },
+                    },
+                }
             });
 
-            if (staff && staff.clinics) {
+            if (!staff) {
+                return NextResponse.json({ clinics: [], doctors: [] });
+            }
+
+            const staffBlockReason = getClinicStaffAccessBlockReason(staff);
+            if (staffBlockReason) {
+                return NextResponse.json({ error: staffBlockReason }, { status: 403 });
+            }
+
+            const scopedHospitalGroupCode = String(staff.clinics?.hospital_group_code || "").trim() || null;
+            const hasHospitalDoctorMappings = hasHospitalDoctorAccess(staff) && Boolean(scopedHospitalGroupCode);
+            const ownerDoctorIsActive = Boolean(await prisma.doctors.findFirst({
+                where: {
+                    doctor_id: staff.doctor_id,
+                    ...getActiveDoctorWhere(),
+                },
+                select: { doctor_id: true },
+            }));
+
+            if (staff.clinics && !hasHospitalDoctorMappings) {
+                if (staff.clinics.status !== "ACTIVE" || !ownerDoctorIsActive) {
+                    return NextResponse.json({ clinics: [], doctors: [] });
+                }
+
                 // Attach the doctor info directly to the clinic object for consistent mapping on frontend
                 const assignedClinic = {
                     ...staff.clinics,
@@ -91,9 +129,25 @@ export async function GET(req: Request) {
                 });
             }
 
-            if (staff && staff.doctor_id) {
+            if (staff.doctor_id) {
+                const assignedDoctorIds = resolveAssignedDoctorIds(staff);
+                const activeDoctors = await prisma.doctors.findMany({
+                    where: {
+                        doctor_id: { in: assignedDoctorIds },
+                        ...getActiveDoctorWhere(),
+                    },
+                    select: { doctor_id: true },
+                });
+                const activeDoctorIds = activeDoctors.map((doctor) => Number(doctor.doctor_id));
+                const hospitalGroupCodes = scopedHospitalGroupCode
+                    ? [scopedHospitalGroupCode]
+                    : await getHospitalGroupCodesForDoctors(prisma, activeDoctorIds);
+
                 const doctorClinics = await prisma.clinics.findMany({
-                    where: { doctor_id: staff.doctor_id },
+                    where: {
+                        doctor_id: staff.doctor_id,
+                        status: "ACTIVE",
+                    },
                     include: {
                         doctor: {
                             select: {
@@ -113,9 +167,67 @@ export async function GET(req: Request) {
                     orderBy: { clinic_name: 'asc' }
                 });
 
+                if (!hasHospitalDoctorMappings) {
+                    if (!ownerDoctorIsActive) {
+                        return NextResponse.json({ clinics: [], doctors: [] });
+                    }
+
+                    return NextResponse.json({
+                        clinics: await attachClinicQrStorageUrls(doctorClinics),
+                        doctors: staff.doctors ? [staff.doctors] : [],
+                    });
+                }
+
+                const sharedClinics = await prisma.clinics.findMany({
+                    where: {
+                        doctor_id: { in: activeDoctorIds },
+                        status: "ACTIVE",
+                        ...(hospitalGroupCodes.length > 0
+                            ? { hospital_group_code: { in: hospitalGroupCodes } }
+                            : {}),
+                    },
+                    include: {
+                        doctor: {
+                            select: {
+                                doctor_id: true,
+                                doctor_name: true,
+                                profile_pic_url: true,
+                                num_clinics: true,
+                                specialization: true,
+                                education: true,
+                                status: true,
+                            }
+                        },
+                        schedules: {
+                            orderBy: { day_of_week: 'asc' }
+                        }
+                    },
+                    orderBy: [
+                        { hospital_group_code: 'asc' },
+                        { clinic_name: 'asc' },
+                    ]
+                });
+
+                const sharedDoctors = await prisma.doctors.findMany({
+                    where: {
+                        doctor_id: { in: activeDoctorIds },
+                        ...getActiveDoctorWhere(),
+                    },
+                    select: {
+                        doctor_id: true,
+                        doctor_name: true,
+                        profile_pic_url: true,
+                        num_clinics: true,
+                        specialization: true,
+                        education: true,
+                        status: true,
+                    },
+                    orderBy: { doctor_name: 'asc' }
+                });
+
                 return NextResponse.json({
-                    clinics: await attachClinicQrStorageUrls(doctorClinics),
-                    doctors: staff.doctors ? [staff.doctors] : [],
+                    clinics: await attachClinicQrStorageUrls(sharedClinics),
+                    doctors: sharedDoctors,
                 });
             }
 
@@ -184,7 +296,7 @@ export async function POST(req: Request) {
 
     try {
         const body = await req.json();
-        const { clinic_name, location, phone, status, schedule } = body;
+        const { clinic_name, location, phone, status, schedule, hospital_group_code } = body;
 
         let doctor_id: number | null = null;
         let admin_id: number | null = null;
@@ -219,6 +331,7 @@ export async function POST(req: Request) {
                     admin_id,
                     doctor_id,
                     barcode_url: null,
+                    hospital_group_code: String(hospital_group_code || "").trim() || null,
                 }
             });
 

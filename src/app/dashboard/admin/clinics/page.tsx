@@ -28,6 +28,7 @@ interface Clinic {
     phone: string | null;
     status: string | null;
     doctor_id: number | null;
+    hospital_group_code?: string | null;
     created_at: string | null;
     barcode_url?: string | null;
     qr_storage_url?: string | null;
@@ -39,7 +40,40 @@ interface DoctorGroup {
     clinics: Clinic[];
 }
 
-const EMPTY_FORM = { clinic_name: "", location: "", phone: "", doctor_id: "", status: "ACTIVE", barcode_url: "" };
+type ClinicFormState = {
+    clinic_name: string;
+    location: string;
+    phone: string;
+    doctor_id: string;
+    status: string;
+    barcode_url: string;
+    hospital_group_code: string;
+};
+
+type HospitalPreviewGroup = {
+    code: string;
+    displayName: string;
+    clinics: Clinic[];
+    doctorCount: number;
+};
+
+const EMPTY_FORM: ClinicFormState = { clinic_name: "", location: "", phone: "", doctor_id: "", status: "ACTIVE", barcode_url: "", hospital_group_code: "" };
+
+function getHospitalGroupCode(clinic?: Clinic | null) {
+    return String(clinic?.hospital_group_code || "").trim();
+}
+
+function getQrDownloadHref(clinic?: Clinic | null) {
+    if (!clinic) return "#";
+    const hospitalGroupCode = getHospitalGroupCode(clinic);
+    if (hospitalGroupCode) {
+        return `/api/qr/hospital/generate/download?hospital_code=${encodeURIComponent(hospitalGroupCode)}`;
+    }
+
+    return clinic.doctor_id
+        ? `/api/qr/generate/download?doctor_id=${clinic.doctor_id}&clinic_id=${clinic.clinic_id}`
+        : "#";
+}
 
 /* ═══════════════════════ MAIN PAGE ═══════════════════════ */
 export default function AdminClinicsPage() {
@@ -80,6 +114,9 @@ export default function AdminClinicsPage() {
     const [qrPreviewError, setQrPreviewError] = useState("");
     const [qrPreviewImage, setQrPreviewImage] = useState("");
     const [qrPreviewMode, setQrPreviewMode] = useState<"generate" | "view">("generate");
+    const [selectedClinicIds, setSelectedClinicIds] = useState<number[]>([]);
+    const [bulkHospitalGroupCode, setBulkHospitalGroupCode] = useState("");
+    const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
     /* ────── Fetch ────── */
     const fetchData = useCallback(async () => {
@@ -94,6 +131,7 @@ export default function AdminClinicsPage() {
                 const data = await res.json();
                 setClinics(data.clinics || []);
                 setAllDoctors(data.doctors || []);
+                setSelectedClinicIds([]);
             }
         } catch { router.push("/login"); }
         finally { setLoading(false); }
@@ -152,18 +190,63 @@ export default function AdminClinicsPage() {
 
     // Unassigned clinics (no doctor_id)
     const unassigned = clinics.filter(c => !c.doctor_id);
+    const hospitalGroups: HospitalPreviewGroup[] = React.useMemo(() => {
+        const q = search.trim().toLowerCase();
+        const map = new Map<string, HospitalPreviewGroup>();
+
+        clinics.forEach((clinic) => {
+            const code = String(clinic.hospital_group_code || "").trim();
+            if (!code) return;
+
+            const matches = !q
+                || code.toLowerCase().includes(q)
+                || String(clinic.clinic_name || "").toLowerCase().includes(q)
+                || String(clinic.location || "").toLowerCase().includes(q)
+                || String(clinic.doctor?.doctor_name || "").toLowerCase().includes(q);
+
+            if (!matches) return;
+
+            if (!map.has(code)) {
+                map.set(code, {
+                    code,
+                    displayName: clinic.clinic_name?.trim() || code,
+                    clinics: [],
+                    doctorCount: 0,
+                });
+            }
+
+            map.get(code)!.clinics.push(clinic);
+        });
+
+        return Array.from(map.values())
+            .map((group) => ({
+                ...group,
+                doctorCount: new Set(group.clinics.map((clinic) => clinic.doctor_id).filter(Boolean)).size,
+            }))
+            .sort((left, right) => left.displayName.localeCompare(right.displayName));
+    }, [clinics, search]);
 
     /* ────── Stat counts ────── */
     const totalClinics = clinics.length;
     const activeClinics = clinics.filter(c => c.status === "ACTIVE").length;
     const totalDoctorsWithClinics = doctorGroups.filter(g => g.clinics.length > 0).length;
+    const totalHospitalGroups = new Set(
+        clinics.map((clinic) => String(clinic.hospital_group_code || "").trim()).filter(Boolean)
+    ).size;
+    const totalGroupedClinics = clinics.filter((clinic) => String(clinic.hospital_group_code || "").trim()).length;
 
     /* ────── Toggle expand ────── */
     const toggle = (docId: number) => setExpanded(prev => ({ ...prev, [docId]: !prev[docId] }));
+    const toggleClinicSelection = (clinicId: number) => {
+        setSelectedClinicIds((prev) =>
+            prev.includes(clinicId) ? prev.filter((id) => id !== clinicId) : [...prev, clinicId]
+        );
+    };
 
     /* ────── Open Add for a specific doctor ────── */
     const openAddForDoctor = (doctorId: number) => {
-        setAddForm({ ...EMPTY_FORM, doctor_id: String(doctorId) });
+        const doctorGroupCode = clinics.find((clinic) => clinic.doctor_id === doctorId && String(clinic.hospital_group_code || "").trim())?.hospital_group_code || "";
+        setAddForm({ ...EMPTY_FORM, doctor_id: String(doctorId), hospital_group_code: doctorGroupCode || "" });
         setAddDoctorLocked(true);
         setAddError("");
         setShowAdd(true);
@@ -183,6 +266,7 @@ export default function AdminClinicsPage() {
                     phone: addForm.phone,
                     doctor_id: addForm.doctor_id ? Number(addForm.doctor_id) : null,
                     status: addForm.status,
+                    hospital_group_code: addForm.hospital_group_code.trim(),
                 }),
             });
             if (res.ok) {
@@ -213,6 +297,7 @@ export default function AdminClinicsPage() {
             doctor_id: String(c.doctor_id || ""),
             status: c.status || "ACTIVE",
             barcode_url: c.barcode_url || "",
+            hospital_group_code: c.hospital_group_code || "",
         });
         setEditError("");
     };
@@ -231,6 +316,7 @@ export default function AdminClinicsPage() {
                     location: editForm.location,
                     phone: editForm.phone,
                     status: editForm.status,
+                    hospital_group_code: editForm.hospital_group_code.trim(),
                 }),
             });
             if (res.ok) {
@@ -264,13 +350,17 @@ export default function AdminClinicsPage() {
 
         try {
             const docId = Number(doctor_id);
-            const previewRes = await fetch("/api/qr/generate", {
+            const hospitalGroupCode = getHospitalGroupCode(clinic);
+            const isHospitalClinic = Boolean(hospitalGroupCode);
+            const previewRes = await fetch(isHospitalClinic ? "/api/qr/hospital/generate" : "/api/qr/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    doctor_id: docId,
-                    clinic_id,
-                }),
+                body: JSON.stringify(isHospitalClinic
+                    ? { hospital_code: hospitalGroupCode }
+                    : {
+                        doctor_id: docId,
+                        clinic_id,
+                    }),
             });
 
             const previewData = await previewRes.json();
@@ -279,7 +369,9 @@ export default function AdminClinicsPage() {
             }
 
             setQrPreviewImage(previewData.dataUrl || "");
-            const url = `https://daptoservices.vinfocom.co.in/qr/generate/download?doctor_id=${docId}&clinic_id=${clinic_id}`;
+            const url = isHospitalClinic
+                ? `https://daptoservices.vinfocom.co.in/qr/hospital/generate/download?hospital_code=${encodeURIComponent(hospitalGroupCode)}`
+                : `https://daptoservices.vinfocom.co.in/qr/generate/download?doctor_id=${docId}&clinic_id=${clinic_id}`;
             await fetch(`/api/clinics/${clinic_id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
@@ -322,6 +414,38 @@ export default function AdminClinicsPage() {
         finally { setStatusToggling(false); }
     };
 
+    const handleBulkGrouping = async (nextGroupCode?: string) => {
+        if (selectedClinicIds.length === 0) return;
+        setBulkSubmitting(true);
+        setError("");
+        try {
+            const res = await fetch("/api/admin/hospitals", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    clinic_ids: selectedClinicIds,
+                    hospital_group_code: nextGroupCode !== undefined ? nextGroupCode : bulkHospitalGroupCode,
+                }),
+            });
+
+            if (!res.ok) {
+                const body = await res.json().catch(() => null);
+                throw new Error(body?.error || "Failed to update hospital grouping");
+            }
+
+            if (nextGroupCode === "") {
+                setBulkHospitalGroupCode("");
+            }
+
+            setSelectedClinicIds([]);
+            await fetchData();
+        } catch (caughtError) {
+            setError(caughtError instanceof Error ? caughtError.message : "Failed to update hospital grouping");
+        } finally {
+            setBulkSubmitting(false);
+        }
+    };
+
     /* ────── Format date ────── */
     const fmtDate = (d: string | null) => {
         if (!d) return "—";
@@ -346,15 +470,23 @@ export default function AdminClinicsPage() {
     return (
         <div className="w-full">
             {/* Header — no Add button here, adding happens from within each doctor group */}
-            <motion.div className="mb-6" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
+            <motion.div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Clinic Management</h1>
                     <p className="text-gray-500 mt-1 text-sm">Manage clinics grouped by doctor</p>
                 </div>
+                <button
+                    type="button"
+                    onClick={() => router.push("/dashboard/admin/hospitals")}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+                >
+                    <Building2 size={16} />
+                    Hospitals
+                </button>
             </motion.div>
 
             {/* Stat Cards */}
-            <motion.div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+            <motion.div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 xl:grid-cols-5" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
                 <GlassCard className="flex items-center gap-4 py-4 px-5">
                     <div className="p-3 rounded-xl bg-indigo-50 text-indigo-500 border border-indigo-100">
                         <Building2 className="w-5 h-5" />
@@ -382,6 +514,24 @@ export default function AdminClinicsPage() {
                         <p className="text-xs text-gray-500 font-medium">Doctors with Clinics</p>
                     </div>
                 </GlassCard>
+                <GlassCard className="flex items-center gap-4 py-4 px-5">
+                    <div className="p-3 rounded-xl bg-amber-50 text-amber-500 border border-amber-100">
+                        <Building2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                        <p className="text-2xl font-bold text-gray-900">{totalHospitalGroups}</p>
+                        <p className="text-xs text-gray-500 font-medium">Hospital Groups</p>
+                    </div>
+                </GlassCard>
+                <GlassCard className="flex items-center gap-4 py-4 px-5">
+                    <div className="p-3 rounded-xl bg-cyan-50 text-cyan-500 border border-cyan-100">
+                        <Building2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                        <p className="text-2xl font-bold text-gray-900">{totalGroupedClinics}</p>
+                        <p className="text-xs text-gray-500 font-medium">Grouped Clinics</p>
+                    </div>
+                </GlassCard>
             </motion.div>
 
             {/* Search — fixed padding so icon and placeholder don't overlap */}
@@ -397,6 +547,80 @@ export default function AdminClinicsPage() {
                     />
                 </div>
             </motion.div>
+
+            <motion.div className="mb-6" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
+                <GlassCard className="px-5 py-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                        <div>
+                            <h2 className="text-base font-bold text-gray-900">Bulk Hospital Grouping</h2>
+                            <p className="mt-1 text-sm text-gray-500">Select clinics below and assign the same code to make them part of one hospital group.</p>
+                        </div>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                            <input
+                                type="text"
+                                value={bulkHospitalGroupCode}
+                                onChange={(e) => setBulkHospitalGroupCode(e.target.value)}
+                                className="input-field min-w-[240px]"
+                                placeholder="e.g. city-hospital"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => void handleBulkGrouping()}
+                                disabled={bulkSubmitting || selectedClinicIds.length === 0 || !bulkHospitalGroupCode.trim()}
+                                className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+                            >
+                                {bulkSubmitting ? "Applying..." : `Assign ${selectedClinicIds.length || ""} Clinics`}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handleBulkGrouping("")}
+                                disabled={bulkSubmitting || selectedClinicIds.length === 0}
+                                className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+                            >
+                                Clear Group
+                            </button>
+                        </div>
+                    </div>
+                </GlassCard>
+            </motion.div>
+
+            {hospitalGroups.length > 0 && (
+                <motion.div className="mb-6" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                        {hospitalGroups.map((group) => (
+                            <GlassCard key={group.code} className="px-5 py-5">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="text-base font-bold text-gray-900">{group.displayName}</div>
+                                        <div className="mt-1 text-xs font-semibold tracking-wide text-gray-400">{group.code}</div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => router.push(`/dashboard/admin/hospitals?group=${encodeURIComponent(group.code)}`)}
+                                        className="rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"
+                                    >
+                                        Open
+                                    </button>
+                                </div>
+                                <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
+                                    <div className="rounded-xl bg-gray-50 px-3 py-2">
+                                        <div className="font-bold text-gray-900">{group.clinics.length}</div>
+                                        <div className="text-gray-500">Clinics</div>
+                                    </div>
+                                    <div className="rounded-xl bg-gray-50 px-3 py-2">
+                                        <div className="font-bold text-gray-900">{group.doctorCount}</div>
+                                        <div className="text-gray-500">Doctors</div>
+                                    </div>
+                                    <div className="rounded-xl bg-gray-50 px-3 py-2">
+                                        <div className="font-bold text-gray-900">{group.clinics.filter((clinic) => clinic.status === "ACTIVE").length}</div>
+                                        <div className="text-gray-500">Active</div>
+                                    </div>
+                                </div>
+                            </GlassCard>
+                        ))}
+                    </div>
+                </motion.div>
+            )}
 
             {/* Error */}
             <AnimatePresence>
@@ -489,8 +713,10 @@ export default function AdminClinicsPage() {
                                                         <table className="w-full text-sm">
                                                             <thead>
                                                                 <tr className="text-left text-xs text-gray-400 uppercase tracking-wider">
-                                                                    <th className="px-6 py-3 font-semibold">#</th>
+                                                                    <th className="px-6 py-3 font-semibold">Select</th>
+                                                                    <th className="px-4 py-3 font-semibold">#</th>
                                                                     <th className="px-4 py-3 font-semibold">Clinic Name</th>
+                                                                    <th className="px-4 py-3 font-semibold">Hospital Group</th>
                                                                     <th className="px-4 py-3 font-semibold">Location</th>
                                                                     <th className="px-4 py-3 font-semibold">Phone</th>
                                                                     <th className="px-4 py-3 font-semibold">Created</th>
@@ -508,6 +734,14 @@ export default function AdminClinicsPage() {
                                                                         className="border-t border-gray-50 hover:bg-gray-50/40 transition-colors"
                                                                     >
                                                                         <td className="px-6 py-3">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={selectedClinicIds.includes(c.clinic_id)}
+                                                                                onChange={() => toggleClinicSelection(c.clinic_id)}
+                                                                                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                                            />
+                                                                        </td>
+                                                                        <td className="px-4 py-3">
                                                                             <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-gray-100 text-gray-500 text-xs font-bold">
                                                                                 {ci + 1}/{Math.max(defined, actual)}
                                                                             </span>
@@ -517,6 +751,15 @@ export default function AdminClinicsPage() {
                                                                                 <Building2 className="w-4 h-4 text-indigo-400 shrink-0" />
                                                                                 <span className="font-medium text-gray-800">{c.clinic_name || "—"}</span>
                                                                             </div>
+                                                                        </td>
+                                                                        <td className="px-4 py-3">
+                                                                            {String(c.hospital_group_code || "").trim() ? (
+                                                                                <span className="inline-flex rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-600">
+                                                                                    {c.hospital_group_code}
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="text-xs text-gray-400">Ungrouped</span>
+                                                                            )}
                                                                         </td>
                                                                         <td className="px-4 py-3">
                                                                             <div className="flex items-start gap-1.5 text-gray-500">
@@ -626,7 +869,9 @@ export default function AdminClinicsPage() {
                                 <table className="w-full text-sm">
                                     <thead>
                                         <tr className="text-left text-xs text-gray-400 uppercase tracking-wider">
+                                            <th className="px-6 py-3 font-semibold">Select</th>
                                             <th className="px-6 py-3 font-semibold">Clinic Name</th>
+                                            <th className="px-4 py-3 font-semibold">Hospital Group</th>
                                             <th className="px-4 py-3 font-semibold">Location</th>
                                             <th className="px-4 py-3 font-semibold">Phone</th>
                                             <th className="px-4 py-3 font-semibold">Created</th>
@@ -637,7 +882,24 @@ export default function AdminClinicsPage() {
                                     <tbody>
                                         {unassigned.map((c) => (
                                             <tr key={c.clinic_id} className="border-t border-gray-50 hover:bg-gray-50/40">
+                                                <td className="px-6 py-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedClinicIds.includes(c.clinic_id)}
+                                                        onChange={() => toggleClinicSelection(c.clinic_id)}
+                                                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                    />
+                                                </td>
                                                 <td className="px-6 py-3 font-medium text-gray-800">{c.clinic_name || "—"}</td>
+                                                <td className="px-4 py-3">
+                                                    {String(c.hospital_group_code || "").trim() ? (
+                                                        <span className="inline-flex rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-600">
+                                                            {c.hospital_group_code}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs text-gray-400">Ungrouped</span>
+                                                    )}
+                                                </td>
                                                 <td className="px-4 py-3 text-gray-500">{c.location || "—"}</td>
                                                 <td className="px-4 py-3 text-gray-500">{c.phone || "—"}</td>
                                                 <td className="px-4 py-3 text-gray-500">{fmtDate(c.created_at)}</td>
@@ -767,12 +1029,8 @@ export default function AdminClinicsPage() {
                                     </button>
                                     {qrPreviewMode === "generate" && (
                                         <a
-                                            href={
-                                                qrPreviewClinic?.doctor_id
-                                                    ? `/api/qr/generate/download?doctor_id=${qrPreviewClinic.doctor_id}&clinic_id=${qrPreviewClinic.clinic_id}`
-                                                    : "#"
-                                            }
-                                            className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition-colors ${qrPreviewClinic?.doctor_id ? "bg-indigo-600 hover:bg-indigo-700" : "pointer-events-none bg-indigo-300"}`}
+                                            href={getQrDownloadHref(qrPreviewClinic)}
+                                            className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition-colors ${getQrDownloadHref(qrPreviewClinic) !== "#" ? "bg-indigo-600 hover:bg-indigo-700" : "pointer-events-none bg-indigo-300"}`}
                                         >
                                             Download
                                         </a>
@@ -886,6 +1144,18 @@ export default function AdminClinicsPage() {
                                         />
                                     </div>
 
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-medium text-gray-700">Hospital Group Code</label>
+                                        <input
+                                            type="text"
+                                            value={addForm.hospital_group_code}
+                                            onChange={(e) => setAddForm({ ...addForm, hospital_group_code: e.target.value })}
+                                            className="input-field w-full"
+                                            placeholder="e.g. city-hospital"
+                                        />
+                                        <p className="text-xs text-gray-400">Use the same code for clinics belonging to the same hospital.</p>
+                                    </div>
+
                                     {/* Status */}
                                     <div className="space-y-1">
                                         <label className="text-sm font-medium text-gray-700">Status</label>
@@ -957,6 +1227,18 @@ export default function AdminClinicsPage() {
                                         <input type="text" value={editForm.phone}
                                             onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
                                             className="input-field w-full" placeholder="+91 98765 43210" />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-medium text-gray-700">Hospital Group Code</label>
+                                        <input
+                                            type="text"
+                                            value={editForm.hospital_group_code}
+                                            onChange={(e) => setEditForm({ ...editForm, hospital_group_code: e.target.value })}
+                                            className="input-field w-full"
+                                            placeholder="e.g. city-hospital"
+                                        />
+                                        <p className="text-xs text-gray-400">Use the same code for clinics belonging to the same hospital.</p>
                                     </div>
 
                                     <div className="space-y-1">

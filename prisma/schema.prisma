@@ -115,11 +115,13 @@ model doctors {
   appointments           appointment[]
   chat_messages          chat_messages[]
   clinic_staff           clinic_staff[]
+  clinic_staff_access    clinic_staff_doctor_access[]
   clinics                clinics[]
   schedules              doctor_clinic_schedule[]
   leaves                 doctor_leaves[]
   doctorRemainderQueues  doctor_remainder_queue[]
   liveQueueAds           live_queue_side_ads[]
+  liveQueueDisplaySettings live_queue_display_settings[]
   sms_service            doctor_sms_service?
   sms_recharge_logs      doctor_sms_recharge_log[]
   sms_usage_logs         doctor_sms_usage_log[]
@@ -181,6 +183,8 @@ model doctor_sms_service {
   current_pack_total  Int                @default(0)
   current_pack_used   Int                @default(0)
   last_recharged_at   DateTime?          @db.Timestamp(0)
+  low_pack_alert_sent_at DateTime?       @db.Timestamp(0)
+  exhausted_alert_sent_at DateTime?      @db.Timestamp(0)
   created_at          DateTime           @default(now()) @db.Timestamp(0)
   updated_at          DateTime           @default(now()) @updatedAt @db.Timestamp(0)
   doctor              doctors            @relation(fields: [doctor_id], references: [doctor_id], onDelete: Cascade)
@@ -229,28 +233,30 @@ model doctor_sms_usage_log {
 }
 
 model clinics {
-  clinic_id    Int                      @id @default(autoincrement())
-  clinic_name  String?                  @db.VarChar(255)
-  phone        String?                  @db.VarChar(255)
-  status       ClinicStatus?
-  admin_id     Int
-  doctor_id    Int?
-  location     String?                  @db.VarChar(255)
-  barcode_url  String?                  @db.VarChar(500)
-  qr_storage_url String?                @db.VarChar(500)
-  created_at   DateTime?                @default(now()) @db.Timestamp(0)
-  appointments appointment[]
-  admin        admins                   @relation(fields: [admin_id], references: [admin_id])
-  doctor       doctors?                 @relation(fields: [doctor_id], references: [doctor_id])
-  liveQueueAds live_queue_side_ads[]
-  prescriptions prescription_records[] @relation("prescription_record_clinic")
-  emr_prescriptions prescriptions[] @relation("emr_prescription_clinic")
+  clinic_id                    Int                               @id @default(autoincrement())
+  clinic_name                  String?                           @db.VarChar(255)
+  phone                        String?                           @db.VarChar(255)
+  status                       ClinicStatus?
+  admin_id                     Int
+  doctor_id                    Int?
+  location                     String?                           @db.VarChar(255)
+  barcode_url                  String?                           @db.VarChar(500)
+  qr_storage_url               String?                           @db.VarChar(500)
+  hospital_group_code          String?                           @db.VarChar(191)
+  created_at                   DateTime?                         @default(now()) @db.Timestamp(0)
+  appointments                 appointment[]
+  admin                        admins                            @relation(fields: [admin_id], references: [admin_id])
+  doctor                       doctors?                          @relation(fields: [doctor_id], references: [doctor_id])
+  liveQueueAds                 live_queue_side_ads[]
+  prescriptions                prescription_records[]            @relation("prescription_record_clinic")
+  emr_prescriptions            prescriptions[]                   @relation("emr_prescription_clinic")
   prescription_layout_settings prescription_layout_settings[]
-  schedules    doctor_clinic_schedule[]
-  clinic_staff clinic_staff[]
+  schedules                    doctor_clinic_schedule[]
+  clinic_staff                 clinic_staff[]
 
   @@index([admin_id], map: "clinics_admin_id_fkey")
   @@index([doctor_id], map: "clinics_doctor_id_fkey")
+  @@index([hospital_group_code], map: "idx_clinics_hospital_group_code")
 }
 
 model patients {
@@ -635,17 +641,21 @@ model prescription_vitals {
 }
 
 model prescription_complaints {
-  id                Int               @id @default(autoincrement())
-  prescription_id   Int
+  id                 Int                @id @default(autoincrement())
+  prescription_id    Int
   complaint_master_id Int?
-  complaint_name    String            @db.VarChar(255)
-  normalized_name   String            @db.VarChar(255)
-  sort_order        Int               @default(0)
-  notes             String?           @db.VarChar(500)
-  created_at        DateTime          @default(now()) @db.Timestamp(0)
-  updated_at        DateTime          @default(now()) @updatedAt @db.Timestamp(0)
-  prescription      prescriptions     @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
-  complaint_master  complaints_master? @relation(fields: [complaint_master_id], references: [id], onDelete: SetNull)
+  complaint_name     String             @db.VarChar(255)
+  severity           String?            @db.VarChar(50)
+  frequency          String?            @db.VarChar(100)
+  duration_value     Int?
+  duration_unit      String?            @db.VarChar(20)
+  normalized_name    String             @db.VarChar(255)
+  sort_order         Int                @default(0)
+  notes              String?            @db.VarChar(500)
+  created_at         DateTime           @default(now()) @db.Timestamp(0)
+  updated_at         DateTime           @default(now()) @updatedAt @db.Timestamp(0)
+  prescription       prescriptions      @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+  complaint_master   complaints_master? @relation(fields: [complaint_master_id], references: [id], onDelete: SetNull)
 
   @@index([prescription_id], map: "idx_prescription_complaints_prescription_id")
   @@index([complaint_master_id], map: "idx_prescription_complaints_master_id")
@@ -1061,22 +1071,37 @@ model qr_walkin_queue {
 }
 
 model clinic_staff {
-  staff_id   Int       @id @default(autoincrement())
-  doctor_id  Int
-  clinic_id  Int?
-  user_id    Int       @unique
-  whatsapp_number String? @db.VarChar(255)
-  staff_role String    @db.VarChar(20)
-  status     String    @default("ACTIVE") @db.VarChar(20)
-  valid_from DateTime? @db.Date
-  valid_to   DateTime? @db.Date
-  created_at DateTime  @default(now()) @db.Timestamp(0)
-  doctors    doctors   @relation(fields: [doctor_id], references: [doctor_id])
-  users      users     @relation(fields: [user_id], references: [user_id])
-  clinics    clinics?  @relation(fields: [clinic_id], references: [clinic_id])
+  staff_id         Int                          @id @default(autoincrement())
+  doctor_id        Int
+  clinic_id        Int?
+  user_id          Int                          @unique
+  whatsapp_number  String?                      @db.VarChar(255)
+  staff_role       String                       @db.VarChar(20)
+  status           String                       @default("ACTIVE") @db.VarChar(20)
+  valid_from       DateTime?                    @db.Date
+  valid_to         DateTime?                    @db.Date
+  created_at       DateTime                     @default(now()) @db.Timestamp(0)
+  doctors          doctors                      @relation(fields: [doctor_id], references: [doctor_id])
+  users            users                        @relation(fields: [user_id], references: [user_id])
+  clinics          clinics?                     @relation(fields: [clinic_id], references: [clinic_id])
+  doctor_access    clinic_staff_doctor_access[]
 
   @@index([clinic_id], map: "clinic_staff_clinic_id_fkey")
   @@index([doctor_id], map: "clinic_staff_doctor_id_fkey")
+}
+
+model clinic_staff_doctor_access {
+  access_id   Int          @id @default(autoincrement())
+  staff_id    Int
+  doctor_id   Int
+  created_at  DateTime     @default(now()) @db.Timestamp(0)
+
+  staff       clinic_staff @relation(fields: [staff_id], references: [staff_id], onDelete: Cascade)
+  doctor      doctors      @relation(fields: [doctor_id], references: [doctor_id], onDelete: Cascade)
+
+  @@unique([staff_id, doctor_id], map: "uq_staff_doctor_access")
+  @@index([staff_id], map: "idx_staff_doctor_access_staff")
+  @@index([doctor_id], map: "idx_staff_doctor_access_doctor")
 }
 
 model live_queue_side_ads {
@@ -1100,6 +1125,20 @@ model live_queue_side_ads {
   @@index([doctor_id, clinic_id, position, is_active], map: "idx_live_queue_side_ads_lookup")
   @@index([clinic_id], map: "live_queue_side_ads_clinic_id_fkey")
   @@index([doctor_id], map: "live_queue_side_ads_doctor_id_fkey")
+}
+
+model live_queue_display_settings {
+  setting_id                Int      @id @default(autoincrement())
+  hospital_group_code       String   @unique(map: "uq_live_queue_display_hospital_group") @db.VarChar(191)
+  remaining_slide_seconds   Int      @default(8)
+  missed_slide_seconds      Int      @default(8)
+  doctor_rotation_seconds   Int      @default(40)
+  updated_by_doctor_id      Int?
+  created_at                DateTime @default(now()) @db.Timestamp(0)
+  updated_at                DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  updated_by_doctor         doctors? @relation(fields: [updated_by_doctor_id], references: [doctor_id], onDelete: SetNull)
+
+  @@index([updated_by_doctor_id], map: "idx_live_queue_display_updated_by_doctor")
 }
 
 enum AppointmentStatus {

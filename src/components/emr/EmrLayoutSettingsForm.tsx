@@ -20,7 +20,7 @@ import type {
   EmrPrintPaperPreset,
   EmrLayoutSectionKey,
   EmrLayoutSettings,
-} from "@/lib/emr";
+} from "@/lib/emr/types";
 
 type ScopeClinic = {
   clinic_id: number;

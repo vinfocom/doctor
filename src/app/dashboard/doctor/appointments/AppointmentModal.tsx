@@ -6,6 +6,18 @@ import { convertTo12Hour, convertTo24Hour } from '@/lib/timeUtils';
 interface Clinic {
     clinic_id: number;
     clinic_name: string;
+    doctor_id?: number | null;
+    doctor?: {
+        doctor_id: number;
+        doctor_name?: string | null;
+        specialization?: string | null;
+    } | null;
+}
+
+interface DoctorOption {
+    doctor_id: number;
+    doctor_name?: string | null;
+    specialization?: string | null;
 }
 
 interface AppointmentModalInitialValues {
@@ -52,6 +64,7 @@ const formatAvailableDate = (date: string): string => {
 const emptyForm = {
     patient_phone: '',
     patient_name: '',
+    doctor_id: '',
     clinic_id: '',
     date: '',
     time: '',
@@ -66,6 +79,8 @@ export default function AppointmentModal({
     initialValues,
 }: AppointmentModalProps) {
     const [clinics, setClinics] = useState<Clinic[]>([]);
+    const [doctors, setDoctors] = useState<DoctorOption[]>([]);
+    const [isHospitalStaff, setIsHospitalStaff] = useState(false);
     const [slotDuration, setSlotDuration] = useState<number>(30);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -92,6 +107,7 @@ export default function AppointmentModal({
             setFormData({
                 patient_phone: initialValues?.patient_phone || '',
                 patient_name: initialValues?.patient_name || '',
+                doctor_id: '',
                 clinic_id: initialValues?.clinic_id || '',
                 date: initialValues?.date || '',
                 time: initialValues?.time || '',
@@ -166,15 +182,52 @@ export default function AppointmentModal({
 
     const fetchClinics = async () => {
         try {
-            const res = await fetch('/api/clinics');
-            if (res.ok) {
-                const data = await res.json();
-                setClinics(data.clinics || []);
+            const [meRes, clinicsRes] = await Promise.all([
+                fetch('/api/auth/me', { cache: 'no-store' }),
+                fetch('/api/clinics', { cache: 'no-store' }),
+            ]);
+            if (clinicsRes.ok) {
+                const data = await clinicsRes.json();
+                const nextClinics: Clinic[] = data.clinics || [];
+                const doctorsFromApi: DoctorOption[] = Array.isArray(data.doctors) ? data.doctors : [];
+                const doctorsById = new Map<number, DoctorOption>();
+
+                doctorsFromApi.forEach((doctor) => {
+                    doctorsById.set(Number(doctor.doctor_id), doctor);
+                });
+
+                nextClinics.forEach((clinic) => {
+                    if (clinic.doctor?.doctor_id) {
+                        doctorsById.set(Number(clinic.doctor.doctor_id), clinic.doctor);
+                    }
+                });
+
+                const nextDoctors = Array.from(doctorsById.values());
+                setClinics(nextClinics);
+                setDoctors(nextDoctors);
+
+                const meData = meRes.ok ? await meRes.json() : null;
+                const assignedCount = Array.isArray(meData?.user?.assigned_doctor_ids)
+                    ? meData.user.assigned_doctor_ids.length
+                    : nextDoctors.length;
+                const hospitalStaff = meData?.user?.role === 'CLINIC_STAFF' && (assignedCount > 1 || nextDoctors.length > 1);
+                setIsHospitalStaff(hospitalStaff);
+
+                if (hospitalStaff && !initialValues?.clinic_id) {
+                    setFormData((prev) => ({
+                        ...prev,
+                        doctor_id: prev.doctor_id || (nextDoctors[0]?.doctor_id ? String(nextDoctors[0].doctor_id) : ''),
+                    }));
+                }
             }
         } catch (err) {
             console.error("Failed to fetch clinics", err);
         }
     };
+
+    const selectedDoctorClinics = isHospitalStaff && formData.doctor_id
+        ? clinics.filter((clinic) => Number(clinic.doctor_id || clinic.doctor?.doctor_id) === Number(formData.doctor_id))
+        : clinics;
 
     const fetchAvailableDates = useCallback(async (selectedDate?: string) => {
         if (!formData.clinic_id) {
@@ -268,6 +321,19 @@ export default function AppointmentModal({
         setAvailableSlots([]);
         setAvailabilityNotice('');
         setFormData({ ...formData, clinic_id: clinicId, date: '', time: '' });
+    };
+
+    const handleDoctorChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        setAvailableDates([]);
+        setAvailableSlots([]);
+        setAvailabilityNotice('');
+        setFormData({
+            ...formData,
+            doctor_id: e.target.value,
+            clinic_id: '',
+            date: '',
+            time: '',
+        });
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -459,6 +525,27 @@ export default function AppointmentModal({
                                 )}
                             </div>
 
+                            {isHospitalStaff && mode === 'create' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Doctor</label>
+                                    <select
+                                        required
+                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                                        value={formData.doctor_id}
+                                        onChange={handleDoctorChange}
+                                    >
+                                        <option value="">Select Doctor</option>
+                                        {doctors.map((doctor) => (
+                                            <option key={doctor.doctor_id} value={doctor.doctor_id}>
+                                                {doctor.doctor_name ? (/^dr\.?\s/i.test(doctor.doctor_name) ? doctor.doctor_name : `Dr. ${doctor.doctor_name}`) : `Doctor ${doctor.doctor_id}`}
+                                                {doctor.specialization ? ` - ${doctor.specialization}` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="mt-1 text-xs text-gray-400">Only doctors assigned to this hospital staff login are shown.</p>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Clinic</label>
@@ -467,11 +554,14 @@ export default function AppointmentModal({
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                                         value={formData.clinic_id}
                                         onChange={handleClinicChange}
-                                        disabled={mode === 'reschedule'}
+                                        disabled={mode === 'reschedule' || (isHospitalStaff && mode === 'create' && !formData.doctor_id)}
                                     >
-                                        <option value="">Select Clinic</option>
-                                        {clinics.map(c => (
-                                            <option key={c.clinic_id} value={c.clinic_id}>{c.clinic_name}</option>
+                                        <option value="">{isHospitalStaff && mode === 'create' && !formData.doctor_id ? 'Select doctor first' : 'Select Clinic'}</option>
+                                        {selectedDoctorClinics.map(c => (
+                                            <option key={c.clinic_id} value={c.clinic_id}>
+                                                {c.clinic_name}
+                                                {isHospitalStaff && c.doctor?.doctor_name ? ` - ${/^dr\.?\s/i.test(c.doctor.doctor_name) ? c.doctor.doctor_name : `Dr. ${c.doctor.doctor_name}`}` : ''}
+                                            </option>
                                         ))}
                                     </select>
                                 </div>

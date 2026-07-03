@@ -7,6 +7,8 @@ type SmsConfigInput = {
     current_pack_total?: number | null;
     current_pack_used?: number | null;
     sms_service_status?: SmsServiceStatus | null;
+    low_pack_alert_sent_at?: Date | string | null;
+    exhausted_alert_sent_at?: Date | string | null;
 };
 
 export type DoctorSmsSnapshot = {
@@ -17,6 +19,8 @@ export type DoctorSmsSnapshot = {
     remainingCredits: number;
     displayText: string;
 };
+
+export type DoctorSmsPackAlertType = "LOW_PACK" | "EXHAUSTED";
 
 export function deriveDoctorSmsSnapshot(input?: SmsConfigInput | null): DoctorSmsSnapshot {
     const enabled = Boolean(input?.sms_service_enabled);
@@ -43,4 +47,23 @@ export function deriveDoctorSmsSnapshot(input?: SmsConfigInput | null): DoctorSm
 
 export function toDoctorSmsPayload(input?: SmsConfigInput | null) {
     return deriveDoctorSmsSnapshot(input);
+}
+
+export function getDoctorSmsPackAlertType(input?: SmsConfigInput | null): DoctorSmsPackAlertType | null {
+    const snapshot = deriveDoctorSmsSnapshot(input);
+
+    if (snapshot.totalCredits <= 0 || !snapshot.enabled) {
+        return null;
+    }
+
+    if (snapshot.remainingCredits <= 0) {
+        return input?.exhausted_alert_sent_at ? null : "EXHAUSTED";
+    }
+
+    const usageRatio = snapshot.totalCredits > 0 ? snapshot.usedCredits / snapshot.totalCredits : 0;
+    if (usageRatio >= 0.9) {
+        return input?.low_pack_alert_sent_at ? null : "LOW_PACK";
+    }
+
+    return null;
 }

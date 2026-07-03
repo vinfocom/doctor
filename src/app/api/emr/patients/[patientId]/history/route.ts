@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/request-auth";
 import {
+  type EmrComplaintPayload,
   getEmrAccessErrorResponse,
   getPrescriptionRecord,
   listPrescriptionHistory,
@@ -19,7 +20,7 @@ type HistoryGroup = {
 
 type EmrPatientHistoryItem = EmrPrescriptionHistoryItem & {
   clinical_history: EmrClinicalHistoryPayload[];
-  complaints: EmrNamedItemPayload[];
+  complaints: EmrComplaintPayload[];
   diagnosis: EmrNamedItemPayload[];
 };
 

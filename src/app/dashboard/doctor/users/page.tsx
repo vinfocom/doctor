@@ -18,6 +18,8 @@ interface StaffUser {
     clinic_id: number | null;
     clinic_name: string | null;
     doctor_whatsapp_number?: string | null;
+    assigned_doctor_ids?: number[];
+    can_manage?: boolean;
 }
 
 interface Clinic {
@@ -268,18 +270,25 @@ export default function UsersViewPage() {
                                     <div className="flex flex-wrap items-center gap-2">
                                         <button
                                             onClick={() => openEdit(row._raw)}
+                                            disabled={row._raw.can_manage === false}
                                             className="text-purple-600 hover:text-purple-800 p-1.5 hover:bg-purple-50 rounded-lg transition-colors"
-                                            title="Edit user"
+                                            title={row._raw.can_manage === false ? "Linked hospital staff can be managed from the owning doctor or Superadmin Hospitals" : "Edit user"}
                                         >
                                             <Edit2 size={16} />
                                         </button>
                                         <button
                                             onClick={() => handleDelete(row.id)}
+                                            disabled={row._raw.can_manage === false}
                                             className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded-lg transition-colors"
-                                            title="Delete user"
+                                            title={row._raw.can_manage === false ? "Linked hospital staff can be managed from the owning doctor or Superadmin Hospitals" : "Delete user"}
                                         >
                                             <Trash2 size={16} />
                                         </button>
+                                        {row._raw.can_manage === false && (
+                                            <span className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-600">
+                                                Linked
+                                            </span>
+                                        )}
                                     </div>
                                 ),
                             };

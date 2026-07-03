@@ -23,6 +23,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type {
+  EmrComplaintPayload,
   EmrClinicalHistoryPayload,
   EmrClinicalHistorySection,
   EmrCustomFieldType,
@@ -39,7 +40,8 @@ import type {
   EmrPrescriptionHistoryItem,
   EmrPrescriptionRecord,
   EmrVitalsPayload,
-} from "@/lib/emr";
+} from "@/lib/emr/types";
+import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
 import { normalizeMasterName } from "@/lib/emr/normalization";
 import { convertTo12Hour, convertTo24Hour } from "@/lib/timeUtils";
 
@@ -82,7 +84,7 @@ type MasterKindRoute = "medicines" | "complaints" | "diagnosis" | "tests" | "adv
 
 type DraftEditorState = {
   vitals: Required<EmrVitalsPayload>;
-  complaints: EmrNamedItemPayload[];
+  complaints: EmrComplaintPayload[];
   diagnosis: EmrNamedItemPayload[];
   medicines: EmrMedicinePayload[];
   tests: EmrNamedItemPayload[];
@@ -117,6 +119,16 @@ type VitalInputKey =
   | "weight"
   | "temperature"
   | "spo2";
+
+const EMPTY_COMPLAINT_ROW: EmrComplaintPayload = {
+  name: "",
+  severity: "",
+  frequency: "",
+  duration_value: null,
+  duration_unit: null,
+  notes: "",
+  sort_order: 0,
+};
 
 const EMPTY_MEDICINE_ROW: EmrMedicinePayload = {
   type: "",
@@ -182,6 +194,26 @@ const FREQUENCY_SUGGESTIONS = [
   "SOS",
   "Weekly Twice",
   "Weekly Thrice",
+];
+
+const COMPLAINT_FREQUENCY_SUGGESTIONS = [
+  "Continuous",
+  "Intermittent",
+  "Occasional",
+  "Daily",
+  "Alternate Day",
+  "Weekly",
+  "Twice Weekly",
+  "Fortnightly",
+  "Monthly",
+  "Seasonal",
+];
+
+const COMPLAINT_SEVERITY_SUGGESTIONS = [
+  "Mild",
+  "Moderate",
+  "Severe",
+  "Very Severe",
 ];
 
 const MEDICINE_TYPE_OPTIONS = [
@@ -756,6 +788,64 @@ function getMedicineIdentity(medicine: EmrMedicinePayload) {
   );
 }
 
+function hasComplaintContent(complaint: EmrComplaintPayload) {
+  return Boolean(complaint.name?.trim());
+}
+
+function applyComplaintSuggestionToRow(
+  row: EmrComplaintPayload,
+  item: EmrMasterItem
+): EmrComplaintPayload {
+  return {
+    ...row,
+    complaint_master_id: item.id,
+    name: item.name,
+    normalized_name: item.normalized_name,
+  };
+}
+
+function clearComplaintSelectionDetails(
+  row: EmrComplaintPayload,
+  nextName: string
+): EmrComplaintPayload {
+  return {
+    ...row,
+    name: nextName,
+    complaint_master_id: null,
+    normalized_name: normalizeMasterName(nextName) || null,
+  };
+}
+
+function applyMedicineSuggestionToRow(
+  row: EmrMedicinePayload,
+  item: EmrMasterItem
+): EmrMedicinePayload {
+  return {
+    ...row,
+    medicine_master_id: item.id,
+    medicine_name: item.name,
+    normalized_name: item.normalized_name,
+    type: item.type ?? row.type,
+    strength: item.strength ?? row.strength,
+    salt_composition: item.salt_composition ?? row.salt_composition,
+  };
+}
+
+function clearMedicineSelectionDetails(
+  row: EmrMedicinePayload,
+  nextMedicineName: string
+): EmrMedicinePayload {
+  return {
+    ...row,
+    medicine_name: nextMedicineName,
+    medicine_master_id: null,
+    normalized_name: null,
+    type: "",
+    strength: "",
+    salt_composition: "",
+  };
+}
+
 function isMedicineResolved(medicine: EmrMedicinePayload) {
   if (!medicine.medicine_name?.trim()) {
     return false;
@@ -780,7 +870,8 @@ function mapDraftToEditorState(draft: EmrPrescriptionRecord): DraftEditorState {
       spo2: draft.vitals?.spo2 ?? "",
       bmi: draft.vitals?.bmi ?? "",
     }),
-    complaints: draft.complaints ?? [],
+    complaints:
+      draft.complaints.length > 0 ? draft.complaints : [{ ...EMPTY_COMPLAINT_ROW }],
     diagnosis: draft.diagnosis ?? [],
     medicines:
       draft.medicines.length > 0
@@ -807,7 +898,13 @@ function buildDraftPayload(
     next_visit_date: editorState.next_visit_date || null,
     timezone: draft.timezone,
     vitals: editorState.vitals,
-    complaints: editorState.complaints,
+    complaints: editorState.complaints
+      .filter((complaint) => hasComplaintContent(complaint))
+      .map((complaint, index) => ({
+        ...complaint,
+        normalized_name: normalizeMasterName(complaint.name) || null,
+        sort_order: index,
+      })),
     diagnosis: editorState.diagnosis,
     medicines: editorState.medicines.map((medicine, index) => ({
       ...medicine,
@@ -1998,6 +2095,13 @@ export default function DoctorAppointmentPadPage() {
     Partial<Record<EmrClinicalHistorySection, boolean>>
   >({});
   const clinicalHistoryDefaultsAppliedRef = useRef(false);
+  const [activeComplaintSuggestionIndex, setActiveComplaintSuggestionIndex] =
+    useState<number | null>(null);
+  const [activeComplaintDurationSuggestionIndex, setActiveComplaintDurationSuggestionIndex] =
+    useState<number | null>(null);
+  const [complaintSuggestions, setComplaintSuggestions] = useState<EmrMasterItem[]>([]);
+  const [complaintSuggestionLoading, setComplaintSuggestionLoading] = useState(false);
+  const [complaintAddModalIndex, setComplaintAddModalIndex] = useState<number | null>(null);
   const [activeMedicineSuggestionIndex, setActiveMedicineSuggestionIndex] =
     useState<number | null>(null);
   const [activeDurationSuggestionIndex, setActiveDurationSuggestionIndex] =
@@ -2006,11 +2110,22 @@ export default function DoctorAppointmentPadPage() {
   const [medicineSuggestions, setMedicineSuggestions] = useState<EmrMasterItem[]>([]);
   const [medicineSuggestionLoading, setMedicineSuggestionLoading] = useState(false);
   const [medicineAddModalIndex, setMedicineAddModalIndex] = useState<number | null>(null);
+  const complaintTypedValue =
+    activeComplaintSuggestionIndex === null || !editorState
+      ? ""
+      : editorState.complaints[activeComplaintSuggestionIndex]?.name || "";
+  const debouncedComplaintQuery = useDebouncedValue(complaintTypedValue, 350);
   const medicineTypedValue =
     activeMedicineSuggestionIndex === null || !editorState
       ? ""
       : editorState.medicines[activeMedicineSuggestionIndex]?.medicine_name || "";
   const debouncedMedicineQuery = useDebouncedValue(medicineTypedValue, 350);
+  const complaintAnchorRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const complaintNameInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const complaintSeverityInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const complaintFrequencyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const complaintDurationInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const complaintDurationAnchorRefs = useRef<(HTMLDivElement | null)[]>([]);
   const medicineAnchorRefs = useRef<(HTMLDivElement | null)[]>([]);
   const medicineNameInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const doseInputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -2026,6 +2141,14 @@ export default function DoctorAppointmentPadPage() {
   const [historyCanScrollOlder, setHistoryCanScrollOlder] = useState(false);
   const [historyCanScrollNewer, setHistoryCanScrollNewer] = useState(false);
   const [activeHistoryGroupIndex, setActiveHistoryGroupIndex] = useState(0);
+  const activeComplaintDurationAnchor =
+    activeComplaintDurationSuggestionIndex === null
+      ? null
+      : complaintDurationAnchorRefs.current[activeComplaintDurationSuggestionIndex];
+  const activeComplaintDurationPanelStyle = useFloatingPanelStyle(
+    activeComplaintDurationAnchor,
+    activeComplaintDurationSuggestionIndex !== null
+  );
   const activeDurationAnchor =
     activeDurationSuggestionIndex === null ? null : durationAnchorRefs.current[activeDurationSuggestionIndex];
   const activeDurationPanelStyle = useFloatingPanelStyle(
@@ -2207,6 +2330,73 @@ export default function DoctorAppointmentPadPage() {
     setSaveMessage(data.draft?.status === "final" ? "Finalized" : "");
   }, []);
 
+  const updateComplaintField = useCallback(
+    <K extends keyof EmrComplaintPayload>(
+      rowIndex: number,
+      field: K,
+      value: EmrComplaintPayload[K]
+    ) => {
+      setEditorState((current) =>
+        current
+          ? {
+              ...current,
+              complaints: current.complaints.map((row, currentRowIndex) =>
+                currentRowIndex === rowIndex
+                  ? field === "name"
+                    ? (() => {
+                        const nextName = String(value ?? "");
+                        const nextNormalizedName = normalizeMasterName(nextName);
+                        const currentLinkedName = normalizeMasterName(
+                          row.normalized_name || row.name
+                        );
+
+                        if (!nextNormalizedName) {
+                          return clearComplaintSelectionDetails(row, nextName);
+                        }
+
+                        if (
+                          row.complaint_master_id &&
+                          currentLinkedName &&
+                          nextNormalizedName !== currentLinkedName
+                        ) {
+                          return clearComplaintSelectionDetails(row, nextName);
+                        }
+
+                        return {
+                          ...row,
+                          name: nextName,
+                          normalized_name: nextNormalizedName || null,
+                        };
+                      })()
+                    : { ...row, [field]: value }
+                  : row
+              ),
+            }
+          : current
+      );
+    },
+    []
+  );
+
+  const focusComplaintRowField = useCallback(
+    (rowIndex: number, field: "severity" | "frequency" | "duration") => {
+      const target =
+        field === "severity"
+          ? complaintSeverityInputRefs.current[rowIndex]
+          : field === "frequency"
+            ? complaintFrequencyInputRefs.current[rowIndex]
+            : complaintDurationInputRefs.current[rowIndex];
+
+      if (!target) return;
+
+      window.setTimeout(() => {
+        target.focus();
+        target.select?.();
+      }, 0);
+    },
+    []
+  );
+
   const updateMedicineField = useCallback(
     <K extends keyof EmrMedicinePayload>(
       rowIndex: number,
@@ -2218,7 +2408,31 @@ export default function DoctorAppointmentPadPage() {
           ? {
               ...current,
               medicines: current.medicines.map((row, currentRowIndex) =>
-                currentRowIndex === rowIndex ? { ...row, [field]: value } : row
+                currentRowIndex === rowIndex
+                  ? field === "medicine_name"
+                    ? (() => {
+                        const nextMedicineName = String(value ?? "");
+                        const nextNormalizedName = normalizeMasterName(nextMedicineName);
+                        const currentLinkedName = normalizeMasterName(
+                          row.normalized_name || row.medicine_name
+                        );
+
+                        if (!nextNormalizedName) {
+                          return clearMedicineSelectionDetails(row, nextMedicineName);
+                        }
+
+                        if (
+                          row.medicine_master_id &&
+                          currentLinkedName &&
+                          nextNormalizedName !== currentLinkedName
+                        ) {
+                          return clearMedicineSelectionDetails(row, nextMedicineName);
+                        }
+
+                        return { ...row, medicine_name: nextMedicineName };
+                      })()
+                    : { ...row, [field]: value }
+                  : row
               ),
             }
           : current
@@ -3093,6 +3307,74 @@ export default function DoctorAppointmentPadPage() {
 
   useEffect(() => {
     let active = true;
+    const loadComplaintSuggestions = async () => {
+      if (
+        activeComplaintSuggestionIndex === null ||
+        debouncedComplaintQuery.trim().length < 1
+      ) {
+        setComplaintSuggestions([]);
+        return;
+      }
+
+      try {
+        setComplaintSuggestionLoading(true);
+        const res = await fetch(
+          `/api/suggestions/complaints?q=${encodeURIComponent(
+            debouncedComplaintQuery.trim()
+          )}`,
+          { cache: "no-store" }
+        );
+        const data = (await res.json()) as { suggestions?: EmrMasterItem[] };
+        if (!active) return;
+        const nextSuggestions = data.suggestions ?? [];
+        setComplaintSuggestions(nextSuggestions);
+
+        if (activeComplaintSuggestionIndex !== null) {
+          const normalizedQuery = normalizeMasterName(debouncedComplaintQuery);
+          const exactSuggestion = nextSuggestions.find(
+            (item) => normalizeMasterName(item.normalized_name || item.name) === normalizedQuery
+          );
+
+          if (exactSuggestion) {
+            setEditorState((current) => {
+              if (!current) return current;
+
+              const row = current.complaints[activeComplaintSuggestionIndex];
+              if (!row) return current;
+
+              const currentNormalizedName = normalizeMasterName(row.name);
+              if (
+                !currentNormalizedName ||
+                currentNormalizedName !== normalizedQuery ||
+                row.complaint_master_id
+              ) {
+                return current;
+              }
+
+              return {
+                ...current,
+                complaints: current.complaints.map((complaint, index) =>
+                  index === activeComplaintSuggestionIndex
+                    ? applyComplaintSuggestionToRow(complaint, exactSuggestion)
+                    : complaint
+                ),
+              };
+            });
+          }
+        }
+      } finally {
+        if (active) setComplaintSuggestionLoading(false);
+      }
+    };
+
+    void loadComplaintSuggestions();
+    return () => {
+      active = false;
+    };
+  }, [activeComplaintSuggestionIndex, debouncedComplaintQuery]);
+
+  useEffect(() => {
+    let active = true;
     const loadMedicineSuggestions = async () => {
       if (
         activeMedicineSuggestionIndex === null ||
@@ -3112,7 +3394,51 @@ export default function DoctorAppointmentPadPage() {
         );
         const data = (await res.json()) as { suggestions?: EmrMasterItem[] };
         if (!active) return;
-        setMedicineSuggestions(data.suggestions ?? []);
+        const nextSuggestions = data.suggestions ?? [];
+        setMedicineSuggestions(nextSuggestions);
+
+        if (activeMedicineSuggestionIndex !== null) {
+          const normalizedQuery = normalizeMasterName(debouncedMedicineQuery);
+          const exactSuggestion = nextSuggestions.find(
+            (item) => normalizeMasterName(item.normalized_name || item.name) === normalizedQuery
+          );
+
+          if (exactSuggestion) {
+            setEditorState((current) => {
+              if (!current) return current;
+
+              const row = current.medicines[activeMedicineSuggestionIndex];
+              if (!row) return current;
+
+              const currentNormalizedName = normalizeMasterName(row.medicine_name);
+              if (
+                !currentNormalizedName ||
+                currentNormalizedName !== normalizedQuery ||
+                row.medicine_master_id
+              ) {
+                return current;
+              }
+
+              const duplicateSelection = current.medicines.some((medicine, index) => {
+                if (index === activeMedicineSuggestionIndex) return false;
+                return getMedicineIdentity(medicine) === exactSuggestion.id.toString();
+              });
+
+              if (duplicateSelection) {
+                return current;
+              }
+
+              return {
+                ...current,
+                medicines: current.medicines.map((medicine, index) =>
+                  index === activeMedicineSuggestionIndex
+                    ? applyMedicineSuggestionToRow(medicine, exactSuggestion)
+                    : medicine
+                ),
+              };
+            });
+          }
+        }
       } finally {
         if (active) setMedicineSuggestionLoading(false);
       }
@@ -3660,16 +3986,288 @@ export default function DoctorAppointmentPadPage() {
         );
       case "complaints":
         return (
-          <TagEditorSection
-            key={section}
-            title="Complaints"
-            items={editorState?.complaints ?? []}
-            onChange={(items) =>
-              setEditorState((current) => (current ? { ...current, complaints: items } : current))
-            }
-            placeholder="Add complaint and press Enter"
-            kind="complaints"
-          />
+          <SectionCard key={section} title="Complaints">
+            <div className="relative overflow-x-auto overflow-y-visible rounded-2xl border border-slate-200">
+              <table className="min-w-[860px] w-full table-fixed overflow-visible">
+                <thead className="bg-slate-100">
+                  <tr className="text-left text-[11px] uppercase tracking-wide text-slate-900">
+                    <th className="w-[34%] px-2 py-2">Complaint</th>
+                    <th className="w-[18%] px-2 py-2">Severity</th>
+                    <th className="w-[20%] px-2 py-2">Frequency</th>
+                    <th className="w-[18%] px-2 py-2">Duration</th>
+                    <th className="w-12 px-2 py-2 text-center">#</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white">
+                  {(editorState?.complaints ?? []).map((complaint, index) => (
+                    <tr key={`complaint-${index}`} className="align-top">
+                      <td className="px-2 py-2">
+                        <div
+                          ref={(element) => {
+                            complaintAnchorRefs.current[index] = element;
+                          }}
+                          className="relative"
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              ref={(element) => {
+                                complaintNameInputRefs.current[index] = element;
+                              }}
+                              type="text"
+                              value={complaint.name}
+                              onFocus={() => setActiveComplaintSuggestionIndex(index)}
+                              onBlur={() => {
+                                window.setTimeout(
+                                  () =>
+                                    setActiveComplaintSuggestionIndex((current) =>
+                                      current === index ? null : current
+                                    ),
+                                  150
+                                );
+                              }}
+                              onChange={(event) =>
+                                updateComplaintField(index, "name", event.target.value)
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  setActiveComplaintSuggestionIndex(null);
+                                  focusComplaintRowField(index, "severity");
+                                }
+                              }}
+                              className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs uppercase"
+                              placeholder="Type complaint name to search"
+                            />
+                            {complaint.name?.trim() && !complaint.complaint_master_id ? (
+                              <button
+                                type="button"
+                                onClick={() => setComplaintAddModalIndex(index)}
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                aria-label="Add complaint to master"
+                                title="Add complaint"
+                              >
+                                <PlusCircle size={16} />
+                              </button>
+                            ) : null}
+                          </div>
+                          {activeComplaintSuggestionIndex === index && (
+                            <SuggestionDropdown
+                              suggestions={complaintSuggestions}
+                              typedValue={complaint.name}
+                              loading={complaintSuggestionLoading}
+                              anchorElement={complaintAnchorRefs.current[index]}
+                              onSelect={(item) => {
+                                setEditorState((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        complaints: current.complaints.map((row, rowIndex) =>
+                                          rowIndex === index
+                                            ? applyComplaintSuggestionToRow(row, item)
+                                            : row
+                                        ),
+                                      }
+                                    : current
+                                );
+                                setComplaintSuggestions([]);
+                                setActiveComplaintSuggestionIndex(null);
+                                focusComplaintRowField(index, "severity");
+                              }}
+                            />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-2 py-2">
+                        <FreeWriteSuggestionInput
+                          inputRef={(element) => {
+                            complaintSeverityInputRefs.current[index] = element;
+                          }}
+                          value={complaint.severity ?? ""}
+                          suggestions={getSelectOptions(
+                            COMPLAINT_SEVERITY_SUGGESTIONS,
+                            complaint.severity
+                          )}
+                          placeholder="Severity"
+                          ariaLabel="Complaint severity"
+                          onChange={(value) => updateComplaintField(index, "severity", value)}
+                          onAdvance={() => focusComplaintRowField(index, "frequency")}
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <FreeWriteSuggestionInput
+                          inputRef={(element) => {
+                            complaintFrequencyInputRefs.current[index] = element;
+                          }}
+                          value={complaint.frequency ?? ""}
+                          suggestions={getSelectOptions(
+                            COMPLAINT_FREQUENCY_SUGGESTIONS,
+                            complaint.frequency
+                          )}
+                          placeholder="Frequency"
+                          ariaLabel="Complaint frequency"
+                          onChange={(value) => updateComplaintField(index, "frequency", value)}
+                          onAdvance={() => focusComplaintRowField(index, "duration")}
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <div
+                          ref={(element) => {
+                            complaintDurationAnchorRefs.current[index] = element;
+                          }}
+                          className="relative"
+                        >
+                          <input
+                            ref={(element) => {
+                              complaintDurationInputRefs.current[index] = element;
+                            }}
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={complaint.duration_value ?? ""}
+                            onFocus={() => {
+                              if (complaint.duration_value) {
+                                setActiveComplaintDurationSuggestionIndex(index);
+                              }
+                            }}
+                            onKeyDown={(event) => {
+                              if (["-", "+", "e", "E", "."].includes(event.key)) {
+                                event.preventDefault();
+                              }
+                            }}
+                            onBlur={() => {
+                              window.setTimeout(
+                                () =>
+                                  setActiveComplaintDurationSuggestionIndex((current) =>
+                                    current === index ? null : current
+                                  ),
+                                150
+                              );
+                            }}
+                            onChange={(event) => {
+                              const rawValue = event.target.value;
+                              const nextValue = rawValue ? Math.max(1, Number(rawValue)) : null;
+                              updateComplaintField(index, "duration_value", nextValue);
+                              updateComplaintField(
+                                index,
+                                "duration_unit",
+                                nextValue ? complaint.duration_unit : null
+                              );
+                              setActiveComplaintDurationSuggestionIndex(nextValue ? index : null);
+                            }}
+                            className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs"
+                            placeholder="1"
+                          />
+                          {activeComplaintDurationSuggestionIndex === index &&
+                          complaint.duration_value ? (
+                            typeof document !== "undefined"
+                              ? createPortal(
+                                  <div
+                                    style={activeComplaintDurationPanelStyle}
+                                    className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
+                                  >
+                                    {buildDurationSuggestions(complaint.duration_value).map(
+                                      (option) => (
+                                        <button
+                                          key={option.unit}
+                                          type="button"
+                                          onMouseDown={(event) => event.preventDefault()}
+                                          onClick={() => {
+                                            updateComplaintField(index, "duration_unit", option.unit);
+                                            setActiveComplaintDurationSuggestionIndex(null);
+                                          }}
+                                          className="flex w-full items-center justify-between border-b border-slate-100 px-3 py-2 text-left text-sm text-slate-700 hover:bg-indigo-50 last:border-b-0"
+                                        >
+                                          <span>{option.label}</span>
+                                          {complaint.duration_unit === option.unit ? (
+                                            <Check size={14} className="text-indigo-600" />
+                                          ) : null}
+                                        </button>
+                                      )
+                                    )}
+                                  </div>,
+                                  document.body
+                                )
+                              : null
+                          ) : null}
+                        </div>
+                        {complaint.duration_value && complaint.duration_unit ? (
+                          <p className="mt-1 text-[11px] font-medium text-slate-500">
+                            {getDurationLabel(complaint.duration_value, complaint.duration_unit)}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditorState((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    complaints:
+                                      current.complaints.length === 1
+                                        ? [{ ...EMPTY_COMPLAINT_ROW }]
+                                        : current.complaints.filter((_, rowIndex) => rowIndex !== index),
+                                  }
+                                : current
+                            )
+                          }
+                          className="rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100"
+                          title="Remove complaint row"
+                          aria-label="Remove complaint row"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setEditorState((current) =>
+                  current
+                    ? {
+                        ...current,
+                        complaints: [...current.complaints, { ...EMPTY_COMPLAINT_ROW }],
+                      }
+                    : current
+                )
+              }
+              className="mt-4 inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+            >
+              <Plus size={14} />
+              Add Complaint Row
+            </button>
+            <AddMasterItemModal
+              open={complaintAddModalIndex !== null}
+              kind="complaints"
+              initialName={
+                complaintAddModalIndex === null
+                  ? ""
+                  : editorState?.complaints[complaintAddModalIndex]?.name || ""
+              }
+              onClose={() => setComplaintAddModalIndex(null)}
+              onCreated={(item) => {
+                if (complaintAddModalIndex === null) return;
+                setEditorState((current) =>
+                  current
+                    ? {
+                        ...current,
+                        complaints: current.complaints.map((row, rowIndex) =>
+                          rowIndex === complaintAddModalIndex
+                            ? applyComplaintSuggestionToRow(row, item)
+                            : row
+                        ),
+                      }
+                    : current
+                );
+                setComplaintAddModalIndex(null);
+              }}
+            />
+          </SectionCard>
         );
       case "diagnosis":
         return (
@@ -3861,16 +4459,7 @@ export default function DoctorAppointmentPadPage() {
                                         ...current,
                                         medicines: current.medicines.map((row, rowIndex) =>
                                           rowIndex === index
-                                            ? {
-                                                ...row,
-                                                medicine_master_id: item.id,
-                                                medicine_name: item.name,
-                                                normalized_name: item.normalized_name,
-                                                type: item.type ?? row.type,
-                                                strength: item.strength ?? row.strength,
-                                                salt_composition:
-                                                  item.salt_composition ?? row.salt_composition,
-                                              }
+                                            ? applyMedicineSuggestionToRow(row, item)
                                             : row
                                         ),
                                       }
@@ -4377,12 +4966,17 @@ export default function DoctorAppointmentPadPage() {
           </div>
         ) : null;
       case "complaints":
-        return printableSectionVisibility.complaints && editorState.complaints.length > 0 ? (
+      {
+        const printableComplaints = getPrintableComplaints(editorState.complaints);
+        return printableSectionVisibility.complaints && printableComplaints.length > 0 ? (
           <div key={`summary-${section}`}>
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-900">Complaints</p>
-            <p className="mt-1 text-sm text-gray-700">{toUpperListDisplay(editorState.complaints)}</p>
+            <p className="mt-1 text-sm text-gray-700">
+              {printableComplaints.map((item) => item.toUpperCase()).join(", ")}
+            </p>
           </div>
         ) : null;
+      }
       case "diagnosis":
         return printableSectionVisibility.diagnosis && editorState.diagnosis.length > 0 ? (
           <div key={`summary-${section}`}>
@@ -5082,26 +5676,17 @@ export default function DoctorAppointmentPadPage() {
                     onClose={() => setMedicineAddModalIndex(null)}
                     onCreated={(item) => {
                       if (medicineAddModalIndex === null) return;
-                      setEditorState((current) =>
-                        current
-                          ? {
-                              ...current,
-                              medicines: current.medicines.map((row, rowIndex) =>
-                                rowIndex === medicineAddModalIndex
-                                  ? {
-                                      ...row,
-                                      medicine_master_id: item.id,
-                                      medicine_name: item.name,
-                                      normalized_name: item.normalized_name,
-                                      type: item.type ?? row.type,
-                                      strength: item.strength ?? row.strength,
-                                      salt_composition:
-                                        item.salt_composition ?? row.salt_composition,
-                                    }
-                                  : row
-                              ),
-                            }
-                          : current
+                            setEditorState((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    medicines: current.medicines.map((row, rowIndex) =>
+                                      rowIndex === medicineAddModalIndex
+                                        ? applyMedicineSuggestionToRow(row, item)
+                                        : row
+                                    ),
+                                  }
+                                : current
                       );
                       setMedicineAddModalIndex(null);
                     }}

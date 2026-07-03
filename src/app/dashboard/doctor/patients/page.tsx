@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { Search, X } from "lucide-react";
 import DoctorPrescriptionModal, { type PrescriptionModalTarget } from "@/components/DoctorPrescriptionModal";
-import type { EmrClinicalHistoryPayload, EmrNamedItemPayload } from "@/lib/emr";
+import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
+import type {
+    EmrClinicalHistoryPayload,
+    EmrComplaintPayload,
+    EmrNamedItemPayload,
+} from "@/lib/emr/types";
 
 interface Patient {
     patient_id: number;
@@ -14,6 +19,7 @@ interface Patient {
     gender: string | null;
     phone: string | null;
     patient_type: string | null;
+    has_prescription_image?: boolean;
 }
 
 interface EmrHistoryItem {
@@ -32,7 +38,7 @@ interface EmrHistoryItem {
         clinic_id: number | null;
         clinic_name: string | null;
     } | null;
-    complaints: EmrNamedItemPayload[];
+    complaints: EmrComplaintPayload[];
     diagnosis: EmrNamedItemPayload[];
     clinical_history: EmrClinicalHistoryPayload[];
 }
@@ -111,6 +117,11 @@ function formatNamedItemSummary(items: EmrNamedItemPayload[]) {
         .map((item) => item.name?.trim())
         .filter((value): value is string => Boolean(value));
 
+    return values.length > 0 ? values.join(", ").toUpperCase() : "";
+}
+
+function formatComplaintSummary(items: EmrComplaintPayload[]) {
+    const values = getPrintableComplaints(items);
     return values.length > 0 ? values.join(", ").toUpperCase() : "";
 }
 
@@ -357,7 +368,10 @@ export default function DoctorPatientsPage() {
                                                             patientName: pat.full_name || "Patient",
                                                         });
                                                     }}
-                                                    className="inline-flex rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                                                    className="inline-flex rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                                                    style={{
+                                                        backgroundColor: pat.has_prescription_image ? "#F3EEFF" : "#FFFFFF",
+                                                    }}
                                                 >
                                                     Image
                                                 </button>
@@ -449,7 +463,7 @@ export default function DoctorPatientsPage() {
                                                     })
                                                     .map((item) => {
                                                         const followUpLabel = formatFollowUpSummary(item.follow_up_appointment);
-                                                        const complaintSummary = formatNamedItemSummary(item.complaints);
+                                                        const complaintSummary = formatComplaintSummary(item.complaints);
                                                         const diagnosisSummary = formatNamedItemSummary(item.diagnosis);
 
                                                         return (

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/request-auth";
 import bcrypt from "bcryptjs";
+import { resolveHospitalScopedDoctorAssignments } from "@/lib/clinicStaffAccess";
 
 export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
     try {
@@ -35,6 +36,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
             valid_to,
             clinic_id,
             doctor_whatsapp_number,
+            doctor_ids,
         } = body;
 
         const existingStaff = await prisma.clinic_staff.findUnique({
@@ -48,6 +50,16 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
 
         const fromDate = is_limited && valid_from ? new Date(valid_from) : null;
         const toDate = is_limited && valid_to ? new Date(valid_to) : null;
+        const parsedClinicId = clinic_id ? parseInt(clinic_id) : null;
+        const shouldUpdateDoctorAssignments = Object.prototype.hasOwnProperty.call(body, "doctor_ids");
+        const assignedDoctorIds = shouldUpdateDoctorAssignments
+            ? await resolveHospitalScopedDoctorAssignments(
+                prisma,
+                doctor.doctor_id,
+                doctor_ids,
+                parsedClinicId
+            )
+            : [];
 
         await prisma.$transaction(async (tx) => {
             const userUpdateData: Record<string, any> = {};
@@ -75,12 +87,28 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
                     status: status || existingStaff.status,
                     valid_from: fromDate,
                     valid_to: toDate,
-                    ...(clinic_id
-                        ? { clinics: { connect: { clinic_id: parseInt(clinic_id) } } }
+                    ...(parsedClinicId
+                        ? { clinics: { connect: { clinic_id: parsedClinicId } } }
                         : { clinics: { disconnect: true } }),
                     whatsapp_number: trimmedNumber || null
                 }
             });
+
+            if (shouldUpdateDoctorAssignments) {
+                await tx.clinic_staff_doctor_access.deleteMany({
+                    where: { staff_id: staffId },
+                });
+
+                if (assignedDoctorIds.length > 0) {
+                    await tx.clinic_staff_doctor_access.createMany({
+                        data: assignedDoctorIds.map((doctorId) => ({
+                            staff_id: staffId,
+                            doctor_id: doctorId,
+                        })),
+                        skipDuplicates: true,
+                    });
+                }
+            }
 
             if (trimmedNumber) {
                 const existing = await tx.doctor_whatsapp_numbers.findFirst({
@@ -106,7 +134,8 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error("Update staff error:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        const message = error instanceof Error ? error.message : "Internal server error";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }
 

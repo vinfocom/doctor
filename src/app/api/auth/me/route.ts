@@ -4,6 +4,11 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { getDoctorEmrEnabled } from "@/lib/emrFeatureGate";
+import {
+    getClinicStaffAccessBlockReason,
+    getHospitalGroupCodesForDoctors,
+    resolveEffectiveAssignedDoctorIds,
+} from "@/lib/clinicStaffAccess";
 
 export async function GET() {
     try {
@@ -27,10 +32,23 @@ export async function GET() {
                 },
                 clinic_staff: {
                     select: {
+                        staff_id: true,
                         staff_role: true,
                         clinic_id: true,
                         doctor_id: true,
                         status: true,
+                        valid_from: true,
+                        valid_to: true,
+                        clinics: {
+                            select: {
+                                hospital_group_code: true,
+                            },
+                        },
+                        doctor_access: {
+                            select: {
+                                doctor_id: true,
+                            },
+                        },
                     },
                 },
                 doctor: {
@@ -55,8 +73,23 @@ export async function GET() {
             staff_role: user.clinic_staff?.staff_role || null,
             staff_clinic_id: user.clinic_staff?.clinic_id || null,
             staff_doctor_id: user.clinic_staff?.doctor_id || null,
+            assigned_doctor_ids: [] as number[],
+            hospital_group_codes: [] as string[],
             emr_prescription_enabled: false,
         };
+
+        if (responseUser.role === "CLINIC_STAFF" && user.clinic_staff) {
+            const staffBlockReason = getClinicStaffAccessBlockReason(user.clinic_staff);
+            if (staffBlockReason) {
+                return NextResponse.json({ error: staffBlockReason }, { status: 403 });
+            }
+
+            responseUser.assigned_doctor_ids = await resolveEffectiveAssignedDoctorIds(prisma, user.clinic_staff);
+            responseUser.hospital_group_codes = await getHospitalGroupCodesForDoctors(
+                prisma,
+                responseUser.assigned_doctor_ids
+            );
+        }
 
         // Block inactive/expired doctors (token might be old)
         if (responseUser.role === "DOCTOR") {

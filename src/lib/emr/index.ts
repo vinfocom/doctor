@@ -5,6 +5,7 @@ export * from "@/lib/emr/auditService";
 export * from "@/lib/emr/masterService";
 export * from "@/lib/emr/suggestionService";
 export * from "@/lib/emr/layoutService";
+export * from "@/lib/emr/complaintFormatting";
 export * from "@/lib/emr/prescriptionService";
 export * from "@/lib/emr/printService";
 export * from "@/lib/emr/patientService";

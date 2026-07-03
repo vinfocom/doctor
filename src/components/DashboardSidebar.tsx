@@ -22,6 +22,7 @@ interface SidebarProps {
     userName: string;
     staffRole?: string | null;
     emrPrescriptionEnabled?: boolean;
+    assignedDoctorCount?: number;
 }
 
 export default function DashboardSidebar({
@@ -29,6 +30,7 @@ export default function DashboardSidebar({
     userName,
     staffRole,
     emrPrescriptionEnabled = false,
+    assignedDoctorCount = 0,
 }: SidebarProps) {
     const pathname = usePathname();
     const router = useRouter();
@@ -66,6 +68,7 @@ export default function DashboardSidebar({
             { href: "/dashboard/admin/doctors", label: "Doctors", icon: <UserPlus size={20} /> },
             { href: "/dashboard/admin/patients", label: "Patients", icon: <Users size={20} /> },
             { href: "/dashboard/admin/clinics", label: "Clinics", icon: <Building2 size={20} /> },
+            { href: "/dashboard/admin/hospitals", label: "Hospitals", icon: <Building2 size={20} /> },
             { href: "/dashboard/admin/appointments", label: "Appointments", icon: <Calendar size={20} /> },
 
         ],
@@ -74,6 +77,7 @@ export default function DashboardSidebar({
             { href: "/dashboard/admin/doctors", label: "Doctors", icon: <UserPlus size={20} /> },
             { href: "/dashboard/admin/patients", label: "Patients", icon: <Users size={20} /> },
             { href: "/dashboard/admin/clinics", label: "Clinics", icon: <Building2 size={20} /> },
+            { href: "/dashboard/admin/hospitals", label: "Hospitals", icon: <Building2 size={20} /> },
             { href: "/dashboard/admin/appointments", label: "Appointments", icon: <Calendar size={20} /> },
 
         ],
@@ -81,7 +85,11 @@ export default function DashboardSidebar({
             { href: "/dashboard/doctor", label: "Overview", icon: <LayoutDashboard size={20} /> },
             { href: "/dashboard/doctor/appointments", label: "Appointments", icon: <Calendar size={20} /> },
             ...(staffRole === "HAVE_ACCESS"
-                ? [{ href: "/dashboard/doctor/live", label: "Live", icon: <MonitorPlay size={20} /> }]
+                ? [{
+                    href: assignedDoctorCount > 1 ? "/dashboard/doctor/live-hospital" : "/dashboard/doctor/live",
+                    label: assignedDoctorCount > 1 ? "Hospital Live" : "Live",
+                    icon: <MonitorPlay size={20} />,
+                }]
                 : []),
         ],
         DOCTOR: [

@@ -1,9 +1,15 @@
 const QR_PREVIEW_ENDPOINT = "https://daptoservices.vinfocom.co.in/qr/generate";
 const QR_DOWNLOAD_ENDPOINT = "https://daptoservices.vinfocom.co.in/qr/generate/download";
+const HOSPITAL_QR_PREVIEW_ENDPOINT = "https://daptoservices.vinfocom.co.in/qr/hospital/generate";
+const HOSPITAL_QR_DOWNLOAD_ENDPOINT = "https://daptoservices.vinfocom.co.in/qr/hospital/generate/download";
 
 type PreviewPayload = {
     doctor_id: number;
     clinic_id: number;
+};
+
+type HospitalPreviewPayload = {
+    hospital_code: string;
 };
 
 const CANDIDATE_KEYS = [
@@ -80,8 +86,24 @@ export function getQrDownloadUrl(doctorId: number, clinicId: number) {
     return `${QR_DOWNLOAD_ENDPOINT}?${params.toString()}`;
 }
 
+export function getHospitalQrDownloadUrl(hospitalCode: string) {
+    const params = new URLSearchParams({
+        hospital_code: hospitalCode,
+    });
+
+    return `${HOSPITAL_QR_DOWNLOAD_ENDPOINT}?${params.toString()}`;
+}
+
 export async function getQrPreviewDataUrl(payload: PreviewPayload) {
-    const response = await fetch(QR_PREVIEW_ENDPOINT, {
+    return getPreviewDataUrl(QR_PREVIEW_ENDPOINT, payload);
+}
+
+export async function getHospitalQrPreviewDataUrl(payload: HospitalPreviewPayload) {
+    return getPreviewDataUrl(HOSPITAL_QR_PREVIEW_ENDPOINT, payload);
+}
+
+async function getPreviewDataUrl(endpoint: string, payload: PreviewPayload | HospitalPreviewPayload) {
+    const response = await fetch(endpoint, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",

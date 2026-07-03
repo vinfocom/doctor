@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Loader2, Maximize, Minimize } from "lucide-react";
 import { convertTo12Hour, formatTime } from "@/lib/timeUtils";
 import { buildScrollingLogoSequence, resolveSideAds, type LiveQueueSideAd, type QueueSideAdPosition } from "@/lib/liveQueueAds";
@@ -35,6 +35,8 @@ type QueueCard = {
 };
 
 type LiveResponse = {
+    doctor_id?: number;
+    clinic_id?: number;
     doctor_name: string;
     doctor_education?: string;
     doctor_specialization?: string;
@@ -43,6 +45,7 @@ type LiveResponse = {
     today_label: string;
     now_label: string;
     schedule_label?: string;
+    schedule_has_ended?: boolean;
     current: QueueCard | null;
     next: QueueCard | null;
     missed: QueueCard[];
@@ -55,7 +58,20 @@ type MeResponse = {
         role: "DOCTOR" | "CLINIC_STAFF";
         name?: string | null;
         staff_clinic_id?: number | null;
+        assigned_doctor_ids?: number[];
     };
+};
+
+type HospitalLiveResponse = {
+    display_settings?: {
+        remaining_slide_seconds?: number;
+        missed_slide_seconds?: number;
+        doctor_rotation_seconds?: number;
+    };
+    slides: Array<LiveResponse & {
+        doctor_id: number;
+        clinic_id: number;
+    }>;
 };
 
 const EMPTY_STATE: LiveResponse = {
@@ -74,8 +90,36 @@ const EMPTY_STATE: LiveResponse = {
     total_today: 0,
 };
 
+function toLiveResponse(slide: HospitalLiveResponse["slides"][number]): LiveResponse {
+    return {
+        doctor_id: slide.doctor_id,
+        clinic_id: slide.clinic_id,
+        doctor_name: slide.doctor_name,
+        doctor_education: slide.doctor_education,
+        doctor_specialization: slide.doctor_specialization,
+        clinic_name: slide.clinic_name,
+        selected_clinic_id: slide.clinic_id,
+        today_label: slide.today_label,
+        now_label: slide.now_label,
+        schedule_label: slide.schedule_label,
+        schedule_has_ended: slide.schedule_has_ended,
+        current: slide.current,
+        next: slide.next,
+        missed: slide.missed,
+        remaining: slide.remaining,
+        total_today: slide.total_today,
+    };
+}
+
 const ROTATE_INTERVAL_MS = 8000;
+const HOSPITAL_SLIDE_ROTATE_MS = 40000;
+const DEFAULT_DISPLAY_TIMING_MS = {
+    remainingSlideMs: ROTATE_INTERVAL_MS,
+    missedSlideMs: ROTATE_INTERVAL_MS,
+    doctorRotationMs: HOSPITAL_SLIDE_ROTATE_MS,
+};
 const ADS_REFRESH_INTERVAL_MS = 5000;
+const HOSPITAL_LAST_PATIENT_GRACE_MS = 5 * 60 * 1000;
 const TICKER_SEPARATOR = " \u2022 ";
 const TICKER_MESSAGE =
     [
@@ -299,14 +343,69 @@ function FocusCard({
     );
 }
 
+function RotationCountdown({
+    remainingMs,
+    totalMs,
+}: {
+    remainingMs: number;
+    totalMs: number;
+}) {
+    const radius = 30;
+    const circumference = 2 * Math.PI * radius;
+    const normalizedTotalMs = Math.max(1000, totalMs);
+    const clampedRemainingMs = Math.max(0, Math.min(remainingMs, normalizedTotalMs));
+    const displaySeconds = Math.max(0, Math.ceil(clampedRemainingMs / 1000));
+    const progress = clampedRemainingMs / normalizedTotalMs;
+    const dashOffset = circumference * (1 - progress);
+
+    return (
+        <div
+            className="flex h-[clamp(3.5rem,7vmin,4.6rem)] w-[clamp(3.5rem,7vmin,4.6rem)] shrink-0 items-center justify-center rounded-full bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.98),rgba(255,247,237,0.94))] shadow-[0_18px_35px_-24px_rgba(249,115,22,0.55)] ring-1 ring-orange-100"
+            aria-label={`Next doctor in ${displaySeconds} seconds`}
+            title={`Next doctor in ${displaySeconds} seconds`}
+        >
+            <div className="relative h-[clamp(3rem,6.1vmin,4rem)] w-[clamp(3rem,6.1vmin,4rem)]">
+                <svg viewBox="0 0 72 72" className="h-full w-full -rotate-90">
+                    <circle
+                        cx="36"
+                        cy="36"
+                        r={radius}
+                        fill="none"
+                        stroke="rgba(251, 191, 36, 0.16)"
+                        strokeWidth="6"
+                    />
+                    <circle
+                        cx="36"
+                        cy="36"
+                        r={radius}
+                        fill="none"
+                        stroke="#f59e0b"
+                        strokeWidth="6"
+                        strokeLinecap="round"
+                        strokeDasharray={circumference}
+                        strokeDashoffset={dashOffset}
+                        style={{ transition: "stroke-dashoffset 120ms linear" }}
+                    />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <span className="text-[clamp(0.95rem,2vmin,1.3rem)] font-black leading-none text-orange-500">{displaySeconds}</span>
+                    <span className="mt-[1px] text-[clamp(0.34rem,0.78vmin,0.48rem)] font-bold uppercase tracking-[0.18em] text-slate-500">Sec</span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function RotatingAppointmentGrid({
     title,
     items,
     compact = false,
+    rotateIntervalMs = ROTATE_INTERVAL_MS,
 }: {
     title: string;
     items: QueueCard[];
     compact?: boolean;
+    rotateIntervalMs?: number;
 }) {
     const pages = useMemo(() => splitIntoPages(items, 6), [items]);
     const [pageIndex, setPageIndex] = useState(0);
@@ -321,10 +420,10 @@ function RotatingAppointmentGrid({
                 setPageIndex((current) => (current + 1) % pages.length);
                 setFading(false);
             }, 220);
-        }, ROTATE_INTERVAL_MS);
+        }, rotateIntervalMs);
 
         return () => window.clearInterval(interval);
-    }, [pages.length]);
+    }, [pages.length, rotateIntervalMs]);
 
     const normalizedPageIndex = pageIndex >= pages.length ? 0 : pageIndex % pages.length;
     const activePage = pages[normalizedPageIndex] || [];
@@ -403,6 +502,7 @@ function RotatingAppointmentGrid({
 
 export default function LiveAppointmentsPage() {
     const router = useRouter();
+    const pathname = usePathname();
     const fullscreenRef = useRef<HTMLDivElement | null>(null);
     const staffExitRedirectArmedRef = useRef(false);
     const staffAutoFullscreenAttemptedRef = useRef(false);
@@ -416,6 +516,53 @@ export default function LiveAppointmentsPage() {
     const [todayLabel, setTodayLabel] = useState(() => formatISTDate(new Date()));
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [queueSideAds, setQueueSideAds] = useState<LiveQueueSideAd[]>([]);
+    const [hospitalSlides, setHospitalSlides] = useState<LiveResponse[]>([]);
+    const hospitalSlidesRef = useRef<LiveResponse[]>([]);
+    const hospitalLastPatientSinceRef = useRef<Map<string, number>>(new Map());
+    const [, setHospitalSlideIndex] = useState(0);
+    const [slideFading, setSlideFading] = useState(false);
+    const [displayTimingMs, setDisplayTimingMs] = useState(DEFAULT_DISPLAY_TIMING_MS);
+    const [rotationDeadlineMs, setRotationDeadlineMs] = useState<number | null>(null);
+    const isHospitalMode = Boolean(
+        me?.role === "CLINIC_STAFF" &&
+        (pathname?.includes("/live-hospital") || Number(me.assigned_doctor_ids?.length || 0) > 1)
+    );
+
+    const applyHospitalScheduleGrace = (slides: LiveResponse[]) => {
+        const nowMs = Date.now();
+        const activeKeys = new Set<string>();
+        const filtered = slides.filter((slide) => {
+            const key = `${slide.doctor_id || 0}-${slide.clinic_id || slide.selected_clinic_id || 0}`;
+            activeKeys.add(key);
+
+            if (!slide.schedule_has_ended) {
+                hospitalLastPatientSinceRef.current.delete(key);
+                return true;
+            }
+
+            if (!slide.current) {
+                hospitalLastPatientSinceRef.current.delete(key);
+                return false;
+            }
+
+            if (slide.next) {
+                hospitalLastPatientSinceRef.current.delete(key);
+                return true;
+            }
+
+            const startedAt = hospitalLastPatientSinceRef.current.get(key) || nowMs;
+            hospitalLastPatientSinceRef.current.set(key, startedAt);
+            return nowMs - startedAt <= HOSPITAL_LAST_PATIENT_GRACE_MS;
+        });
+
+        for (const key of hospitalLastPatientSinceRef.current.keys()) {
+            if (!activeKeys.has(key)) {
+                hospitalLastPatientSinceRef.current.delete(key);
+            }
+        }
+
+        return filtered;
+    };
 
     useEffect(() => {
         const timer = window.setInterval(() => {
@@ -516,7 +663,7 @@ export default function LiveAppointmentsPage() {
     }, []);
 
     useEffect(() => {
-        if (!selectedClinicId) {
+        if (!selectedClinicId && !isHospitalMode) {
             setLiveData(EMPTY_STATE);
             setQueueSideAds([]);
             return;
@@ -526,7 +673,7 @@ export default function LiveAppointmentsPage() {
 
         const loadLiveData = async () => {
             try {
-                const res = await fetch(`/api/appointments/live?clinicId=${selectedClinicId}`, {
+                const res = await fetch(isHospitalMode ? "/api/appointments/live-hospital" : `/api/appointments/live?clinicId=${selectedClinicId}`, {
                     cache: "no-store",
                 });
 
@@ -535,9 +682,50 @@ export default function LiveAppointmentsPage() {
                     throw new Error(body?.error || "Failed to load live appointments.");
                 }
 
-                const data: LiveResponse = await res.json();
+                const data = await res.json();
                 if (!cancelled) {
-                    setLiveData(data);
+                    if (isHospitalMode) {
+                        const displaySettings = (data as HospitalLiveResponse).display_settings || {};
+                        const nextDisplayTimingMs = {
+                            remainingSlideMs: Math.max(2000, Number(displaySettings.remaining_slide_seconds || 8) * 1000),
+                            missedSlideMs: Math.max(2000, Number(displaySettings.missed_slide_seconds || 8) * 1000),
+                            doctorRotationMs: Math.max(5000, Number(displaySettings.doctor_rotation_seconds || 40) * 1000),
+                        };
+                        setDisplayTimingMs({
+                            remainingSlideMs: nextDisplayTimingMs.remainingSlideMs,
+                            missedSlideMs: nextDisplayTimingMs.missedSlideMs,
+                            doctorRotationMs: nextDisplayTimingMs.doctorRotationMs,
+                        });
+                        const fetchedSlides = Array.isArray((data as HospitalLiveResponse).slides)
+                            ? (data as HospitalLiveResponse).slides.map(toLiveResponse)
+                            : [];
+                        const slides = applyHospitalScheduleGrace(fetchedSlides);
+                        hospitalSlidesRef.current = slides;
+                        setHospitalSlides(slides);
+                        setHospitalSlideIndex((current) => {
+                            const nextIndex = slides.length > 0 ? current % slides.length : 0;
+                            setLiveData(slides[nextIndex] || EMPTY_STATE);
+                            return nextIndex;
+                        });
+                        setRotationDeadlineMs((current) => {
+                            if (slides.length <= 1) return null;
+                            if (!current) return Date.now() + nextDisplayTimingMs.doctorRotationMs;
+
+                            const remainingMs = current - Date.now();
+                            if (remainingMs <= 0 || remainingMs > nextDisplayTimingMs.doctorRotationMs) {
+                                return Date.now() + nextDisplayTimingMs.doctorRotationMs;
+                            }
+
+                            return current;
+                        });
+                    } else {
+                        hospitalSlidesRef.current = [];
+                        setHospitalSlides([]);
+                        setHospitalSlideIndex(0);
+                        setDisplayTimingMs(DEFAULT_DISPLAY_TIMING_MS);
+                        setRotationDeadlineMs(null);
+                        setLiveData(data as LiveResponse);
+                    }
                 }
             } catch (caughtError) {
                 if (!cancelled) {
@@ -558,7 +746,30 @@ export default function LiveAppointmentsPage() {
             cancelled = true;
             window.clearInterval(interval);
         };
-    }, [selectedClinicId]);
+    }, [isHospitalMode, selectedClinicId]);
+
+    useEffect(() => {
+        if (!isHospitalMode || hospitalSlides.length <= 1) return;
+
+        const interval = window.setInterval(() => {
+            const slides = hospitalSlidesRef.current;
+            if (slides.length <= 1) return;
+
+            setSlideFading(true);
+            window.setTimeout(() => {
+                setHospitalSlideIndex((current) => {
+                    const latestSlides = hospitalSlidesRef.current;
+                    const nextIndex = latestSlides.length > 0 ? (current + 1) % latestSlides.length : 0;
+                    setLiveData(latestSlides[nextIndex] || EMPTY_STATE);
+                    return nextIndex;
+                });
+                setRotationDeadlineMs(Date.now() + displayTimingMs.doctorRotationMs);
+                setSlideFading(false);
+            }, 280);
+        }, displayTimingMs.doctorRotationMs);
+
+        return () => window.clearInterval(interval);
+    }, [displayTimingMs.doctorRotationMs, hospitalSlides.length, isHospitalMode]);
 
     useEffect(() => {
         if (!selectedClinicId) {
@@ -645,6 +856,28 @@ export default function LiveAppointmentsPage() {
     );
     const showFullscreenSideAds = isFullscreen && hasFullscreenSideAds;
     const fullscreenBoardWidth = showFullscreenSideAds ? FULLSCREEN_BOARD_COMPRESSED_WIDTH : FULLSCREEN_BOARD_BASE_WIDTH;
+    const showRotationCountdown = isHospitalMode && hospitalSlides.length > 1;
+    const rotationCountdownTotalMs = Math.max(1000, displayTimingMs.doctorRotationMs);
+    const [rotationRemainingMs, setRotationRemainingMs] = useState(rotationCountdownTotalMs);
+
+    useEffect(() => {
+        if (!showRotationCountdown || !rotationDeadlineMs) {
+            setRotationRemainingMs(rotationCountdownTotalMs);
+            return;
+        }
+
+        let frameId = 0;
+
+        const updateCountdown = () => {
+            const nextRemainingMs = Math.max(0, rotationDeadlineMs - Date.now());
+            setRotationRemainingMs(nextRemainingMs);
+            frameId = window.requestAnimationFrame(updateCountdown);
+        };
+
+        frameId = window.requestAnimationFrame(updateCountdown);
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [rotationCountdownTotalMs, rotationDeadlineMs, showRotationCountdown]);
 
     const toggleFullscreen = async () => {
         try {
@@ -704,7 +937,15 @@ export default function LiveAppointmentsPage() {
                                 <div className="mt-[1px] truncate text-[clamp(0.62rem,1.05vmin,0.82rem)] font-semibold text-slate-900">{scheduleLabel}</div>
                             </div>
                         </div>
-                        <div className="text-[clamp(0.95rem,2vmin,1.35rem)] font-bold text-slate-900 sm:text-right">{clock}</div>
+                        <div className="flex items-center justify-end gap-[clamp(0.55rem,1.2vmin,0.9rem)] sm:text-right">
+                            <div className="text-[clamp(0.95rem,2vmin,1.35rem)] font-bold text-slate-900">{clock}</div>
+                            {showRotationCountdown ? (
+                                <RotationCountdown
+                                    remainingMs={rotationRemainingMs}
+                                    totalMs={rotationCountdownTotalMs}
+                                />
+                            ) : null}
+                        </div>
                     </section>
 
                     <div className="grid min-h-0 flex-1 items-stretch justify-center gap-x-[clamp(0.7rem,1.2vw,1rem)]"
@@ -724,7 +965,7 @@ export default function LiveAppointmentsPage() {
                             </div>
                         ) : null}
 
-                        <div className="grid h-full min-h-0 w-full grid-rows-[auto_auto_minmax(240px,1.6fr)] gap-[clamp(0.3rem,0.8vh,0.6rem)]">
+                        <div className={`grid h-full min-h-0 w-full grid-rows-[auto_auto_minmax(240px,1.6fr)] gap-[clamp(0.3rem,0.8vh,0.6rem)] transition-opacity duration-300 ${slideFading ? "opacity-0" : "opacity-100"}`}>
                             <section className="grid grid-cols-2 items-start gap-6 px-[clamp(0.9rem,1.8vw,1.5rem)] py-0">
                                 <div className="min-w-0">
                                     <p className="whitespace-nowrap text-[clamp(1rem,2.4vmin,1.5rem)] leading-tight text-slate-900">
@@ -745,8 +986,8 @@ export default function LiveAppointmentsPage() {
                             </section>
 
                             <div className="grid min-h-0 grid-rows-[1fr_1fr] gap-[clamp(0.28rem,0.7vh,0.5rem)] overflow-hidden">
-                                <RotatingAppointmentGrid title="Remaining" items={liveData.remaining} compact />
-                                <RotatingAppointmentGrid title="Missed" items={liveData.missed} compact />
+                                <RotatingAppointmentGrid title="Remaining" items={liveData.remaining} compact rotateIntervalMs={displayTimingMs.remainingSlideMs} />
+                                <RotatingAppointmentGrid title="Missed" items={liveData.missed} compact rotateIntervalMs={displayTimingMs.missedSlideMs} />
                             </div>
                         </div>
 
@@ -828,7 +1069,7 @@ export default function LiveAppointmentsPage() {
                         </button>
                     </div>
 
-                    <div className="grid gap-4 sm:gap-5">
+                    <div className={`grid gap-4 transition-opacity duration-300 sm:gap-5 ${slideFading ? "opacity-0" : "opacity-100"}`}>
                         <section className="grid grid-cols-1 items-center gap-3 rounded-[34px] bg-white px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-4 sm:px-6 sm:py-5">
                             <div className="flex min-w-0 items-center gap-4">
                                 <Image
@@ -871,8 +1112,8 @@ export default function LiveAppointmentsPage() {
                         </section>
 
                         <div className="grid min-h-0 gap-4">
-                            <RotatingAppointmentGrid title="Remaining" items={liveData.remaining} />
-                            <RotatingAppointmentGrid title="Missed" items={liveData.missed} />
+                            <RotatingAppointmentGrid title="Remaining" items={liveData.remaining} rotateIntervalMs={displayTimingMs.remainingSlideMs} />
+                            <RotatingAppointmentGrid title="Missed" items={liveData.missed} rotateIntervalMs={displayTimingMs.missedSlideMs} />
                         </div>
 
                         <section className="overflow-hidden rounded-full bg-white/80 px-4 py-2.5 text-indigo-700 sm:px-5 sm:py-3">

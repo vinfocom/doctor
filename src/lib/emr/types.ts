@@ -43,6 +43,19 @@ export type EmrNamedItemPayload = {
   sort_order?: number;
 };
 
+export type EmrComplaintPayload = {
+  id?: number | null;
+  complaint_master_id?: number | null;
+  name: string;
+  normalized_name?: string | null;
+  severity?: string | null;
+  frequency?: string | null;
+  duration_value?: number | null;
+  duration_unit?: EmrDurationUnit | null;
+  notes?: string | null;
+  sort_order?: number;
+};
+
 export type EmrClinicalHistoryPayload = {
   section: EmrClinicalHistorySection;
   details: string;
@@ -83,7 +96,7 @@ export type EmrDraftSavePayload = {
   clinic_id?: number | null;
   timezone?: string | null;
   vitals?: EmrVitalsPayload | null;
-  complaints?: EmrNamedItemPayload[];
+  complaints?: EmrComplaintPayload[];
   diagnosis?: EmrNamedItemPayload[];
   medicines?: EmrMedicinePayload[];
   tests?: EmrNamedItemPayload[];
@@ -126,7 +139,7 @@ export type EmrPrescriptionRecord = {
   updated_at: string;
   follow_up_appointment: EmrFollowUpAppointmentSummary | null;
   vitals: EmrVitalsPayload | null;
-  complaints: EmrNamedItemPayload[];
+  complaints: EmrComplaintPayload[];
   diagnosis: EmrNamedItemPayload[];
   medicines: EmrMedicinePayload[];
   tests: EmrNamedItemPayload[];
@@ -310,7 +323,7 @@ export type EmrPatientPrescriptionDetail = {
   doctor_name: string | null;
   clinic_name: string | null;
   vitals: EmrVitalsPayload | null;
-  complaints: EmrNamedItemPayload[];
+  complaints: EmrComplaintPayload[];
   diagnosis: EmrNamedItemPayload[];
   medicines: EmrMedicinePayload[];
   advice: EmrNamedItemPayload[];

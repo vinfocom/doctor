@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 type ExportPreset = "ONE_DAY" | "ONE_WEEK" | "ONE_MONTH" | "CUSTOM";
 type ExportFormat = "pdf" | "excel";
@@ -37,6 +37,11 @@ interface AppointmentExportModalProps {
     onClose: () => void;
 }
 
+interface HospitalDoctorOption {
+    doctor_id: number;
+    doctor_name?: string | null;
+}
+
 export default function AppointmentExportModal({ isOpen, onClose }: AppointmentExportModalProps) {
     const [preset, setPreset] = useState<ExportPreset>("ONE_DAY");
     const [format, setFormat] = useState<ExportFormat>("pdf");
@@ -44,6 +49,64 @@ export default function AppointmentExportModal({ isOpen, onClose }: AppointmentE
     const [customTo, setCustomTo] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
+    const [doctorOptions, setDoctorOptions] = useState<HospitalDoctorOption[]>([]);
+    const [showDoctorSelector, setShowDoctorSelector] = useState(false);
+    const [selectedDoctorIds, setSelectedDoctorIds] = useState<number[]>([]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+
+        let cancelled = false;
+
+        const loadDoctors = async () => {
+            try {
+                const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+                if (!meRes.ok) return;
+                const meData = await meRes.json();
+                const assignedDoctorIds = Array.isArray(meData?.user?.assigned_doctor_ids)
+                    ? meData.user.assigned_doctor_ids.map(Number).filter((value: number) => Number.isFinite(value))
+                    : [];
+                const isHospitalStaff = meData?.user?.role === "CLINIC_STAFF" && assignedDoctorIds.length > 1;
+
+                if (!isHospitalStaff) {
+                    if (!cancelled) {
+                        setDoctorOptions([]);
+                        setShowDoctorSelector(false);
+                        setSelectedDoctorIds([]);
+                    }
+                    return;
+                }
+
+                const clinicsRes = await fetch("/api/clinics", { cache: "no-store" });
+                if (!clinicsRes.ok) return;
+                const clinicsData = await clinicsRes.json();
+                const apiDoctors = Array.isArray(clinicsData?.doctors) ? clinicsData.doctors : [];
+                const doctorsById = new Map<number, HospitalDoctorOption>();
+
+                apiDoctors.forEach((doctor: HospitalDoctorOption) => {
+                    doctorsById.set(Number(doctor.doctor_id), doctor);
+                });
+
+                const orderedDoctors = assignedDoctorIds
+                    .map((doctorId: number) => doctorsById.get(Number(doctorId)) || { doctor_id: Number(doctorId) })
+                    .filter((doctor: HospitalDoctorOption) => Number.isFinite(Number(doctor.doctor_id)));
+
+                if (!cancelled) {
+                    setDoctorOptions(orderedDoctors);
+                    setShowDoctorSelector(orderedDoctors.length > 1);
+                    setSelectedDoctorIds([]);
+                }
+            } catch (loadError) {
+                console.error("Failed to load export doctors", loadError);
+            }
+        };
+
+        void loadDoctors();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen]);
 
     const dateRange = useMemo(() => {
         const today = new Date();
@@ -90,6 +153,11 @@ export default function AppointmentExportModal({ isOpen, onClose }: AppointmentE
                 dateTo: to,
                 format,
             });
+            if (showDoctorSelector && selectedDoctorIds.length > 0) {
+                selectedDoctorIds.forEach((doctorId) => {
+                    params.append("doctorId", String(doctorId));
+                });
+            }
             const res = await fetch(`/api/appointments/export?${params.toString()}`);
             if (!res.ok) {
                 setError("Failed to generate export. Please try again.");
@@ -120,12 +188,74 @@ export default function AppointmentExportModal({ isOpen, onClose }: AppointmentE
             <div className="w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-xl">
                 <div className="border-b border-gray-100 p-6">
                     <h2 className="text-xl font-bold text-gray-800">Download Appointments</h2>
-                    <p className="mt-2 text-sm text-gray-500">
-                        Choose a time range and format to export patient appointment details.
-                    </p>
                 </div>
 
                 <div className="space-y-5 p-6">
+                    {showDoctorSelector && (
+                        <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-2">Doctor</label>
+                            <div className="max-h-44 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-2">
+                                <div className="space-y-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedDoctorIds([])}
+                                        className={`flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-medium transition-colors ${
+                                            selectedDoctorIds.length === 0
+                                                ? "bg-indigo-600 text-white"
+                                                : "bg-white text-gray-700 hover:bg-indigo-50"
+                                        }`}
+                                    >
+                                        <span className={`flex h-4 w-4 items-center justify-center rounded border text-[10px] ${
+                                            selectedDoctorIds.length === 0
+                                                ? "border-white bg-white text-indigo-600"
+                                                : "border-gray-300 bg-white text-transparent"
+                                        }`}>
+                                            ✓
+                                        </span>
+                                        All Associated Doctors
+                                    </button>
+                                    {doctorOptions.map((doctor) => {
+                                        const rawName = String(doctor.doctor_name || "").trim();
+                                        const label = rawName
+                                            ? (/^dr\.?\s/i.test(rawName) ? rawName : `Dr. ${rawName}`)
+                                            : `Doctor ${doctor.doctor_id}`;
+                                        const checked = selectedDoctorIds.includes(Number(doctor.doctor_id));
+
+                                        return (
+                                            <button
+                                                key={doctor.doctor_id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedDoctorIds((prev) => {
+                                                        const doctorId = Number(doctor.doctor_id);
+                                                        if (prev.includes(doctorId)) {
+                                                            return prev.filter((item) => item !== doctorId);
+                                                        }
+                                                        return [...prev, doctorId];
+                                                    });
+                                                }}
+                                                className={`flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-medium transition-colors ${
+                                                    checked
+                                                        ? "bg-indigo-600 text-white"
+                                                        : "bg-white text-gray-700 hover:bg-indigo-50"
+                                                }`}
+                                            >
+                                                <span className={`flex h-4 w-4 items-center justify-center rounded border text-[10px] ${
+                                                    checked
+                                                        ? "border-white bg-white text-indigo-600"
+                                                        : "border-gray-300 bg-white text-transparent"
+                                                }`}>
+                                                    ✓
+                                                </span>
+                                                <span className="truncate">{label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div>
                         <label className="block text-xs font-medium text-gray-500 mb-2">Timeframe</label>
                         <div className="flex flex-wrap gap-2">

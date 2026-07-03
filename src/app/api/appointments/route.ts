@@ -6,6 +6,12 @@ import { Prisma } from '@/generated/prisma/client';
 import { formatDateToISTYMD, parseISTDate, parseISTTimeToUTCDate } from '@/lib/appointmentDateTime';
 import { attachBookingIds, computeBookingIdForAppointment } from '@/lib/bookingId';
 import { getDoctorFullDayLeave } from '@/lib/leaveAvailability';
+import {
+    getClinicStaffAccessBlockReason,
+    getActiveDoctorWhere,
+    hasHospitalDoctorAccess,
+    resolveAssignedDoctorIds,
+} from '@/lib/clinicStaffAccess';
 
 const VALID_APPOINTMENT_STATUSES = new Set([
     'BOOKED',
@@ -151,6 +157,126 @@ async function getPatientScopedIds(userId: number) {
         .map((patient) => patient.patient_id);
 }
 
+async function getStaffAppointmentScope(userId: number) {
+    const staff = await prisma.clinic_staff.findUnique({
+        where: { user_id: userId },
+        include: {
+            doctors: { select: { admin_id: true } },
+            clinics: { select: { hospital_group_code: true } },
+            doctor_access: { select: { doctor_id: true } },
+        },
+    });
+
+    if (!staff) return null;
+    if (getClinicStaffAccessBlockReason(staff)) return null;
+
+    const rawHasDoctorMappings = hasHospitalDoctorAccess(staff);
+    const rawAssignedDoctorIds = resolveAssignedDoctorIds(staff);
+    const scopedHospitalGroupCode = String(staff.clinics?.hospital_group_code || "").trim() || null;
+    const hasDoctorMappings = rawHasDoctorMappings && Boolean(scopedHospitalGroupCode);
+    const activeDoctors = await prisma.doctors.findMany({
+        where: {
+            doctor_id: { in: rawAssignedDoctorIds },
+            ...getActiveDoctorWhere(),
+        },
+        select: { doctor_id: true },
+    });
+    const activeDoctorIds = activeDoctors.map((doctor) => Number(doctor.doctor_id));
+    const assignedDoctorIds = hasDoctorMappings
+        ? activeDoctorIds
+        : activeDoctorIds.filter((doctorId) => doctorId === Number(staff.doctor_id));
+    if (assignedDoctorIds.length === 0) return null;
+    let allowedClinicIds: number[] = [];
+
+    if (hasDoctorMappings) {
+        const clinics = await prisma.clinics.findMany({
+            where: {
+                doctor_id: { in: assignedDoctorIds },
+                status: "ACTIVE",
+                ...(scopedHospitalGroupCode
+                    ? { hospital_group_code: scopedHospitalGroupCode }
+                    : {}),
+            },
+            select: { clinic_id: true },
+        });
+        allowedClinicIds = clinics.map((clinic) => Number(clinic.clinic_id));
+        if (allowedClinicIds.length === 0) return null;
+    } else if (staff.clinic_id) {
+        const clinic = await prisma.clinics.findFirst({
+            where: {
+                clinic_id: Number(staff.clinic_id),
+                doctor_id: staff.doctor_id,
+                status: "ACTIVE",
+            },
+            select: { clinic_id: true },
+        });
+        allowedClinicIds = clinic ? [Number(clinic.clinic_id)] : [];
+    } else {
+        const clinics = await prisma.clinics.findMany({
+            where: {
+                doctor_id: staff.doctor_id,
+                status: "ACTIVE",
+            },
+            select: { clinic_id: true },
+        });
+        allowedClinicIds = clinics.map((clinic) => Number(clinic.clinic_id));
+    }
+
+    return {
+        staff,
+        hasDoctorMappings,
+        assignedDoctorIds,
+        allowedClinicIds,
+        scopedHospitalGroupCode,
+    };
+}
+
+async function getAllowedClinicForStaff(userId: number, clinicId: number) {
+    const scope = await getStaffAppointmentScope(userId);
+    if (!scope) return null;
+    if (!Number.isFinite(clinicId) || clinicId <= 0) return { scope, clinic: null };
+    if (scope.hasDoctorMappings && !scope.allowedClinicIds.includes(clinicId)) {
+        return { scope, clinic: null };
+    }
+
+    const clinic = await prisma.clinics.findFirst({
+        where: {
+            clinic_id: clinicId,
+            doctor_id: { in: scope.assignedDoctorIds },
+            status: "ACTIVE",
+            doctor: { is: getActiveDoctorWhere() },
+        },
+        select: {
+            clinic_id: true,
+            doctor_id: true,
+            admin_id: true,
+        },
+    });
+
+    return { scope, clinic };
+}
+
+async function canStaffAccessAppointment(userId: number, appointment: { doctor_id: number | null; clinic_id: number | null }) {
+    const scope = await getStaffAppointmentScope(userId);
+    if (!scope) return false;
+
+    const doctorId = Number(appointment.doctor_id || 0);
+    const clinicId = Number(appointment.clinic_id || 0);
+
+    if (scope.hasDoctorMappings) {
+        return (
+            scope.assignedDoctorIds.includes(doctorId) &&
+            (!clinicId || scope.allowedClinicIds.includes(clinicId))
+        );
+    }
+
+    if (scope.staff.clinic_id) {
+        return clinicId === Number(scope.staff.clinic_id);
+    }
+
+    return doctorId === Number(scope.staff.doctor_id);
+}
+
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -183,7 +309,9 @@ export async function GET(request: Request) {
 
         let isClinicStaff = false;
         let staffClinicId: number | null = null;
-        let staffRole = "";
+        let staffDoctorIds: number[] = [];
+        let staffAllowedClinicIds: number[] = [];
+        let staffHasDoctorMappings = false;
 
         // Automatic role-based filtering
         if (user.role === 'DOCTOR') {
@@ -197,14 +325,14 @@ export async function GET(request: Request) {
                 return NextResponse.json({ error: "Doctor profile not found" }, { status: 404 });
             }
         } else if (user.role === 'CLINIC_STAFF') {
-            const staff = await prisma.clinic_staff.findUnique({
-                where: { user_id: user.userId }
-            });
-            if (staff) {
-                doctorId = String(staff.doctor_id);
+            const scope = await getStaffAppointmentScope(user.userId);
+            if (scope) {
+                doctorId = String(scope.staff.doctor_id);
                 isClinicStaff = true;
-                staffClinicId = staff.clinic_id;
-                staffRole = staff.staff_role;
+                staffClinicId = scope.staff.clinic_id;
+                staffDoctorIds = scope.assignedDoctorIds;
+                staffAllowedClinicIds = scope.allowedClinicIds;
+                staffHasDoctorMappings = scope.hasDoctorMappings;
             } else {
                 return NextResponse.json({ error: "Staff profile not found" }, { status: 404 });
             }
@@ -219,10 +347,27 @@ export async function GET(request: Request) {
         }
 
         const where: Prisma.appointmentWhereInput = {};
-        if (doctorId) where.doctor_id = Number(doctorId);
+        if (isClinicStaff && staffHasDoctorMappings) {
+            where.doctor_id = { in: staffDoctorIds };
+        } else if (doctorId) {
+            where.doctor_id = Number(doctorId);
+        }
         if (adminId) where.admin_id = Number(adminId);
-        if (clinicId) where.clinic_id = Number(clinicId);
-        if (isClinicStaff && staffClinicId) where.clinic_id = staffClinicId;
+        if (clinicId) {
+            const requestedClinicId = Number(clinicId);
+            if (isClinicStaff && staffHasDoctorMappings && !staffAllowedClinicIds.includes(requestedClinicId)) {
+                return NextResponse.json({ error: "Unauthorized for this clinic" }, { status: 403 });
+            }
+            where.clinic_id = requestedClinicId;
+        }
+        if (isClinicStaff && staffHasDoctorMappings && !clinicId && staffAllowedClinicIds.length > 0) {
+            where.clinic_id = { in: staffAllowedClinicIds };
+        }
+        if (isClinicStaff && !staffHasDoctorMappings && staffClinicId) where.clinic_id = staffClinicId;
+        if (isClinicStaff) {
+            where.doctor = { is: getActiveDoctorWhere() };
+            where.clinic = { is: { status: "ACTIVE" } };
+        }
         if (status && status !== 'ALL' && VALID_APPOINTMENT_STATUSES.has(status)) {
             where.status = status as never;
         }
@@ -314,34 +459,22 @@ export async function POST(request: Request) {
                         admin_id = doctor.admin_id;
                     }
                 } else if (user.role === 'CLINIC_STAFF') {
-                    const staff = await prisma.clinic_staff.findUnique({
-                        where: { user_id: user.userId },
-                        include: { doctors: true }
-                    });
-                    if (staff) {
-                        if (staff.staff_role === "VIEWER" || staff.staff_role === "Viewer") {
-                            return NextResponse.json({ error: "Viewers cannot create appointments" }, { status: 403 });
-                        }
-                        const requestedClinicId = Number(clinic_id);
-                        if (!Number.isFinite(requestedClinicId) || requestedClinicId <= 0) {
-                            return NextResponse.json({ error: "Clinic ID required" }, { status: 400 });
-                        }
-                        if (staff.clinic_id && staff.clinic_id !== requestedClinicId) {
-                            return NextResponse.json({ error: "Cannot create appointments for other clinics" }, { status: 403 });
-                        }
-                        const allowedClinic = await prisma.clinics.findFirst({
-                            where: {
-                                clinic_id: requestedClinicId,
-                                doctor_id: staff.doctor_id,
-                            },
-                            select: { clinic_id: true },
-                        });
-                        if (!allowedClinic) {
-                            return NextResponse.json({ error: "Cannot create appointments for other clinics" }, { status: 403 });
-                        }
-                        doctor_id = staff.doctor_id;
-                        admin_id = staff.doctors?.admin_id;
+                    const scopedClinic = await getAllowedClinicForStaff(user.userId, Number(clinic_id));
+                    if (!scopedClinic?.scope) {
+                        return NextResponse.json({ error: "Staff profile not found" }, { status: 404 });
                     }
+                    if (scopedClinic.scope.staff.staff_role === "VIEWER" || scopedClinic.scope.staff.staff_role === "Viewer") {
+                        return NextResponse.json({ error: "Viewers cannot create appointments" }, { status: 403 });
+                    }
+                    const requestedClinicId = Number(clinic_id);
+                    if (!Number.isFinite(requestedClinicId) || requestedClinicId <= 0) {
+                        return NextResponse.json({ error: "Clinic ID required" }, { status: 400 });
+                    }
+                    if (!scopedClinic.clinic) {
+                        return NextResponse.json({ error: "Cannot create appointments for other clinics" }, { status: 403 });
+                    }
+                    doctor_id = scopedClinic.clinic.doctor_id;
+                    admin_id = scopedClinic.clinic.admin_id;
                 } else if (user.role === 'ADMIN') {
                     const admin = await prisma.admins.findUnique({
                         where: { user_id: user.userId },
@@ -356,6 +489,26 @@ export async function POST(request: Request) {
 
         if (!admin_id) {
             return NextResponse.json({ error: "Admin ID required" }, { status: 400 });
+        }
+
+        const numericDoctorId = Number(doctor_id);
+        const numericClinicId = Number(clinic_id);
+        if (!Number.isFinite(numericDoctorId) || numericDoctorId <= 0 || !Number.isFinite(numericClinicId) || numericClinicId <= 0) {
+            return NextResponse.json({ error: "Doctor and clinic are required" }, { status: 400 });
+        }
+
+        const activeClinicForBooking = await prisma.clinics.findFirst({
+            where: {
+                clinic_id: numericClinicId,
+                doctor_id: numericDoctorId,
+                status: "ACTIVE",
+                doctor: { is: getActiveDoctorWhere() },
+            },
+            select: { clinic_id: true },
+        });
+
+        if (!activeClinicForBooking) {
+            return NextResponse.json({ error: "Doctor or clinic is inactive. Appointment cannot be booked." }, { status: 403 });
         }
 
 
@@ -602,23 +755,20 @@ export async function DELETE(request: Request) {
         if (token) {
             const user = verifyToken(token);
             if (user && user.role === 'CLINIC_STAFF') {
-                const staff = await prisma.clinic_staff.findUnique({
-                    where: { user_id: user.userId }
-                });
-                if (staff?.staff_role === "VIEWER" || staff?.staff_role === "Viewer") {
+                const scope = await getStaffAppointmentScope(user.userId);
+                if (scope?.staff.staff_role === "VIEWER" || scope?.staff.staff_role === "Viewer") {
                     return NextResponse.json({ error: "Viewers cannot delete appointments" }, { status: 403 });
                 }
-                if (staff) {
+                if (scope) {
                     const apt = await prisma.appointment.findUnique({
                         where: { appointment_id: Number(appointmentId) },
                         select: { clinic_id: true, doctor_id: true },
                     });
-                    if (staff.clinic_id && apt && apt.clinic_id !== staff.clinic_id) {
-                        return NextResponse.json({ error: "Unauthorized for this clinic" }, { status: 403 });
+                    if (apt && !(await canStaffAccessAppointment(user.userId, apt))) {
+                        return NextResponse.json({ error: "Unauthorized for this appointment" }, { status: 403 });
                     }
-                    if (!staff.clinic_id && apt && apt.doctor_id !== staff.doctor_id) {
-                        return NextResponse.json({ error: "Unauthorized for this doctor" }, { status: 403 });
-                    }
+                } else {
+                    return NextResponse.json({ error: "Staff profile not found" }, { status: 404 });
                 }
             }
         }
@@ -665,23 +815,20 @@ export async function PATCH(request: Request) {
         }
 
         if (user.role === "CLINIC_STAFF") {
-            const staff = await prisma.clinic_staff.findUnique({
-                where: { user_id: user.userId }
-            });
-            if (staff?.staff_role === "VIEWER" || staff?.staff_role === "Viewer") {
+            const scope = await getStaffAppointmentScope(user.userId);
+            if (scope?.staff.staff_role === "VIEWER" || scope?.staff.staff_role === "Viewer") {
                 return NextResponse.json({ error: "Viewers cannot update appointments" }, { status: 403 });
             }
-            if (staff) {
+            if (scope) {
                 const apt = await prisma.appointment.findUnique({
                     where: { appointment_id: Number(appointmentId) },
                     select: { clinic_id: true, doctor_id: true },
                 });
-                if (staff.clinic_id && apt && apt.clinic_id !== staff.clinic_id) {
-                    return NextResponse.json({ error: "Unauthorized for this clinic" }, { status: 403 });
+                if (apt && !(await canStaffAccessAppointment(user.userId, apt))) {
+                    return NextResponse.json({ error: "Unauthorized for this appointment" }, { status: 403 });
                 }
-                if (!staff.clinic_id && apt && apt.doctor_id !== staff.doctor_id) {
-                    return NextResponse.json({ error: "Unauthorized for this doctor" }, { status: 403 });
-                }
+            } else {
+                return NextResponse.json({ error: "Staff profile not found" }, { status: 404 });
             }
         }
 

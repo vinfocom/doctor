@@ -4,11 +4,12 @@
 
 import { useMemo, useState, type CSSProperties } from "react";
 import EmrPrintActions from "@/components/emr/EmrPrintActions";
+import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
 import type {
   EmrClinicalHistorySection,
   EmrLayoutSectionKey,
   EmrPrintablePrescription,
-} from "@/lib/emr";
+} from "@/lib/emr/types";
 
 type PrintLanguage =
   | "en"
@@ -1493,14 +1494,19 @@ export default function EmrPrintablePrescriptionView({
           </section>
         ) : null;
       case "complaints":
-        return prescription.complaints.length > 0 ? (
+      {
+        const printableComplaints = getPrintableComplaints(prescription.complaints);
+        return printableComplaints.length > 0 ? (
           <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.complaints)}
             </h2>
-            <p className="text-sm text-gray-700">{toUpperListDisplay(prescription.complaints)}</p>
+            <p className="text-sm text-gray-700">
+              {printableComplaints.map((item) => item.toUpperCase()).join(", ")}
+            </p>
           </section>
         ) : null;
+      }
       case "diagnosis":
         return prescription.diagnosis.length > 0 ? (
           <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">

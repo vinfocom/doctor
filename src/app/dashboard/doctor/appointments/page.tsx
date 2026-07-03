@@ -16,10 +16,16 @@ interface Appointment {
     rescheduled_by?: string | null;
     patient: { patient_id?: number; full_name: string; phone: string; symptoms?: string; booking_id?: number | null } | null;
     clinic?: { clinic_id: number; clinic_name: string } | null;
+    doctor?: { doctor_id: number; doctor_name?: string | null } | null;
     appointment_date: string;
     start_time: string;
     end_time: string;
     doctor_id: number;
+}
+
+interface HospitalDoctorOption {
+    doctor_id: number;
+    doctor_name?: string | null;
 }
 
 interface PrescriptionPageItem {
@@ -202,6 +208,9 @@ export default function DoctorAppointmentsPage() {
 
     const [userRole, setUserRole] = useState<string>("DOCTOR");
     const [staffRole, setStaffRole] = useState<string>("");
+    const [assignedDoctorCount, setAssignedDoctorCount] = useState(0);
+    const [hospitalDoctors, setHospitalDoctors] = useState<HospitalDoctorOption[]>([]);
+    const [selectedDoctorFilter, setSelectedDoctorFilter] = useState<string>("ALL");
     const [emrPadEnabled, setEmrPadEnabled] = useState(false);
 
     const fetchData = useCallback(async () => {
@@ -249,12 +258,44 @@ export default function DoctorAppointmentsPage() {
             setUser(meData.user);
             setUserRole(meData.user.role);
             setStaffRole(meData.user.staff_role || "");
+            setAssignedDoctorCount(Array.isArray(meData.user.assigned_doctor_ids) ? meData.user.assigned_doctor_ids.length : 0);
             setEmrPadEnabled(Boolean(meData.user.emr_prescription_enabled));
             if (aptRes.ok) { const data = await aptRes.json(); setAppointments(data || []); }
         } catch { router.push("/login"); } finally { setLoading(false); }
     }, [router, datePreset, customFrom, customTo, statusFilter]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
+
+    useEffect(() => {
+        if (userRole !== "CLINIC_STAFF" || assignedDoctorCount <= 1) {
+            setHospitalDoctors([]);
+            setSelectedDoctorFilter("ALL");
+            return;
+        }
+
+        let cancelled = false;
+
+        const loadHospitalDoctors = async () => {
+            try {
+                const res = await fetch("/api/clinics", { cache: "no-store" });
+                if (!res.ok) return;
+
+                const data = await res.json();
+                const doctors = Array.isArray(data.doctors) ? data.doctors : [];
+                if (!cancelled) {
+                    setHospitalDoctors(doctors);
+                }
+            } catch (error) {
+                console.error("Failed to load hospital doctors", error);
+            }
+        };
+
+        void loadHospitalDoctors();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [assignedDoctorCount, userRole]);
 
     useEffect(() => {
         const interval = window.setInterval(() => {
@@ -313,18 +354,90 @@ export default function DoctorAppointmentsPage() {
         });
     }, [searchTerm, sortedAppointments]);
 
-    const groupedByClinic = useMemo(() => {
+    const isHospitalStaffView = userRole === "CLINIC_STAFF" && assignedDoctorCount > 1;
+
+    const doctorChips = useMemo(() => {
+        if (!isHospitalStaffView) return [];
+
+        const counts = new Map<number, number>();
+        filteredAppointments.forEach((appointment) => {
+            const doctorId = Number(appointment.doctor_id);
+            counts.set(doctorId, (counts.get(doctorId) || 0) + 1);
+        });
+
+        const doctorsById = new Map<number, HospitalDoctorOption>();
+        hospitalDoctors.forEach((doctor) => {
+            doctorsById.set(Number(doctor.doctor_id), doctor);
+        });
+
+        filteredAppointments.forEach((appointment) => {
+            if (!doctorsById.has(Number(appointment.doctor_id))) {
+                doctorsById.set(Number(appointment.doctor_id), {
+                    doctor_id: appointment.doctor_id,
+                    doctor_name: appointment.doctor?.doctor_name || null,
+                });
+            }
+        });
+
+        return Array.from(doctorsById.values())
+            .map((doctor) => {
+                const rawName = String(doctor.doctor_name || "").trim();
+                return {
+                    doctor_id: Number(doctor.doctor_id),
+                    count: counts.get(Number(doctor.doctor_id)) || 0,
+                    label: rawName
+                        ? (/^dr\.?\s/i.test(rawName) ? rawName : `Dr. ${rawName}`)
+                        : `Doctor ${doctor.doctor_id}`,
+                };
+            })
+            .sort((left, right) => {
+                const leftActive = left.count > 0 ? 1 : 0;
+                const rightActive = right.count > 0 ? 1 : 0;
+                if (leftActive !== rightActive) return rightActive - leftActive;
+                if (left.count !== right.count) return right.count - left.count;
+                return left.label.localeCompare(right.label);
+            });
+    }, [filteredAppointments, hospitalDoctors, isHospitalStaffView]);
+
+    const visibleAppointments = useMemo(() => {
+        if (!isHospitalStaffView || selectedDoctorFilter === "ALL") {
+            return filteredAppointments;
+        }
+
+        const selectedDoctorId = Number(selectedDoctorFilter);
+        return filteredAppointments.filter((appointment) => Number(appointment.doctor_id) === selectedDoctorId);
+    }, [filteredAppointments, isHospitalStaffView, selectedDoctorFilter]);
+
+    useEffect(() => {
+        if (!isHospitalStaffView) return;
+        if (selectedDoctorFilter === "ALL") return;
+        if (doctorChips.some((doctor) => String(doctor.doctor_id) === selectedDoctorFilter)) return;
+        setSelectedDoctorFilter("ALL");
+    }, [doctorChips, isHospitalStaffView, selectedDoctorFilter]);
+
+    const groupedAppointments = useMemo(() => {
         const groups = new Map<string, { name: string; appointments: Appointment[] }>();
-        filteredAppointments.forEach((apt) => {
+        const groupByDoctor = userRole === "CLINIC_STAFF" && assignedDoctorCount > 1;
+
+        visibleAppointments.forEach((apt) => {
+            const doctorNameRaw = apt.doctor?.doctor_name?.trim() || "";
+            const doctorName = doctorNameRaw
+                ? (/^dr\.?\s/i.test(doctorNameRaw) ? doctorNameRaw : `Dr. ${doctorNameRaw}`)
+                : `Doctor ${apt.doctor_id}`;
             const clinicName = apt.clinic?.clinic_name?.trim() || "Unknown Clinic";
-            const key = apt.clinic?.clinic_id ? `clinic-${apt.clinic.clinic_id}` : `clinic-${clinicName}`;
+            const groupName = groupByDoctor ? doctorName : clinicName;
+            const key = groupByDoctor
+                ? `doctor-${apt.doctor_id}`
+                : apt.clinic?.clinic_id
+                    ? `clinic-${apt.clinic.clinic_id}`
+                    : `clinic-${clinicName}`;
             if (!groups.has(key)) {
-                groups.set(key, { name: clinicName, appointments: [] });
+                groups.set(key, { name: groupName, appointments: [] });
             }
             groups.get(key)?.appointments.push(apt);
         });
         return Array.from(groups.values());
-    }, [filteredAppointments]);
+    }, [assignedDoctorCount, userRole, visibleAppointments]);
 
     const handleStatusUpdate = async (appointmentId: number, status: string) => {
         const body: Record<string, unknown> = { appointmentId, status };
@@ -348,6 +461,7 @@ export default function DoctorAppointmentsPage() {
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [rescheduleAppointment, setRescheduleAppointment] = useState<Appointment | null>(null);
+    const showFlatDoctorView = isHospitalStaffView && selectedDoctorFilter !== "ALL";
 
     if (loading) {
         return (
@@ -362,13 +476,140 @@ export default function DoctorAppointmentsPage() {
         );
     }
 
+    const renderAppointmentTable = (items: Appointment[]) => (
+        <div className="overflow-x-auto">
+            <table className="data-table">
+                <thead><tr><th>Patient</th><th>Appointment No.</th><th>Phone</th><th>Date & Time</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody>
+                    {items.map((apt, i) => (
+                        <motion.tr key={apt.appointment_id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.03 }}>
+                            <td>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-sky-600 flex items-center justify-center text-xs font-bold text-white">
+                                        {apt.patient?.full_name?.charAt(0)?.toUpperCase()}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => openPrescriptionHistory(apt)}
+                                        className="text-left text-indigo-700 hover:text-indigo-900 hover:underline font-medium"
+                                    >
+                                        {apt.patient?.full_name || "N/A"}
+                                    </button>
+                                </div>
+                            </td>
+                            <td className="text-gray-500 font-medium">
+                                {apt.booking_id ?? apt.appointment_id}
+                            </td>
+                            <td className="text-gray-500">{apt.patient?.phone || "N/A"}</td>
+                            <td className="text-gray-500">
+                                {apt.appointment_date
+                                    ? toISTDateStr(apt.appointment_date)
+                                    : "N/A"}{" "}
+                                {apt.start_time
+                                    ? convertTo12Hour(formatTime(apt.start_time))
+                                    : ""}
+                            </td>
+                            <td>
+                                {(() => {
+                                    const tone = getStatusTone(apt);
+                                    const StatusIcon = tone.Icon;
+
+                                    return (
+                                        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap ${tone.wrapper}`}>
+                                            <StatusIcon size={14} className={tone.iconWrap} />
+                                            {getAppointmentStatusLabel(apt)}
+                                        </span>
+                                    );
+                                })()}
+                            </td>
+                            <td>
+                                <div className="flex flex-wrap gap-2">
+                                    {(userRole === "DOCTOR" || staffRole === "HAVE_ACCESS") && (
+                                        <>
+                                            {userRole === "DOCTOR" && (
+                                                emrPadEnabled ? (
+                                                <motion.button
+                                                    onClick={() => {
+                                                        if (!apt.patient?.patient_id) return;
+                                                        window.open(
+                                                            `/dashboard/doctor/appointments/${apt.appointment_id}/pad`,
+                                                            "_blank",
+                                                            "noopener,noreferrer"
+                                                        );
+                                                    }}
+                                                    disabled={!apt.patient?.patient_id}
+                                                    className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors ${
+                                                        apt.patient?.patient_id
+                                                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                                            : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                                                    }`}
+                                                    whileHover={apt.patient?.patient_id ? { scale: 1.03 } : undefined}
+                                                    whileTap={apt.patient?.patient_id ? { scale: 0.97 } : undefined}
+                                                    title={
+                                                        !apt.patient?.patient_id
+                                                            ? "Patient context is required to open the EMR pad"
+                                                            : "View EMR Pad"
+                                                    }
+                                                    aria-label="View EMR Pad"
+                                                >
+                                                    <Stethoscope size={14} />
+                                                    View Pad
+                                                </motion.button>
+                                                ) : null
+                                            )}
+                                            {apt.status !== "COMPLETED" && apt.status !== "CANCELLED" && apt.status !== "PENDING" && (
+                                                <>
+                                                    <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "COMPLETED")} className="text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Complete" aria-label="Complete">
+                                                        <Check size={16} />
+                                                    </motion.button>
+                                                    <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "PENDING")} className="text-amber-600 hover:bg-amber-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Not Visited" aria-label="Not Visited">
+                                                        <UserX size={16} />
+                                                    </motion.button>
+                                                    <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "CANCELLED")} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Cancel" aria-label="Cancel">
+                                                        <X size={16} />
+                                                    </motion.button>
+                                                </>
+                                            )}
+                                            <motion.button onClick={() => setRescheduleAppointment(apt)} className="text-amber-600 hover:bg-amber-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Reschedule" aria-label="Reschedule">
+                                                <CalendarSync size={16} />
+                                            </motion.button>
+                                        </>
+                                    )}
+                                    {(userRole === "DOCTOR" || staffRole === "HAVE_ACCESS") && (
+                                        <motion.button
+                                            onClick={() => setDeleteAppointment(apt)}
+                                            className="text-gray-500 hover:bg-gray-100 p-2 rounded-lg transition-colors"
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            title="Delete"
+                                            aria-label="Delete"
+                                        >
+                                            <Trash2 size={16} />
+                                        </motion.button>
+                                    )}
+                                    {userRole === "CLINIC_STAFF" && staffRole !== "HAVE_ACCESS" && (
+                                        <span className="text-xs text-gray-400 italic">View only</span>
+                                    )}
+                                </div>
+                            </td>
+                        </motion.tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+
     return (
         <div className="w-full">
             <div className="mb-8 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
                     <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Appointments</h1>
                     <p className="text-gray-500 mt-1 text-sm">
-                        {userRole === "CLINIC_STAFF" ? "Viewing clinic appointments" : "Manage your patient appointments"}
+                        {userRole === "CLINIC_STAFF"
+                            ? assignedDoctorCount > 1
+                                ? "Viewing assigned hospital doctor appointments"
+                                : "Viewing clinic appointments"
+                            : "Manage your patient appointments"}
                     </p>
                 </motion.div>
                 {/* Only DOCTOR or HAVE_ACCESS staff can add appointments */}
@@ -434,17 +675,16 @@ export default function DoctorAppointmentsPage() {
             </div>
 
             <motion.div
-                className="glass-card p-5 mb-6"
+                className="glass-card mb-6 p-4"
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
             >
-                <div className="flex items-center gap-2 mb-4">
-                    <Filter size={16} className="text-indigo-600" />
-                    <h2 className="text-sm font-semibold text-gray-800">Filters</h2>
-                </div>
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div className="flex flex-col gap-4 flex-1">
-                        <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex flex-col gap-3 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                                <Filter size={16} />
+                            </span>
                             {(["ALL", "TODAY", "TOMORROW", "YESTERDAY", "CUSTOM"] as DatePreset[]).map((preset) => (
                                 <button
                                     key={preset}
@@ -610,18 +850,81 @@ export default function DoctorAppointmentsPage() {
             )}
 
             <motion.div className="glass-card p-7" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                {isHospitalStaffView && doctorChips.length > 0 ? (
+                    <div className="mb-6 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <h2 className="text-sm font-semibold text-gray-800">Doctors</h2>
+                                <p className="mt-1 text-xs text-gray-500">Choose a doctor to narrow the visible appointments.</p>
+                            </div>
+                            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
+                                {visibleAppointments.length} visible
+                            </span>
+                        </div>
+                        <div className="-mx-1 overflow-x-auto pb-1">
+                            <div className="flex min-w-max gap-2 px-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedDoctorFilter("ALL")}
+                                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
+                                        selectedDoctorFilter === "ALL"
+                                            ? "border-indigo-600 bg-indigo-600 text-white"
+                                            : "border-gray-200 bg-white text-gray-700 hover:border-indigo-200 hover:bg-indigo-50"
+                                    }`}
+                                >
+                                    <span>All Doctors</span>
+                                    <span className={`rounded-full px-2 py-0.5 text-xs ${
+                                        selectedDoctorFilter === "ALL"
+                                            ? "bg-white/20 text-white"
+                                            : "bg-gray-100 text-gray-600"
+                                    }`}>
+                                        {filteredAppointments.length}
+                                    </span>
+                                </button>
+                                {doctorChips.map((doctor) => (
+                                    <button
+                                        key={doctor.doctor_id}
+                                        type="button"
+                                        onClick={() => setSelectedDoctorFilter(String(doctor.doctor_id))}
+                                        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
+                                            selectedDoctorFilter === String(doctor.doctor_id)
+                                                ? "border-indigo-600 bg-indigo-600 text-white"
+                                                : "border-gray-200 bg-white text-gray-700 hover:border-indigo-200 hover:bg-indigo-50"
+                                        }`}
+                                    >
+                                        <span className="whitespace-nowrap">{doctor.label}</span>
+                                        <span className={`rounded-full px-2 py-0.5 text-xs ${
+                                            selectedDoctorFilter === String(doctor.doctor_id)
+                                                ? "bg-white/20 text-white"
+                                                : doctor.count > 0
+                                                    ? "bg-emerald-100 text-emerald-700"
+                                                    : "bg-gray-100 text-gray-500"
+                                        }`}>
+                                            {doctor.count}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
+
                 {appointments.length === 0 ? (
                     <div className="text-center py-12">
                         <p className="text-gray-400">No appointments yet</p>
                     </div>
-                ) : groupedByClinic.length === 0 ? (
+                ) : groupedAppointments.length === 0 ? (
                     <div className="text-center py-12">
                         <p className="text-lg font-semibold text-gray-700">No matching appointments</p>
                         <p className="mt-2 text-sm text-gray-400">Try searching by another name or phone number.</p>
                     </div>
+                ) : showFlatDoctorView ? (
+                    <div className="rounded-xl border border-gray-200 bg-white/70 px-5 pb-5 pt-3 shadow-sm">
+                        {renderAppointmentTable(visibleAppointments)}
+                    </div>
                 ) : (
                     <div className="flex flex-col gap-4">
-                        {groupedByClinic.map((group, gi) => (
+                        {groupedAppointments.map((group, gi) => (
                             <motion.div
                                 key={`${group.name}-${gi}`}
                                 initial={{ opacity: 0, y: 8 }}
@@ -647,130 +950,7 @@ export default function DoctorAppointmentsPage() {
                                         </div>
                                     </summary>
                                     <div className="border-t border-gray-100 px-5 pb-5 pt-3">
-                                        <div className="overflow-x-auto">
-                                            <table className="data-table">
-                                                <thead><tr><th>Patient</th><th>Appointment No.</th><th>Phone</th><th>Date & Time</th><th>Status</th><th>Actions</th></tr></thead>
-                                                <tbody>
-                                                    {group.appointments.map((apt, i) => (
-                                                        <motion.tr key={apt.appointment_id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.03 }}>
-                                                            <td>
-                                                                <div className="flex items-center gap-3">
-                                                                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-sky-600 flex items-center justify-center text-xs font-bold text-white">
-                                                                        {apt.patient?.full_name?.charAt(0)?.toUpperCase()}
-                                                                    </div>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => openPrescriptionHistory(apt)}
-                                                                        className="text-left text-indigo-700 hover:text-indigo-900 hover:underline font-medium"
-                                                                    >
-                                                                        {apt.patient?.full_name || "N/A"}
-                                                                    </button>
-                                                                </div>
-                                                            </td>
-                                                            <td className="text-gray-500 font-medium">
-                                                                {apt.booking_id ?? apt.appointment_id}
-                                                            </td>
-                                                            <td className="text-gray-500">{apt.patient?.phone || "N/A"}</td>
-                                                            <td className="text-gray-500">
-                                                                {apt.appointment_date
-                                                                    ? toISTDateStr(apt.appointment_date)
-                                                                    : "N/A"}{" "}
-                                                                {apt.start_time
-                                                                    ? convertTo12Hour(formatTime(apt.start_time))
-                                                                    : ""}
-                                                            </td>
-                                                            <td>
-                                                                {(() => {
-                                                                    const tone = getStatusTone(apt);
-                                                                    const StatusIcon = tone.Icon;
-
-                                                                    return (
-                                                                        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap ${tone.wrapper}`}>
-                                                                            <StatusIcon size={14} className={tone.iconWrap} />
-                                                                            {getAppointmentStatusLabel(apt)}
-                                                                        </span>
-                                                                    );
-                                                                })()}
-                                                            </td>
-                                                            <td>
-                                                                <div className="flex flex-wrap gap-2">
-                                                                    {/* Only show action buttons for DOCTOR or HAVE_ACCESS staff */}
-                                                                    {(userRole === "DOCTOR" || staffRole === "HAVE_ACCESS") && (
-                                                                        <>
-                                                                            {userRole === "DOCTOR" && (
-                                                                                emrPadEnabled ? (
-                                                                                <motion.button
-                                                                                    onClick={() => {
-                                                                                        if (!apt.patient?.patient_id) return;
-                                                                                        window.open(
-                                                                                            `/dashboard/doctor/appointments/${apt.appointment_id}/pad`,
-                                                                                            "_blank",
-                                                                                            "noopener,noreferrer"
-                                                                                        );
-                                                                                    }}
-                                                                                    disabled={!apt.patient?.patient_id}
-                                                                                    className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors ${
-                                                                                        apt.patient?.patient_id
-                                                                                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                                                                            : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-                                                                                    }`}
-                                                                                    whileHover={apt.patient?.patient_id ? { scale: 1.03 } : undefined}
-                                                                                    whileTap={apt.patient?.patient_id ? { scale: 0.97 } : undefined}
-                                                                                    title={
-                                                                                        !apt.patient?.patient_id
-                                                                                            ? "Patient context is required to open the EMR pad"
-                                                                                            : "View EMR Pad"
-                                                                                    }
-                                                                                    aria-label="View EMR Pad"
-                                                                                >
-                                                                                    <Stethoscope size={14} />
-                                                                                    View Pad
-                                                                                </motion.button>
-                                                                                ) : null
-                                                                            )}
-                                                                            {apt.status !== "COMPLETED" && apt.status !== "CANCELLED" && apt.status !== "PENDING" && (
-                                                                                <>
-                                                                                    <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "COMPLETED")} className="text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Complete" aria-label="Complete">
-                                                                                        <Check size={16} />
-                                                                                    </motion.button>
-                                                                                    <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "PENDING")} className="text-amber-600 hover:bg-amber-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Not Visited" aria-label="Not Visited">
-                                                                                        <UserX size={16} />
-                                                                                    </motion.button>
-                                                                                    <motion.button onClick={() => handleStatusUpdate(apt.appointment_id, "CANCELLED")} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Cancel" aria-label="Cancel">
-                                                                                        <X size={16} />
-                                                                                    </motion.button>
-                                                                                </>
-                                                                            )}
-                                                                            <motion.button onClick={() => setRescheduleAppointment(apt)} className="text-amber-600 hover:bg-amber-50 p-2 rounded-lg transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Reschedule" aria-label="Reschedule">
-                                                                                <CalendarSync size={16} />
-                                                                            </motion.button>
-                                                                        </>
-                                                                    )}
-                                                                    {/* Only DOCTOR or HAVE_ACCESS staff can delete */}
-                                                                    {(userRole === "DOCTOR" || staffRole === "HAVE_ACCESS") && (
-                                                                        <motion.button
-                                                                            onClick={() => setDeleteAppointment(apt)}
-                                                                            className="text-gray-500 hover:bg-gray-100 p-2 rounded-lg transition-colors"
-                                                                            whileHover={{ scale: 1.05 }}
-                                                                            whileTap={{ scale: 0.95 }}
-                                                                            title="Delete"
-                                                                            aria-label="Delete"
-                                                                        >
-                                                                            <Trash2 size={16} />
-                                                                        </motion.button>
-                                                                    )}
-                                                                    {/* VIEWER staff only see status badge, no actions */}
-                                                                    {userRole === "CLINIC_STAFF" && staffRole !== "HAVE_ACCESS" && (
-                                                                        <span className="text-xs text-gray-400 italic">View only</span>
-                                                                    )}
-                                                                </div>
-                                                            </td>
-
-                                                        </motion.tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                        {renderAppointmentTable(group.appointments)}
                                     </div>
                                 </details>
                             </motion.div>

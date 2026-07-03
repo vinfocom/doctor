@@ -20,6 +20,7 @@ async function getDoctorContext(userId: number) {
                 select: {
                     clinic_id: true,
                     clinic_name: true,
+                    hospital_group_code: true,
                 },
                 orderBy: { clinic_name: "asc" },
             },

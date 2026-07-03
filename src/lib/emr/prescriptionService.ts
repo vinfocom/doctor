@@ -10,6 +10,7 @@ import {
   incrementMasterUsageCount,
 } from "@/lib/emr/masterService";
 import type {
+  EmrComplaintPayload,
   EmrCustomFieldValuePayload,
   EmrDraftWarning,
   EmrClinicalHistoryPayload,
@@ -66,6 +67,19 @@ type NamedRow = {
   master_id: number | null;
   name: string;
   normalized_name: string;
+  notes: string | null;
+  sort_order: number;
+};
+
+type ComplaintRow = {
+  id: number;
+  complaint_master_id: number | null;
+  complaint_name: string;
+  normalized_name: string;
+  severity: string | null;
+  frequency: string | null;
+  duration_value: number | null;
+  duration_unit: "day" | "week" | "month" | "year" | "custom" | null;
   notes: string | null;
   sort_order: number;
 };
@@ -170,6 +184,21 @@ function mapNamedRows(rows: NamedRow[]): EmrNamedItemPayload[] {
     id: row.master_id,
     name: row.name,
     normalized_name: row.normalized_name,
+    notes: row.notes,
+    sort_order: row.sort_order,
+  }));
+}
+
+function mapComplaintRows(rows: ComplaintRow[]): EmrComplaintPayload[] {
+  return rows.map((row) => ({
+    id: row.id,
+    complaint_master_id: row.complaint_master_id,
+    name: row.complaint_name,
+    normalized_name: row.normalized_name,
+    severity: row.severity,
+    frequency: row.frequency,
+    duration_value: row.duration_value,
+    duration_unit: row.duration_unit,
     notes: row.notes,
     sort_order: row.sort_order,
   }));
@@ -464,9 +493,19 @@ async function loadPrescriptionRecord(
           LIMIT 1
         `
       ),
-      tx.$queryRaw<NamedRow[]>(
+      tx.$queryRaw<ComplaintRow[]>(
         Prisma.sql`
-          SELECT id, complaint_master_id AS master_id, complaint_name AS name, normalized_name, notes, sort_order
+          SELECT
+            id,
+            complaint_master_id,
+            complaint_name,
+            normalized_name,
+            severity,
+            frequency,
+            duration_value,
+            duration_unit,
+            notes,
+            sort_order
           FROM prescription_complaints
           WHERE prescription_id = ${prescriptionId}
           ORDER BY sort_order ASC, id ASC
@@ -564,7 +603,7 @@ async function loadPrescriptionRecord(
     updated_at: base.updated_at.toISOString(),
     follow_up_appointment: followUpSummaryMap.get(prescriptionId) ?? null,
     vitals: mapVitals(vitalsRows[0]),
-    complaints: mapNamedRows(complaintsRows),
+    complaints: mapComplaintRows(complaintsRows),
     diagnosis: mapNamedRows(diagnosisRows),
     medicines: mapMedicineRows(medicineRows),
     tests: mapNamedRows(testRows),
@@ -707,10 +746,9 @@ export async function getOrCreateDraftPrescription(input: {
 
 async function replaceNamedSection(
   tx: TxExecutor,
-  tableName: "prescription_complaints" | "prescription_diagnosis" | "prescription_tests" | "prescription_advice",
-  nameColumn: "complaint_name" | "diagnosis_name" | "test_name" | "advice_name",
+  tableName: "prescription_diagnosis" | "prescription_tests" | "prescription_advice",
+  nameColumn: "diagnosis_name" | "test_name" | "advice_name",
   masterIdColumn:
-    | "complaint_master_id"
     | "diagnosis_master_id"
     | "test_master_id"
     | "advice_master_id",
@@ -742,6 +780,52 @@ async function replaceNamedSection(
           ${normalized.normalized_name},
           ${normalized.sort_order},
           ${normalized.notes},
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+        )
+      `
+    );
+  }
+}
+
+async function replaceComplaintsSection(
+  tx: TxExecutor,
+  prescriptionId: number,
+  complaints: EmrComplaintPayload[]
+) {
+  await tx.$executeRaw(
+    Prisma.sql`DELETE FROM prescription_complaints WHERE prescription_id = ${prescriptionId}`
+  );
+
+  for (const [index, item] of complaints.entries()) {
+    const normalized = buildPrescriptionNamedItem(item, index);
+    await tx.$executeRaw(
+      Prisma.sql`
+        INSERT INTO prescription_complaints (
+          prescription_id,
+          complaint_master_id,
+          complaint_name,
+          severity,
+          frequency,
+          duration_value,
+          duration_unit,
+          normalized_name,
+          sort_order,
+          notes,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          ${prescriptionId},
+          ${item.complaint_master_id ?? null},
+          ${normalized.name},
+          ${item.severity?.trim() || null},
+          ${item.frequency?.trim() || null},
+          ${item.duration_value ?? null},
+          ${item.duration_unit ?? null},
+          ${normalized.normalized_name},
+          ${normalized.sort_order},
+          ${item.notes?.trim() || null},
           CURRENT_TIMESTAMP,
           CURRENT_TIMESTAMP
         )
@@ -988,14 +1072,7 @@ export async function saveDraftPrescription(
         );
       }
 
-      await replaceNamedSection(
-        tx,
-        "prescription_complaints",
-        "complaint_name",
-        "complaint_master_id",
-        prescriptionId,
-        payload.complaints ?? []
-      );
+      await replaceComplaintsSection(tx, prescriptionId, payload.complaints ?? []);
       await replaceNamedSection(
         tx,
         "prescription_diagnosis",

@@ -6,6 +6,7 @@ import {
   validatePrescriptionPageCount,
 } from "@/lib/prescriptionStorage";
 import type { JWTPayload } from "@/lib/jwt";
+import { resolveAssignedDoctorIds } from "@/lib/clinicStaffAccess";
 
 type ScopedAccess = {
   session: JWTPayload;
@@ -208,10 +209,23 @@ const validateDoctorPatientScope = async ({
         doctor_id: true,
         clinic_id: true,
         staff_role: true,
+        doctor_access: {
+          select: {
+            doctor_id: true,
+          },
+        },
       },
     });
 
-    if (!staff || staff.doctor_id !== doctorId) {
+    if (!staff) {
+      throw new PrescriptionError(
+        403,
+        "Prescription access is only allowed in the selected doctor context."
+      );
+    }
+
+    const assignedDoctorIds = resolveAssignedDoctorIds(staff);
+    if (!assignedDoctorIds.includes(doctorId)) {
       throw new PrescriptionError(
         403,
         "Prescription access is only allowed in the selected doctor context."
@@ -225,11 +239,77 @@ const validateDoctorPatientScope = async ({
       throw new PrescriptionError(403, "Viewers cannot modify prescriptions.");
     }
 
-    if (normalizedClinicId && staff.clinic_id && normalizedClinicId !== staff.clinic_id) {
-      throw new PrescriptionError(
-        403,
-        "Prescription access is only allowed in the selected doctor context."
-      );
+    let allowedClinicIds: number[] | null = null;
+
+    if (staff.clinic_id) {
+      const baseClinic = await prisma.clinics.findUnique({
+        where: { clinic_id: staff.clinic_id },
+        select: {
+          clinic_id: true,
+          hospital_group_code: true,
+        },
+      });
+
+      const baseHospitalGroupCode = String(baseClinic?.hospital_group_code || "").trim();
+
+      if (normalizedClinicId) {
+        if (normalizedClinicId === staff.clinic_id) {
+          allowedClinicIds = [normalizedClinicId];
+        } else if (baseHospitalGroupCode) {
+          const matchedClinic = await prisma.clinics.findFirst({
+            where: {
+              clinic_id: normalizedClinicId,
+              doctor_id: doctorId,
+              hospital_group_code: baseHospitalGroupCode,
+            },
+            select: {
+              clinic_id: true,
+            },
+          });
+
+          if (!matchedClinic) {
+            throw new PrescriptionError(
+              403,
+              "Prescription access is only allowed in the selected doctor context."
+            );
+          }
+
+          allowedClinicIds = [matchedClinic.clinic_id];
+        } else {
+          throw new PrescriptionError(
+            403,
+            "Prescription access is only allowed in the selected doctor context."
+          );
+        }
+      } else if (doctorId === staff.doctor_id) {
+        allowedClinicIds = [staff.clinic_id];
+      } else if (baseHospitalGroupCode) {
+        const groupedClinics = await prisma.clinics.findMany({
+          where: {
+            doctor_id: doctorId,
+            hospital_group_code: baseHospitalGroupCode,
+          },
+          select: {
+            clinic_id: true,
+          },
+        });
+
+        allowedClinicIds = groupedClinics
+          .map((clinic) => Number(clinic.clinic_id))
+          .filter((clinicId) => Number.isFinite(clinicId) && clinicId > 0);
+
+        if (allowedClinicIds.length === 0) {
+          throw new PrescriptionError(
+            403,
+            "Prescription access is only allowed in the selected doctor context."
+          );
+        }
+      } else {
+        throw new PrescriptionError(
+          403,
+          "Prescription access is only allowed in the selected doctor context."
+        );
+      }
     }
 
     const appointment = await prisma.appointment.findFirst({
@@ -237,8 +317,14 @@ const validateDoctorPatientScope = async ({
         patient_id: patientId,
         doctor_id: doctorId,
         ...(normalizedAppointmentId ? { appointment_id: normalizedAppointmentId } : {}),
-        ...(staff.clinic_id ? { clinic_id: staff.clinic_id } : {}),
-        ...(normalizedClinicId ? { clinic_id: normalizedClinicId } : {}),
+        ...(allowedClinicIds
+          ? {
+              clinic_id:
+                allowedClinicIds.length === 1
+                  ? allowedClinicIds[0]
+                  : { in: allowedClinicIds },
+            }
+          : {}),
       },
       select: {
         appointment_id: true,
@@ -257,7 +343,12 @@ const validateDoctorPatientScope = async ({
       session,
       patientId,
       doctorId,
-      clinicId: normalizedClinicId ?? appointment.clinic_id ?? staff.clinic_id ?? null,
+      clinicId:
+        normalizedClinicId ??
+        appointment.clinic_id ??
+        (allowedClinicIds?.length === 1 ? allowedClinicIds[0] : null) ??
+        staff.clinic_id ??
+        null,
       appointmentId: normalizedAppointmentId ?? appointment.appointment_id ?? null,
     };
   }

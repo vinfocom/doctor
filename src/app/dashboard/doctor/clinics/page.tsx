@@ -18,6 +18,7 @@ interface Clinic {
     phone: string;
     status: string;
     doctor_id: number;
+    hospital_group_code?: string | null;
     barcode_url?: string | null;
     qr_storage_url?: string | null;
 }
@@ -66,6 +67,20 @@ const PERIODS = [
     { key: "afternoon", label: "Afternoon", range: "12 PM – 4:59 PM", Icon: Sunset, color: "text-orange-500", bgColor: "bg-orange-50 border-orange-200" },
     { key: "evening", label: "Evening / Night", range: "5 PM onwards", Icon: Moon, color: "text-indigo-500", bgColor: "bg-indigo-50 border-indigo-200" },
 ] as const;
+
+function getHospitalGroupCode(clinic?: Clinic | null) {
+    return String(clinic?.hospital_group_code || "").trim();
+}
+
+function getQrDownloadHref(clinic?: Clinic | null) {
+    if (!clinic) return "#";
+    const hospitalGroupCode = getHospitalGroupCode(clinic);
+    if (hospitalGroupCode) {
+        return `/api/qr/hospital/generate/download?hospital_code=${encodeURIComponent(hospitalGroupCode)}`;
+    }
+
+    return `/api/qr/generate/download?doctor_id=${clinic.doctor_id}&clinic_id=${clinic.clinic_id}`;
+}
 
 export default function ClinicsPage() {
     const [clinics, setClinics] = useState<Clinic[]>([]);
@@ -375,13 +390,17 @@ export default function ClinicsPage() {
         setQrPreviewImage("");
 
         try {
-            const previewRes = await fetch("/api/qr/generate", {
+            const hospitalGroupCode = getHospitalGroupCode(clinic);
+            const isHospitalClinic = Boolean(hospitalGroupCode);
+            const previewRes = await fetch(isHospitalClinic ? "/api/qr/hospital/generate" : "/api/qr/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    doctor_id: clinic.doctor_id,
-                    clinic_id: clinic.clinic_id,
-                }),
+                body: JSON.stringify(isHospitalClinic
+                    ? { hospital_code: hospitalGroupCode }
+                    : {
+                        doctor_id: clinic.doctor_id,
+                        clinic_id: clinic.clinic_id,
+                    }),
             });
 
             const previewData = await previewRes.json();
@@ -391,7 +410,9 @@ export default function ClinicsPage() {
 
             setQrPreviewImage(previewData.dataUrl || "");
 
-            const url = `https://daptoservices.vinfocom.co.in/download?doctor_id=${clinic.doctor_id}&clinic_id=${clinic.clinic_id}`;
+            const url = isHospitalClinic
+                ? `https://daptoservices.vinfocom.co.in/qr/hospital/generate/download?hospital_code=${encodeURIComponent(hospitalGroupCode)}`
+                : `https://daptoservices.vinfocom.co.in/download?doctor_id=${clinic.doctor_id}&clinic_id=${clinic.clinic_id}`;
             await fetch(`/api/clinics/${clinic.clinic_id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
@@ -984,11 +1005,7 @@ export default function ClinicsPage() {
                             </button>
                             {qrPreviewMode === "generate" && (
                                 <a
-                                    href={
-                                        qrPreviewClinic
-                                            ? `/api/qr/generate/download?doctor_id=${qrPreviewClinic.doctor_id}&clinic_id=${qrPreviewClinic.clinic_id}`
-                                            : "#"
-                                    }
+                                    href={getQrDownloadHref(qrPreviewClinic)}
                                     className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition-colors ${qrPreviewClinic ? "bg-indigo-600 hover:bg-indigo-700" : "pointer-events-none bg-indigo-300"}`}
                                 >
                                     Download

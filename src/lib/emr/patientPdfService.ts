@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
 import type {
   EmrClinicalHistorySection,
   EmrLayoutCustomField,
@@ -755,7 +756,9 @@ function drawOrderedBodySections(
           pdf,
           next,
           "COMPLAINTS",
-          printable.prescription.complaints.map((item) => item.name),
+          getPrintableComplaints(printable.prescription.complaints).map((item) =>
+            item.toUpperCase()
+          ),
           fonts
         );
         break;

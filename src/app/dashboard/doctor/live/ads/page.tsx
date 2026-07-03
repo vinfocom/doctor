@@ -18,6 +18,7 @@ import {
 type ClinicOption = {
     clinic_id: number;
     clinic_name: string | null;
+    hospital_group_code?: string | null;
 };
 
 type LiveAdsResponse = {
@@ -46,6 +47,12 @@ type ActivationDialogState = {
     activeTo: string;
 } | null;
 
+type TvTimingState = {
+    remainingSlideSeconds: string;
+    missedSlideSeconds: string;
+    doctorRotationSeconds: string;
+};
+
 const TODAY_DATE = getTodayDateInput();
 
 const EMPTY_FORM: FormState = {
@@ -70,9 +77,16 @@ export default function DoctorLiveAdsPage() {
     const [editingAdId, setEditingAdId] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [savingTiming, setSavingTiming] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
     const [activationDialog, setActivationDialog] = useState<ActivationDialogState>(null);
+    const [tvTiming, setTvTiming] = useState<TvTimingState>({
+        remainingSlideSeconds: "8",
+        missedSlideSeconds: "8",
+        doctorRotationSeconds: "40",
+    });
+    const [isHospitalClinic, setIsHospitalClinic] = useState(false);
 
     const groupedAds = useMemo(
         () => ({
@@ -125,6 +139,45 @@ export default function DoctorLiveAdsPage() {
         }
     }, [selectedClinicId]);
 
+    const selectedClinic = useMemo(
+        () => clinics.find((clinic) => String(clinic.clinic_id) === selectedClinicId) || null,
+        [clinics, selectedClinicId]
+    );
+
+    const fetchTvTiming = useCallback(async (clinicId: string) => {
+        if (!clinicId) {
+            setIsHospitalClinic(false);
+            return;
+        }
+
+        try {
+            const res = await fetch(`/api/doctors/live-tv-settings?clinicId=${clinicId}`, { cache: "no-store" });
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data?.error || "Failed to load TV timing.");
+            }
+
+            setIsHospitalClinic(Boolean(data.is_hospital_clinic));
+            setTvTiming({
+                remainingSlideSeconds: String(data.settings?.remaining_slide_seconds ?? 8),
+                missedSlideSeconds: String(data.settings?.missed_slide_seconds ?? 8),
+                doctorRotationSeconds: String(data.settings?.doctor_rotation_seconds ?? 40),
+            });
+        } catch (error) {
+            setIsHospitalClinic(false);
+            setMessage({
+                type: "error",
+                text: error instanceof Error ? error.message : "Failed to load TV timing.",
+            });
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!selectedClinicId) return;
+        void fetchTvTiming(selectedClinicId);
+    }, [fetchTvTiming, selectedClinicId]);
+
     const resetForm = (clinicId = selectedClinicId) => {
         setEditingAdId(null);
         setForm({
@@ -140,6 +193,46 @@ export default function DoctorLiveAdsPage() {
         setSelectedClinicId(value);
         resetForm(value);
         await fetchAds(value);
+        await fetchTvTiming(value);
+    };
+
+    const handleSaveTiming = async () => {
+        if (!selectedClinicId) return;
+
+        setSavingTiming(true);
+        setMessage(null);
+
+        try {
+            const res = await fetch("/api/doctors/live-tv-settings", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    clinicId: Number(selectedClinicId),
+                    remainingSlideSeconds: Number(tvTiming.remainingSlideSeconds),
+                    missedSlideSeconds: Number(tvTiming.missedSlideSeconds),
+                    doctorRotationSeconds: Number(tvTiming.doctorRotationSeconds),
+                }),
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data?.error || "Failed to save TV timing.");
+            }
+
+            setTvTiming({
+                remainingSlideSeconds: String(data.settings?.remaining_slide_seconds ?? tvTiming.remainingSlideSeconds),
+                missedSlideSeconds: String(data.settings?.missed_slide_seconds ?? tvTiming.missedSlideSeconds),
+                doctorRotationSeconds: String(data.settings?.doctor_rotation_seconds ?? tvTiming.doctorRotationSeconds),
+            });
+            setMessage({ type: "success", text: "Hospital TV timing saved." });
+        } catch (error) {
+            setMessage({
+                type: "error",
+                text: error instanceof Error ? error.message : "Failed to save TV timing.",
+            });
+        } finally {
+            setSavingTiming(false);
+        }
     };
 
     const handleUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -423,6 +516,60 @@ export default function DoctorLiveAdsPage() {
                     {message.type === "success" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />}
                     <span>{message.text}</span>
                 </div>
+            ) : null}
+
+            {isHospitalClinic ? (
+                <GlassCard hoverEffect={false} className="space-y-3">
+                    <div className="flex items-center gap-2">
+                        <MonitorPlay className="h-5 w-5 text-indigo-600" />
+                        <h2 className="text-lg font-semibold text-slate-900">Hospital TV Timing</h2>
+                    </div>
+
+                    <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
+                        <label className="space-y-2 text-sm font-medium text-slate-700">
+                            <span>Remaining slide seconds</span>
+                            <input
+                                type="number"
+                                min="2"
+                                max="300"
+                                value={tvTiming.remainingSlideSeconds}
+                                onChange={(event) => setTvTiming((current) => ({ ...current, remainingSlideSeconds: event.target.value }))}
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none"
+                            />
+                        </label>
+                        <label className="space-y-2 text-sm font-medium text-slate-700">
+                            <span>Missed slide seconds</span>
+                            <input
+                                type="number"
+                                min="2"
+                                max="300"
+                                value={tvTiming.missedSlideSeconds}
+                                onChange={(event) => setTvTiming((current) => ({ ...current, missedSlideSeconds: event.target.value }))}
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none"
+                            />
+                        </label>
+                        <label className="space-y-2 text-sm font-medium text-slate-700">
+                            <span>Doctor rotation seconds</span>
+                            <input
+                                type="number"
+                                min="5"
+                                max="300"
+                                value={tvTiming.doctorRotationSeconds}
+                                onChange={(event) => setTvTiming((current) => ({ ...current, doctorRotationSeconds: event.target.value }))}
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none"
+                            />
+                        </label>
+                        <button
+                            type="button"
+                            onClick={() => void handleSaveTiming()}
+                            disabled={savingTiming}
+                            className="inline-flex h-[42px] items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {savingTiming ? <Loader2 className="h-4 w-4 animate-spin" /> : <MonitorPlay className="h-4 w-4" />}
+                            {savingTiming ? "Saving..." : "Save TV Timing"}
+                        </button>
+                    </div>
+                </GlassCard>
             ) : null}
 
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">

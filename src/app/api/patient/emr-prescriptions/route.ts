@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/request-auth";
 import {
   getEmrAccessErrorResponse,
+  getPrintableComplaints,
   listPatientFinalizedPrescriptionsForDoctor,
   signEmrPatientDocumentToken,
 } from "@/lib/emr";
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
 
       return {
         ...item,
-        complaint_summary: item.complaints.map((entry) => entry.name).filter(Boolean).join(", "),
+        complaint_summary: getPrintableComplaints(item.complaints).join(", "),
         diagnosis_summary: item.diagnosis.map((entry) => entry.name).filter(Boolean).join(", "),
         view_url: baseUrl,
         download_url: `${baseUrl}&download=1`,
