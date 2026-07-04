@@ -74,6 +74,11 @@ type HospitalLiveResponse = {
     }>;
 };
 
+type RotationCountdownState = {
+    deadlineMs: number | null;
+    animationKey: number;
+};
+
 const EMPTY_STATE: LiveResponse = {
     doctor_name: "",
     doctor_education: "",
@@ -355,8 +360,6 @@ function RotationCountdown({
     const normalizedTotalMs = Math.max(1000, totalMs);
     const clampedRemainingMs = Math.max(0, Math.min(remainingMs, normalizedTotalMs));
     const displaySeconds = Math.max(0, Math.ceil(clampedRemainingMs / 1000));
-    const progress = clampedRemainingMs / normalizedTotalMs;
-    const dashOffset = circumference * (1 - progress);
 
     return (
         <div
@@ -383,8 +386,8 @@ function RotationCountdown({
                         strokeWidth="6"
                         strokeLinecap="round"
                         strokeDasharray={circumference}
-                        strokeDashoffset={dashOffset}
-                        style={{ transition: "stroke-dashoffset 120ms linear" }}
+                        strokeDashoffset="0"
+                        style={{ animation: `rotationCountdownStroke ${normalizedTotalMs}ms linear forwards` }}
                     />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
@@ -522,7 +525,10 @@ export default function LiveAppointmentsPage() {
     const [, setHospitalSlideIndex] = useState(0);
     const [slideFading, setSlideFading] = useState(false);
     const [displayTimingMs, setDisplayTimingMs] = useState(DEFAULT_DISPLAY_TIMING_MS);
-    const [rotationDeadlineMs, setRotationDeadlineMs] = useState<number | null>(null);
+    const [rotationCountdownState, setRotationCountdownState] = useState<RotationCountdownState>({
+        deadlineMs: null,
+        animationKey: 0,
+    });
     const isHospitalMode = Boolean(
         me?.role === "CLINIC_STAFF" &&
         (pathname?.includes("/live-hospital") || Number(me.assigned_doctor_ids?.length || 0) > 1)
@@ -707,13 +713,20 @@ export default function LiveAppointmentsPage() {
                             setLiveData(slides[nextIndex] || EMPTY_STATE);
                             return nextIndex;
                         });
-                        setRotationDeadlineMs((current) => {
-                            if (slides.length <= 1) return null;
-                            if (!current) return Date.now() + nextDisplayTimingMs.doctorRotationMs;
+                        setRotationCountdownState((current) => {
+                            if (slides.length <= 1) {
+                                return current.deadlineMs
+                                    ? { deadlineMs: null, animationKey: current.animationKey + 1 }
+                                    : current;
+                            }
 
-                            const remainingMs = current - Date.now();
+                            const nowMs = Date.now();
+                            const remainingMs = current.deadlineMs ? current.deadlineMs - nowMs : 0;
                             if (remainingMs <= 0 || remainingMs > nextDisplayTimingMs.doctorRotationMs) {
-                                return Date.now() + nextDisplayTimingMs.doctorRotationMs;
+                                return {
+                                    deadlineMs: nowMs + nextDisplayTimingMs.doctorRotationMs,
+                                    animationKey: current.animationKey + 1,
+                                };
                             }
 
                             return current;
@@ -723,7 +736,11 @@ export default function LiveAppointmentsPage() {
                         setHospitalSlides([]);
                         setHospitalSlideIndex(0);
                         setDisplayTimingMs(DEFAULT_DISPLAY_TIMING_MS);
-                        setRotationDeadlineMs(null);
+                        setRotationCountdownState((current) => (
+                            current.deadlineMs
+                                ? { deadlineMs: null, animationKey: current.animationKey + 1 }
+                                : current
+                        ));
                         setLiveData(data as LiveResponse);
                     }
                 }
@@ -763,7 +780,10 @@ export default function LiveAppointmentsPage() {
                     setLiveData(latestSlides[nextIndex] || EMPTY_STATE);
                     return nextIndex;
                 });
-                setRotationDeadlineMs(Date.now() + displayTimingMs.doctorRotationMs);
+                setRotationCountdownState((current) => ({
+                    deadlineMs: Date.now() + displayTimingMs.doctorRotationMs,
+                    animationKey: current.animationKey + 1,
+                }));
                 setSlideFading(false);
             }, 280);
         }, displayTimingMs.doctorRotationMs);
@@ -861,23 +881,21 @@ export default function LiveAppointmentsPage() {
     const [rotationRemainingMs, setRotationRemainingMs] = useState(rotationCountdownTotalMs);
 
     useEffect(() => {
-        if (!showRotationCountdown || !rotationDeadlineMs) {
+        if (!showRotationCountdown || !rotationCountdownState.deadlineMs) {
             setRotationRemainingMs(rotationCountdownTotalMs);
             return;
         }
 
-        let frameId = 0;
-
         const updateCountdown = () => {
-            const nextRemainingMs = Math.max(0, rotationDeadlineMs - Date.now());
+            const nextRemainingMs = Math.max(0, Number(rotationCountdownState.deadlineMs) - Date.now());
             setRotationRemainingMs(nextRemainingMs);
-            frameId = window.requestAnimationFrame(updateCountdown);
         };
 
-        frameId = window.requestAnimationFrame(updateCountdown);
+        updateCountdown();
+        const interval = window.setInterval(updateCountdown, 200);
 
-        return () => window.cancelAnimationFrame(frameId);
-    }, [rotationCountdownTotalMs, rotationDeadlineMs, showRotationCountdown]);
+        return () => window.clearInterval(interval);
+    }, [rotationCountdownState.deadlineMs, rotationCountdownTotalMs, showRotationCountdown]);
 
     const toggleFullscreen = async () => {
         try {
@@ -941,6 +959,7 @@ export default function LiveAppointmentsPage() {
                             <div className="text-[clamp(0.95rem,2vmin,1.35rem)] font-bold text-slate-900">{clock}</div>
                             {showRotationCountdown ? (
                                 <RotationCountdown
+                                    key={rotationCountdownState.animationKey}
                                     remainingMs={rotationRemainingMs}
                                     totalMs={rotationCountdownTotalMs}
                                 />
@@ -1031,6 +1050,15 @@ export default function LiveAppointmentsPage() {
                         }
                         to {
                             transform: translateY(0);
+                        }
+                    }
+
+                    @keyframes rotationCountdownStroke {
+                        from {
+                            stroke-dashoffset: 0;
+                        }
+                        to {
+                            stroke-dashoffset: ${2 * Math.PI * 30};
                         }
                     }
                 `}</style>
@@ -1144,6 +1172,15 @@ export default function LiveAppointmentsPage() {
                     }
                     to {
                         transform: translateY(0);
+                    }
+                }
+
+                @keyframes rotationCountdownStroke {
+                    from {
+                        stroke-dashoffset: 0;
+                    }
+                    to {
+                        stroke-dashoffset: ${2 * Math.PI * 30};
                     }
                 }
             `}</style>
