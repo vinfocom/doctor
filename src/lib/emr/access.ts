@@ -135,13 +135,6 @@ export async function validateDoctorEmrAccess(input: {
     );
   }
 
-  if (patient.doctor_id && patient.doctor_id !== doctorId) {
-    throw new EmrAccessError(
-      403,
-      "This patient is not linked to this doctor."
-    );
-  }
-
   const appointment = await prisma.appointment.findFirst({
     where: {
       appointment_id: appointmentId,
