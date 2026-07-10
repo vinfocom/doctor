@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { sanitizeFilename, uploadBufferToS3 } from "@/lib/s3";
 
+const MAX_LOGO_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024;
 const LOGO_TYPES = [
     "image/jpeg",
     "image/jpg",
@@ -9,7 +11,7 @@ const LOGO_TYPES = [
     "image/webp",
     "image/svg+xml",
 ];
-const VIDEO_TYPES = ["video/mp4"];
+const VIDEO_TYPES = ["video/mp4", "application/mp4", "video/x-m4v"];
 
 export async function POST(req: NextRequest) {
     const session = await getSession();
@@ -27,8 +29,15 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "No file provided" }, { status: 400 });
         }
 
-        const allowedTypes = adType === "VIDEO" ? VIDEO_TYPES : LOGO_TYPES;
-        if (!allowedTypes.includes(file.type)) {
+        const normalizedMimeType = String(file.type || "").toLowerCase();
+        const hasMp4Extension = /\.mp4$/i.test(file.name || "");
+        const isAllowedVideoType =
+            VIDEO_TYPES.includes(normalizedMimeType) ||
+            (hasMp4Extension &&
+                (!normalizedMimeType || normalizedMimeType === "application/octet-stream"));
+        const isAllowedLogoType = LOGO_TYPES.includes(normalizedMimeType);
+
+        if ((adType === "VIDEO" && !isAllowedVideoType) || (adType !== "VIDEO" && !isAllowedLogoType)) {
             return NextResponse.json(
                 {
                     error:
@@ -40,7 +49,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const maxSizeBytes = adType === "VIDEO" ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+        const maxSizeBytes = adType === "VIDEO" ? MAX_VIDEO_SIZE_BYTES : MAX_LOGO_SIZE_BYTES;
         if (file.size > maxSizeBytes) {
             return NextResponse.json(
                 {

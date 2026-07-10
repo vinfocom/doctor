@@ -27,6 +27,19 @@ type LiveAdsResponse = {
     ads: LiveQueueSideAd[];
 };
 
+type ApiErrorResponse = {
+    error?: string;
+};
+
+type TvSettingsResponse = ApiErrorResponse & {
+    is_hospital_clinic?: boolean;
+    settings?: {
+        remaining_slide_seconds?: number;
+        missed_slide_seconds?: number;
+        doctor_rotation_seconds?: number;
+    };
+};
+
 type FormState = {
     clinicId: string;
     type: QueueSideAdType;
@@ -54,6 +67,18 @@ type TvTimingState = {
 };
 
 const TODAY_DATE = getTodayDateInput();
+const GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again.";
+
+async function readApiJson<T>(response: Response): Promise<T | null> {
+    const raw = await response.text();
+    if (!raw) return null;
+
+    try {
+        return JSON.parse(raw) as T;
+    } catch {
+        return null;
+    }
+}
 
 const EMPTY_FORM: FormState = {
     clinicId: "",
@@ -103,10 +128,14 @@ export default function DoctorLiveAdsPage() {
         try {
             const query = clinicId ? `?clinicId=${clinicId}` : "";
             const res = await fetch(`/api/doctors/live-ads${query}`, { cache: "no-store" });
-            const data: LiveAdsResponse | { error?: string } = await res.json();
+            const data = await readApiJson<LiveAdsResponse | ApiErrorResponse>(res);
 
             if (!res.ok) {
-                throw new Error("error" in data ? data.error || "Failed to load live ads." : "Failed to load live ads.");
+                throw new Error((data as ApiErrorResponse | null)?.error || GENERIC_ERROR_MESSAGE);
+            }
+
+            if (!data || !("clinics" in data) || !("ads" in data)) {
+                throw new Error(GENERIC_ERROR_MESSAGE);
             }
 
             const payload = data as LiveAdsResponse;
@@ -119,10 +148,10 @@ export default function DoctorLiveAdsPage() {
                 ...current,
                 clinicId: current.clinicId || resolvedClinicId,
             }));
-        } catch (error) {
+        } catch {
             setMessage({
                 type: "error",
-                text: error instanceof Error ? error.message : "Failed to load live ads.",
+                text: GENERIC_ERROR_MESSAGE,
             });
         } finally {
             setLoading(false);
@@ -139,11 +168,6 @@ export default function DoctorLiveAdsPage() {
         }
     }, [selectedClinicId]);
 
-    const selectedClinic = useMemo(
-        () => clinics.find((clinic) => String(clinic.clinic_id) === selectedClinicId) || null,
-        [clinics, selectedClinicId]
-    );
-
     const fetchTvTiming = useCallback(async (clinicId: string) => {
         if (!clinicId) {
             setIsHospitalClinic(false);
@@ -152,10 +176,14 @@ export default function DoctorLiveAdsPage() {
 
         try {
             const res = await fetch(`/api/doctors/live-tv-settings?clinicId=${clinicId}`, { cache: "no-store" });
-            const data = await res.json();
+            const data = await readApiJson<TvSettingsResponse>(res);
 
             if (!res.ok) {
-                throw new Error(data?.error || "Failed to load TV timing.");
+                throw new Error(data?.error || GENERIC_ERROR_MESSAGE);
+            }
+
+            if (!data) {
+                throw new Error(GENERIC_ERROR_MESSAGE);
             }
 
             setIsHospitalClinic(Boolean(data.is_hospital_clinic));
@@ -164,11 +192,11 @@ export default function DoctorLiveAdsPage() {
                 missedSlideSeconds: String(data.settings?.missed_slide_seconds ?? 8),
                 doctorRotationSeconds: String(data.settings?.doctor_rotation_seconds ?? 40),
             });
-        } catch (error) {
+        } catch {
             setIsHospitalClinic(false);
             setMessage({
                 type: "error",
-                text: error instanceof Error ? error.message : "Failed to load TV timing.",
+                text: GENERIC_ERROR_MESSAGE,
             });
         }
     }, []);
@@ -213,10 +241,14 @@ export default function DoctorLiveAdsPage() {
                     doctorRotationSeconds: Number(tvTiming.doctorRotationSeconds),
                 }),
             });
-            const data = await res.json();
+            const data = await readApiJson<TvSettingsResponse>(res);
 
             if (!res.ok) {
-                throw new Error(data?.error || "Failed to save TV timing.");
+                throw new Error(data?.error || GENERIC_ERROR_MESSAGE);
+            }
+
+            if (!data) {
+                throw new Error(GENERIC_ERROR_MESSAGE);
             }
 
             setTvTiming({
@@ -225,10 +257,10 @@ export default function DoctorLiveAdsPage() {
                 doctorRotationSeconds: String(data.settings?.doctor_rotation_seconds ?? tvTiming.doctorRotationSeconds),
             });
             setMessage({ type: "success", text: "Hospital TV timing saved." });
-        } catch (error) {
+        } catch {
             setMessage({
                 type: "error",
-                text: error instanceof Error ? error.message : "Failed to save TV timing.",
+                text: GENERIC_ERROR_MESSAGE,
             });
         } finally {
             setSavingTiming(false);
@@ -251,10 +283,14 @@ export default function DoctorLiveAdsPage() {
                 method: "POST",
                 body: payload,
             });
-            const data = await res.json();
+            const data = await readApiJson<{ url?: string; mimeType?: string; error?: string }>(res);
 
             if (!res.ok) {
-                throw new Error(data.error || "Upload failed.");
+                throw new Error(data?.error || GENERIC_ERROR_MESSAGE);
+            }
+
+            if (!data?.url) {
+                throw new Error(GENERIC_ERROR_MESSAGE);
             }
 
             setForm((current) => ({
@@ -263,10 +299,10 @@ export default function DoctorLiveAdsPage() {
                 mimeType: data.mimeType || file.type,
             }));
             setMessage({ type: "success", text: "Asset uploaded successfully." });
-        } catch (error) {
+        } catch {
             setMessage({
                 type: "error",
-                text: error instanceof Error ? error.message : "Upload failed.",
+                text: "Something went wrong. Please try uploading again.",
             });
         } finally {
             setUploading(false);
@@ -316,10 +352,10 @@ export default function DoctorLiveAdsPage() {
                     body: JSON.stringify(payload),
                 }
             );
-            const data = await res.json();
+            const data = await readApiJson<ApiErrorResponse>(res);
 
             if (!res.ok) {
-                throw new Error(data.error || "Failed to save ad.");
+                throw new Error(data?.error || GENERIC_ERROR_MESSAGE);
             }
 
             setMessage({
@@ -328,10 +364,10 @@ export default function DoctorLiveAdsPage() {
             });
             resetForm();
             await fetchAds(form.clinicId);
-        } catch (error) {
+        } catch {
             setMessage({
                 type: "error",
-                text: error instanceof Error ? error.message : "Failed to save ad.",
+                text: GENERIC_ERROR_MESSAGE,
             });
         } finally {
             setSaving(false);
@@ -361,9 +397,9 @@ export default function DoctorLiveAdsPage() {
 
         try {
             const res = await fetch(`/api/doctors/live-ads/${adId}`, { method: "DELETE" });
-            const data = await res.json();
+            const data = await readApiJson<ApiErrorResponse>(res);
             if (!res.ok) {
-                throw new Error(data.error || "Failed to delete ad.");
+                throw new Error(data?.error || GENERIC_ERROR_MESSAGE);
             }
 
             setMessage({ type: "success", text: "Ad deleted successfully." });
@@ -371,10 +407,10 @@ export default function DoctorLiveAdsPage() {
                 resetForm();
             }
             await fetchAds(selectedClinicId);
-        } catch (error) {
+        } catch {
             setMessage({
                 type: "error",
-                text: error instanceof Error ? error.message : "Failed to delete ad.",
+                text: GENERIC_ERROR_MESSAGE,
             });
         }
     };
@@ -398,9 +434,9 @@ export default function DoctorLiveAdsPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ isActive: false }),
             });
-            const data = await res.json();
+            const data = await readApiJson<ApiErrorResponse>(res);
             if (!res.ok) {
-                throw new Error(data.error || "Failed to update ad status.");
+                throw new Error(data?.error || GENERIC_ERROR_MESSAGE);
             }
 
             setMessage({
@@ -408,10 +444,10 @@ export default function DoctorLiveAdsPage() {
                 text: "Ad deactivated.",
             });
             await fetchAds(selectedClinicId);
-        } catch (error) {
+        } catch {
             setMessage({
                 type: "error",
-                text: error instanceof Error ? error.message : "Failed to update ad status.",
+                text: GENERIC_ERROR_MESSAGE,
             });
         }
     };
@@ -441,18 +477,18 @@ export default function DoctorLiveAdsPage() {
                     activeTo: activationDialog.activeTo,
                 }),
             });
-            const data = await res.json();
+            const data = await readApiJson<ApiErrorResponse>(res);
             if (!res.ok) {
-                throw new Error(data.error || "Failed to activate ad.");
+                throw new Error(data?.error || GENERIC_ERROR_MESSAGE);
             }
 
             setActivationDialog(null);
             setMessage({ type: "success", text: "Ad activated with the selected date range." });
             await fetchAds(selectedClinicId);
-        } catch (error) {
+        } catch {
             setMessage({
                 type: "error",
-                text: error instanceof Error ? error.message : "Failed to activate ad.",
+                text: GENERIC_ERROR_MESSAGE,
             });
         }
     };
