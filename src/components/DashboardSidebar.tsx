@@ -9,6 +9,7 @@ import {
     UserPlus,
     Users,
     Calendar,
+    Pill,
     MonitorPlay,
     Clock,
     LogOut,
@@ -70,6 +71,7 @@ export default function DashboardSidebar({
             { href: "/dashboard/admin/clinics", label: "Clinics", icon: <Building2 size={20} /> },
             { href: "/dashboard/admin/hospitals", label: "Hospitals", icon: <Building2 size={20} /> },
             { href: "/dashboard/admin/appointments", label: "Appointments", icon: <Calendar size={20} /> },
+            { href: "/dashboard/admin/medicine-import", label: "Medicine Import", icon: <Pill size={20} /> },
 
         ],
         ADMIN: [
@@ -79,6 +81,7 @@ export default function DashboardSidebar({
             { href: "/dashboard/admin/clinics", label: "Clinics", icon: <Building2 size={20} /> },
             { href: "/dashboard/admin/hospitals", label: "Hospitals", icon: <Building2 size={20} /> },
             { href: "/dashboard/admin/appointments", label: "Appointments", icon: <Calendar size={20} /> },
+            { href: "/dashboard/admin/medicine-import", label: "Medicine Import", icon: <Pill size={20} /> },
 
         ],
         CLINIC_STAFF: [
