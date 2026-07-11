@@ -14,6 +14,8 @@ import {
     Clock,
     LogOut,
     Building2,
+    Settings,
+    FileText,
     Menu,
     X,
 } from "lucide-react";
@@ -102,10 +104,10 @@ export default function DashboardSidebar({
             { href: "/dashboard/doctor/schedule", label: "Schedule", icon: <Clock size={20} /> },
             { href: "/dashboard/doctor/appointments", label: "My Appointments", icon: <Calendar size={20} /> },
             { href: "/dashboard/doctor/live", label: "Live", icon: <MonitorPlay size={20} /> },
-            { href: "/dashboard/doctor/live/ads", label: "Live Ads", icon: <MonitorPlay size={20} /> },
+            { href: "/dashboard/doctor/live/ads", label: "Live Ads Setting", icon: <Settings size={20} /> },
             { href: "/dashboard/doctor/patients", label: "Patients", icon: <Users size={20} /> },
             ...(emrPrescriptionEnabled
-                ? [{ href: "/dashboard/doctor/emr-layout", label: "EMR Layout", icon: <Building2 size={20} /> }]
+                ? [{ href: "/dashboard/doctor/emr-layout", label: "EMR Layout Setting", icon: <FileText size={20} /> }]
                 : []),
             { href: "/dashboard/doctor/users", label: "Users", icon: <UserPlus size={20} /> },
             { href: "/dashboard/doctor/profile", label: "Profile", icon: <UserPlus size={20} /> },
