@@ -3,13 +3,15 @@ import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  buildPrisma: PrismaClient | undefined;
+  buildPrismaDisconnectTimer: NodeJS.Timeout | undefined;
 };
 
-function hasLiveQueueAdsDelegate(client: PrismaClient) {
-  return Boolean(
-    Reflect.get(client as unknown as object, "live_queue_side_ads")
-  );
-}
+const isNextBuildProcess =
+  process.env.NEXT_PHASE === "phase-production-build" ||
+  (process.argv.some((arg) => /(?:^|[\\/])next(?:\.js)?$/i.test(arg)) &&
+    process.argv.includes("build"));
+const BUILD_DISCONNECT_IDLE_MS = 1_000;
 
 function createPrismaClient() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -33,32 +35,76 @@ function createPrismaClient() {
   return new PrismaClient({ adapter });
 }
 
-function getPrismaClient() {
-  if (globalForPrisma.prisma) {
-    if (hasLiveQueueAdsDelegate(globalForPrisma.prisma)) {
-      return globalForPrisma.prisma;
-    }
-
-    void globalForPrisma.prisma.$disconnect().catch(() => undefined);
-    globalForPrisma.prisma = undefined;
+function clearBuildPrismaDisconnectTimer() {
+  if (!globalForPrisma.buildPrismaDisconnectTimer) {
+    return;
   }
 
-  const client = createPrismaClient();
-  globalForPrisma.prisma = client; // Cache in ALL environments
-  return client;
+  clearTimeout(globalForPrisma.buildPrismaDisconnectTimer);
+  globalForPrisma.buildPrismaDisconnectTimer = undefined;
+}
+
+function scheduleBuildPrismaDisconnect() {
+  clearBuildPrismaDisconnectTimer();
+
+  const timer = setTimeout(() => {
+    const client = globalForPrisma.buildPrisma;
+    globalForPrisma.buildPrisma = undefined;
+    globalForPrisma.buildPrismaDisconnectTimer = undefined;
+    void client?.$disconnect().catch(() => undefined);
+  }, BUILD_DISCONNECT_IDLE_MS);
+
+  timer.unref?.();
+  globalForPrisma.buildPrismaDisconnectTimer = timer;
 }
 
 export function resetPrismaClient() {
+  clearBuildPrismaDisconnectTimer();
+  const buildClient = globalForPrisma.buildPrisma;
+  globalForPrisma.buildPrisma = undefined;
   const client = globalForPrisma.prisma;
   globalForPrisma.prisma = undefined;
-  return client?.$disconnect().catch(() => undefined);
+  return Promise.allSettled([
+    buildClient?.$disconnect().catch(() => undefined),
+    client?.$disconnect().catch(() => undefined),
+  ]).then(() => undefined);
 }
 
-const prisma = new Proxy({} as PrismaClient, {
-  get(_target, prop, receiver) {
-    const client = getPrismaClient();
-    return Reflect.get(client as unknown as object, prop, receiver);
-  },
-});
+function createBuildPrismaClient() {
+  const client = createPrismaClient();
+  return client.$extends({
+    query: {
+      async $allOperations({ args, query }) {
+        try {
+          return await query(args);
+        } finally {
+          scheduleBuildPrismaDisconnect();
+        }
+      },
+    },
+  }) as PrismaClient;
+}
+
+function getBuildPrismaClient() {
+  clearBuildPrismaDisconnectTimer();
+
+  if (!globalForPrisma.buildPrisma) {
+    globalForPrisma.buildPrisma = createBuildPrismaClient();
+  }
+
+  return globalForPrisma.buildPrisma;
+}
+
+function getRuntimePrismaClient() {
+  if (!globalForPrisma.prisma) {
+    globalForPrisma.prisma = createPrismaClient();
+  }
+
+  return globalForPrisma.prisma;
+}
+
+const prisma = isNextBuildProcess
+  ? getBuildPrismaClient()
+  : getRuntimePrismaClient();
 
 export default prisma;
