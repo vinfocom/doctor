@@ -293,9 +293,11 @@ export default function DoctorLiveAdsPage() {
                 throw new Error(GENERIC_ERROR_MESSAGE);
             }
 
+            const assetUrl = data.url;
+
             setForm((current) => ({
                 ...current,
-                assetUrl: data.url,
+                assetUrl,
                 mimeType: data.mimeType || file.type,
             }));
             setMessage({ type: "success", text: "Asset uploaded successfully." });
