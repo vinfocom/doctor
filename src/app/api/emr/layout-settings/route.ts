@@ -172,6 +172,7 @@ export async function PUT(req: NextRequest) {
       section_order_json?: unknown;
       section_visibility_json?: unknown;
       print_visibility_json?: unknown;
+      complaint_display_mode?: unknown;
       custom_fields_json?: unknown;
       page_margin_json?: unknown;
       pdf_margin_json?: unknown;
@@ -195,6 +196,7 @@ export async function PUT(req: NextRequest) {
       sectionOrderJson: body.section_order_json,
       sectionVisibilityJson: body.section_visibility_json,
       printVisibilityJson: body.print_visibility_json,
+      complaintDisplayMode: body.complaint_display_mode,
       customFieldsJson: body.custom_fields_json,
       pageMarginJson: body.page_margin_json,
       pdfMarginJson: body.pdf_margin_json,

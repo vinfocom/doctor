@@ -253,6 +253,7 @@ export type EmrLayoutSettings = {
   section_order_json: EmrLayoutSectionKey[];
   section_visibility_json: EmrLayoutVisibilityMap;
   print_visibility_json: EmrLayoutVisibilityMap;
+  complaint_display_mode: "classic_inline" | "paired_grid";
   custom_fields_json: EmrLayoutCustomField[];
   page_margin_json: EmrLayoutMarginConfig;
   pdf_margin_json: EmrLayoutMarginConfig;

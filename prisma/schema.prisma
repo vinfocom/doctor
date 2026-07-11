@@ -788,6 +788,7 @@ model prescription_layout_settings {
   section_order_json     Json?
   section_visibility_json Json?
   print_visibility_json  Json?
+  complaint_display_mode String?  @default("paired_grid") @db.VarChar(32)
   custom_fields_json     Json?
   page_margin_json       Json?
   pdf_margin_json        Json?

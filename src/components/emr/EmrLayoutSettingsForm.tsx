@@ -100,6 +100,17 @@ const FONT_FAMILY_OPTIONS = [
   { value: "\"Courier New\", monospace", label: "Courier New" },
 ];
 
+const COMPLAINT_DISPLAY_MODE_OPTIONS = [
+  {
+    value: "paired_grid",
+    label: "New 2-column grouped",
+  },
+  {
+    value: "classic_inline",
+    label: "Classic inline",
+  },
+] as const;
+
 const PRESCRIPTION_VALIDITY_UNIT_OPTIONS = [
   { value: "day", label: "Days" },
   { value: "week", label: "Weeks" },
@@ -1171,6 +1182,7 @@ export default function EmrLayoutSettingsForm({
                         section_order_json: settings.section_order_json,
                         section_visibility_json: settings.section_visibility_json,
                         print_visibility_json: settings.print_visibility_json,
+                        complaint_display_mode: settings.complaint_display_mode,
                         custom_fields_json: customFieldDrafts,
                         page_margin_json: settings.page_margin_json,
                         pdf_margin_json: settings.pdf_margin_json,
@@ -1425,6 +1437,35 @@ export default function EmrLayoutSettingsForm({
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
                 >
                   {fontFamilyOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                  </select>
+              </label>
+              <label className="space-y-1">
+                <FieldLabel
+                  label="Complaint print style"
+                  hint="Choose how complaints appear in final, print, and PDF views for this doctor layout."
+                />
+                <select
+                  value={settings.complaint_display_mode ?? "paired_grid"}
+                  onChange={(event) =>
+                    setSettings((current) =>
+                      current
+                        ? {
+                            ...current,
+                            complaint_display_mode:
+                              event.target.value === "classic_inline"
+                                ? "classic_inline"
+                                : "paired_grid",
+                          }
+                        : current
+                    )
+                  }
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                >
+                  {COMPLAINT_DISPLAY_MODE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>

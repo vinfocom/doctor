@@ -22,6 +22,8 @@ import {
   Stethoscope,
   Trash2,
 } from "lucide-react";
+import PrintableComplaintGrid from "@/components/emr/PrintableComplaintGrid";
+import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
 import type {
   EmrComplaintPayload,
   EmrClinicalHistoryPayload,
@@ -41,7 +43,6 @@ import type {
   EmrPrescriptionRecord,
   EmrVitalsPayload,
 } from "@/lib/emr/types";
-import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
 import { normalizeMasterName } from "@/lib/emr/normalization";
 import { convertTo12Hour, convertTo24Hour } from "@/lib/timeUtils";
 
@@ -4965,15 +4966,23 @@ export default function DoctorAppointmentPadPage() {
             </div>
           </div>
         ) : null;
-      case "complaints":
-      {
-        const printableComplaints = getPrintableComplaints(editorState.complaints);
-        return printableSectionVisibility.complaints && printableComplaints.length > 0 ? (
+      case "complaints": {
+        const complaintDisplayMode =
+          layoutSettings?.complaint_display_mode ?? "paired_grid";
+        const printableComplaints = getPrintableComplaints(
+          editorState.complaints,
+          complaintDisplayMode
+        );
+        return printableSectionVisibility.complaints && editorState.complaints.length > 0 ? (
           <div key={`summary-${section}`}>
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-900">Complaints</p>
-            <p className="mt-1 text-sm text-gray-700">
-              {printableComplaints.map((item) => item.toUpperCase()).join(", ")}
-            </p>
+            {complaintDisplayMode === "classic_inline" ? (
+              <p className="mt-1 text-sm text-gray-700">
+                {printableComplaints.join(", ")}
+              </p>
+            ) : (
+              <PrintableComplaintGrid className="mt-1" complaints={editorState.complaints} />
+            )}
           </div>
         ) : null;
       }

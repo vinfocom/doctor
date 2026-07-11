@@ -1,9 +1,13 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
+import {
+  getPrintableComplaints,
+  getPrintableComplaintEntries,
+  type PrintableComplaintEntry,
+} from "@/lib/emr/complaintFormatting";
+import { getEmrPrintDensityMode } from "@/lib/emr/printDensity";
 import type {
   EmrClinicalHistorySection,
   EmrLayoutCustomField,
-  EmrLayoutSectionKey,
   EmrPrintablePrescription,
 } from "@/lib/emr/types";
 
@@ -13,7 +17,7 @@ const PAGE_MARGIN_X = 34;
 const PAGE_MARGIN_TOP = 36;
 const PAGE_MARGIN_BOTTOM = 34;
 const LINE_HEIGHT = 15;
-const SECTION_GAP = 10;
+const SECTION_GAP = 6;
 const BORDER_COLOR = rgb(0.88, 0.9, 0.93);
 const SUBTLE_TEXT = rgb(0.4, 0.45, 0.52);
 const TEXT_COLOR = rgb(0.12, 0.14, 0.18);
@@ -56,6 +60,71 @@ type TableColumn = {
   width: number;
   align?: "left" | "center";
 };
+
+type PrintDensityProfile = {
+  mode: "normal" | "compact";
+  sectionGap: number;
+  headingGap: number;
+  paragraphLineHeight: number;
+  complaintColumnGap: number;
+  complaintRowLineHeight: number;
+  complaintItemGap: number;
+  complaintNameSize: number;
+  complaintDetailSize: number;
+  medicineHeaderHeight: number;
+  medicineTitleSize: number;
+  medicineBodySize: number;
+  medicineBodyLineStep: number;
+  medicineMinRowHeight: number;
+  medicineRowPadding: number;
+  medicineRowLineFactor: number;
+};
+
+function getPrintDensityProfile(
+  printable: EmrPrintablePrescription
+): PrintDensityProfile {
+  const mode = getEmrPrintDensityMode(printable);
+
+  if (mode === "compact") {
+    return {
+      mode,
+      sectionGap: 5,
+      headingGap: 10,
+      paragraphLineHeight: 11,
+      complaintColumnGap: 10,
+      complaintRowLineHeight: 11,
+      complaintItemGap: 2,
+      complaintNameSize: 8.6,
+      complaintDetailSize: 8.4,
+      medicineHeaderHeight: 16,
+      medicineTitleSize: 8.6,
+      medicineBodySize: 7.2,
+      medicineBodyLineStep: 7.5,
+      medicineMinRowHeight: 16,
+      medicineRowPadding: 5,
+      medicineRowLineFactor: 8.2,
+    };
+  }
+
+  return {
+    mode,
+    sectionGap: SECTION_GAP,
+    headingGap: 11,
+    paragraphLineHeight: 12,
+    complaintColumnGap: 12,
+    complaintRowLineHeight: 12,
+    complaintItemGap: 2,
+    complaintNameSize: 9,
+    complaintDetailSize: 9,
+    medicineHeaderHeight: 18,
+    medicineTitleSize: 9,
+    medicineBodySize: 7.5,
+    medicineBodyLineStep: 8,
+    medicineMinRowHeight: 18,
+    medicineRowPadding: 6,
+    medicineRowLineFactor: 9,
+  };
+}
 
 function toPdfSafeText(value: string | null | undefined) {
   const normalized = (value ?? "").normalize("NFKD").replace(/[^\x20-\x7E\u00A0-\u00FF]/g, " ");
@@ -426,11 +495,12 @@ function drawSectionHeading(
   pdf: PDFDocument,
   state: PageState,
   heading: string,
-  fonts: FontSet
+  fonts: FontSet,
+  density: PrintDensityProfile
 ) {
   const next = ensureRoom(pdf, state, 18);
   drawTextLine(next.page, upper(heading), PAGE_MARGIN_X, next.y, fonts.bold, 10, rgb(0, 0, 0));
-  return { ...next, y: next.y - 14 };
+  return { ...next, y: next.y - density.headingGap };
 }
 
 function drawSimpleSection(
@@ -438,19 +508,20 @@ function drawSimpleSection(
   state: PageState,
   heading: string,
   value: string,
-  fonts: FontSet
+  fonts: FontSet,
+  density: PrintDensityProfile
 ) {
   if (!value.trim()) return state;
 
-  let next = drawSectionHeading(pdf, state, heading, fonts);
+  let next = drawSectionHeading(pdf, state, heading, fonts, density);
   next = drawWrappedParagraph(pdf, next, upper(value), {
     x: PAGE_MARGIN_X,
     maxWidth: PAGE_WIDTH - PAGE_MARGIN_X * 2,
     font: fonts.regular,
     size: 10,
-    lineHeight: 14,
+    lineHeight: density.paragraphLineHeight,
   });
-  return { ...next, y: next.y - SECTION_GAP };
+  return { ...next, y: next.y - density.sectionGap };
 }
 
 function drawListSection(
@@ -458,11 +529,174 @@ function drawListSection(
   state: PageState,
   heading: string,
   values: string[],
-  fonts: FontSet
+  fonts: FontSet,
+  density: PrintDensityProfile
 ) {
   const filtered = values.map((value) => upper(value)).filter(Boolean);
   if (filtered.length === 0) return state;
-  return drawSimpleSection(pdf, state, heading, filtered.join(", "), fonts);
+  return drawSimpleSection(pdf, state, heading, filtered.join(", "), fonts, density);
+}
+
+function splitTextToFit(text: string, font: PDFFont, size: number, maxWidth: number) {
+  const safeText = upper(text);
+  if (!safeText) return [];
+  if (font.widthOfTextAtSize(safeText, size) <= maxWidth) return [safeText];
+
+  const parts: string[] = [];
+  let current = "";
+  for (const character of safeText) {
+    const next = `${current}${character}`;
+    if (current && font.widthOfTextAtSize(next, size) > maxWidth) {
+      parts.push(current);
+      current = character.trim() ? character : "";
+      continue;
+    }
+    current = next;
+  }
+
+  if (current.trim()) {
+    parts.push(current);
+  }
+
+  return parts;
+}
+
+function wrapComplaintCell(
+  item: PrintableComplaintEntry,
+  fonts: FontSet,
+  size: number,
+  maxWidth: number
+) {
+  const name = upper(item.name);
+  const detail = upper(item.detailText);
+  const nameWidth = name ? fonts.bold.widthOfTextAtSize(name, size) : 0;
+  const detailPrefix = detail ? " - " : "";
+  const detailInline = detail ? `${detailPrefix}${detail}` : "";
+  const detailInlineWidth = detailInline
+    ? fonts.regular.widthOfTextAtSize(detailInline, size)
+    : 0;
+
+  if (name && detail && nameWidth + detailInlineWidth <= maxWidth) {
+    return [{ name, detail: detailInline, inline: true }];
+  }
+
+  const lines: Array<{ name?: string; detail?: string; inline?: boolean }> = [];
+  if (name) {
+    lines.push({ name });
+  }
+
+  if (detail) {
+    const detailLines = wrapText(detail, fonts.regular, size, maxWidth);
+    if (detailLines.length === 0) {
+      splitTextToFit(detail, fonts.regular, size, maxWidth).forEach((line) => {
+        lines.push({ detail: line });
+      });
+    } else {
+      detailLines.forEach((line) => {
+        lines.push({ detail: line });
+      });
+    }
+  }
+
+  return lines;
+}
+
+function drawComplaintSection(
+  pdf: PDFDocument,
+  state: PageState,
+  heading: string,
+  complaints: PrintableComplaintEntry[],
+  fonts: FontSet,
+  density: PrintDensityProfile
+) {
+  if (complaints.length === 0) return state;
+
+  const columnGap = density.complaintColumnGap;
+  const columnWidth = (PAGE_WIDTH - PAGE_MARGIN_X * 2 - columnGap) / 2;
+  const rowLineHeight = density.complaintRowLineHeight;
+  const itemGap = density.complaintItemGap;
+  let next = drawSectionHeading(pdf, state, heading, fonts, density);
+
+  for (let index = 0; index < complaints.length; index += 2) {
+    const leftLines = wrapComplaintCell(
+      complaints[index],
+      fonts,
+      density.complaintDetailSize,
+      columnWidth
+    );
+    const rightLines =
+      complaints[index + 1]
+        ? wrapComplaintCell(
+            complaints[index + 1],
+            fonts,
+            density.complaintDetailSize,
+            columnWidth
+          )
+        : [];
+    const rowLineCount = Math.max(leftLines.length, rightLines.length, 1);
+    const rowHeight = rowLineCount * rowLineHeight + itemGap;
+
+    next = ensureRoom(pdf, next, rowHeight);
+    const rowTop = next.y;
+    const leftX = PAGE_MARGIN_X;
+    const rightX = PAGE_MARGIN_X + columnWidth + columnGap;
+
+    leftLines.forEach((line, lineIndex) => {
+      const lineY = rowTop - lineIndex * rowLineHeight;
+      if (line.name) {
+        drawTextLine(
+          next.page,
+          line.name,
+          leftX,
+          lineY,
+          fonts.bold,
+          density.complaintNameSize
+        );
+      }
+      if (line.detail) {
+        drawTextLine(
+          next.page,
+          line.detail,
+          line.inline && line.name
+            ? leftX + fonts.bold.widthOfTextAtSize(line.name, density.complaintNameSize)
+            : leftX,
+          lineY,
+          fonts.regular,
+          density.complaintDetailSize
+        );
+      }
+    });
+
+    rightLines.forEach((line, lineIndex) => {
+      const lineY = rowTop - lineIndex * rowLineHeight;
+      if (line.name) {
+        drawTextLine(
+          next.page,
+          line.name,
+          rightX,
+          lineY,
+          fonts.bold,
+          density.complaintNameSize
+        );
+      }
+      if (line.detail) {
+        drawTextLine(
+          next.page,
+          line.detail,
+          line.inline && line.name
+            ? rightX + fonts.bold.widthOfTextAtSize(line.name, density.complaintNameSize)
+            : rightX,
+          lineY,
+          fonts.regular,
+          density.complaintDetailSize
+        );
+      }
+    });
+
+    next = { ...next, y: rowTop - rowHeight };
+  }
+
+  return { ...next, y: next.y - density.sectionGap };
 }
 
 function drawHeaderBlock(
@@ -534,7 +768,7 @@ function drawPatientMeta(
     maxWidth: PAGE_WIDTH - PAGE_MARGIN_X * 2,
     font: fonts.bold,
     size: 10,
-    lineHeight: 14,
+    lineHeight: 12,
   });
 
   drawDivider(next.page, next.y - 2);
@@ -545,12 +779,13 @@ function drawVitalsSection(
   pdf: PDFDocument,
   state: PageState,
   printable: EmrPrintablePrescription,
-  fonts: FontSet
+  fonts: FontSet,
+  density: PrintDensityProfile
 ) {
   const entries = getVitalsSummaryEntries(printable.prescription.vitals || null);
   if (entries.length === 0) return state;
 
-  let next = drawSectionHeading(pdf, state, "VITALS", fonts);
+  let next = drawSectionHeading(pdf, state, "VITALS", fonts, density);
   const vitalsText = entries
     .map((entry) => `${entry.key} ${upper(entry.value)}${entry.unit ? ` ${entry.unit}` : ""}`)
     .join("   ");
@@ -559,10 +794,10 @@ function drawVitalsSection(
     maxWidth: PAGE_WIDTH - PAGE_MARGIN_X * 2,
     font: fonts.regular,
     size: 10,
-    lineHeight: 14,
+    lineHeight: density.paragraphLineHeight,
   });
 
-  return { ...next, y: next.y - SECTION_GAP };
+  return { ...next, y: next.y - density.sectionGap };
 }
 
 function buildMedicineRows(printable: EmrPrintablePrescription) {
@@ -578,13 +813,19 @@ function buildMedicineRows(printable: EmrPrintablePrescription) {
   }));
 }
 
-function drawMedicineTableHeader(page: PDFPage, y: number, columns: TableColumn[], fonts: FontSet) {
+function drawMedicineTableHeader(
+  page: PDFPage,
+  y: number,
+  columns: TableColumn[],
+  fonts: FontSet,
+  density: PrintDensityProfile
+) {
   const tableWidth = columns.reduce((sum, column) => sum + column.width, 0);
   page.drawRectangle({
     x: PAGE_MARGIN_X,
-    y: y - 18,
+    y: y - density.medicineHeaderHeight,
     width: tableWidth,
-    height: 18,
+    height: density.medicineHeaderHeight,
     color: TABLE_HEADER_BG,
     borderColor: BORDER_COLOR,
     borderWidth: 1,
@@ -592,11 +833,19 @@ function drawMedicineTableHeader(page: PDFPage, y: number, columns: TableColumn[
 
   let cursorX = PAGE_MARGIN_X;
   for (const column of columns) {
-    drawTextLine(page, upper(column.label), cursorX + 4, y - 12, fonts.bold, 8, SUBTLE_TEXT);
+    drawTextLine(
+      page,
+      upper(column.label),
+      cursorX + 4,
+      y - (density.mode === "compact" ? 11 : 12),
+      fonts.bold,
+      8,
+      SUBTLE_TEXT
+    );
     cursorX += column.width;
     if (cursorX < PAGE_MARGIN_X + tableWidth) {
       page.drawLine({
-        start: { x: cursorX, y: y - 18 },
+        start: { x: cursorX, y: y - density.medicineHeaderHeight },
         end: { x: cursorX, y },
         thickness: 1,
         color: BORDER_COLOR,
@@ -609,12 +858,13 @@ function drawMedicineTable(
   pdf: PDFDocument,
   state: PageState,
   printable: EmrPrintablePrescription,
-  fonts: FontSet
+  fonts: FontSet,
+  density: PrintDensityProfile
 ) {
   const rows = buildMedicineRows(printable);
   if (rows.length === 0) return state;
 
-  let next = drawSectionHeading(pdf, state, "RX", fonts);
+  let next = drawSectionHeading(pdf, state, "RX", fonts, density);
   const tableX = PAGE_MARGIN_X;
   const tableWidth = PAGE_WIDTH - PAGE_MARGIN_X * 2;
   const columns: TableColumn[] = [
@@ -627,23 +877,25 @@ function drawMedicineTable(
     { key: "notes", label: "NOTES", width: 63 },
   ];
 
-  next = ensureRoom(pdf, next, 26);
-  drawMedicineTableHeader(next.page, next.y, columns, fonts);
-  next = { ...next, y: next.y - 18 };
-  let currentTableTop = next.y + 18;
+  next = ensureRoom(pdf, next, density.medicineHeaderHeight + 8);
+  drawMedicineTableHeader(next.page, next.y, columns, fonts, density);
+  next = { ...next, y: next.y - density.medicineHeaderHeight };
+  let currentTableTop = next.y + density.medicineHeaderHeight;
 
   for (const row of rows) {
     const medicineLines = [
-      ...wrapText(row.medicine, fonts.bold, 9.5, columns[1]!.width - 8),
-      ...(row.subtext ? wrapText(row.subtext, fonts.regular, 7.5, columns[1]!.width - 8) : []),
+      ...wrapText(row.medicine, fonts.bold, density.medicineTitleSize, columns[1]!.width - 8),
+      ...(row.subtext
+        ? wrapText(row.subtext, fonts.regular, density.medicineBodySize, columns[1]!.width - 8)
+        : []),
     ];
 
-    const doseLines = wrapText(row.dose, fonts.regular, 8.5, columns[2]!.width - 8);
-    const whenLines = wrapText(row.when, fonts.regular, 8.5, columns[3]!.width - 8);
-    const frequencyLines = wrapText(row.frequency, fonts.regular, 8.5, columns[4]!.width - 8);
-    const durationLines = wrapText(row.duration, fonts.regular, 8.5, columns[5]!.width - 8);
-    const noteLines = wrapText(row.notes, fonts.regular, 8.5, columns[6]!.width - 8);
-    const typeLines = wrapText(row.type, fonts.regular, 8.5, columns[0]!.width - 8);
+    const doseLines = wrapText(row.dose, fonts.regular, density.medicineBodySize, columns[2]!.width - 8);
+    const whenLines = wrapText(row.when, fonts.regular, density.medicineBodySize, columns[3]!.width - 8);
+    const frequencyLines = wrapText(row.frequency, fonts.regular, density.medicineBodySize, columns[4]!.width - 8);
+    const durationLines = wrapText(row.duration, fonts.regular, density.medicineBodySize, columns[5]!.width - 8);
+    const noteLines = wrapText(row.notes, fonts.regular, density.medicineBodySize, columns[6]!.width - 8);
+    const typeLines = wrapText(row.type, fonts.regular, density.medicineBodySize, columns[0]!.width - 8);
 
     const lineCount = Math.max(
       typeLines.length || 1,
@@ -654,16 +906,19 @@ function drawMedicineTable(
       durationLines.length || 1,
       noteLines.length || 1
     );
-    const rowHeight = Math.max(22, lineCount * 11 + 8);
+    const rowHeight = Math.max(
+      density.medicineMinRowHeight,
+      lineCount * density.medicineRowLineFactor + density.medicineRowPadding
+    );
 
     const previousPage = next.page;
     next = ensureRoom(pdf, next, rowHeight + 1);
     if (next.y === PAGE_HEIGHT - PAGE_MARGIN_TOP) {
-      drawMedicineTableHeader(next.page, next.y, columns, fonts);
-      next = { ...next, y: next.y - 18 };
-      currentTableTop = next.y + 18;
+      drawMedicineTableHeader(next.page, next.y, columns, fonts, density);
+      next = { ...next, y: next.y - density.medicineHeaderHeight };
+      currentTableTop = next.y + density.medicineHeaderHeight;
     } else if (next.page !== previousPage) {
-      currentTableTop = next.y + 18;
+      currentTableTop = next.y + density.medicineHeaderHeight;
     }
 
     const rowTop = next.y;
@@ -710,7 +965,7 @@ function drawMedicineTable(
       }
 
       const lines = cellLinesMap[column.key] ?? ["-"];
-      let lineY = rowTop - 11;
+      let lineY = rowTop - density.medicineBodyLineStep;
       lines.forEach((line, lineIndex) => {
         const isMedicineTitle = column.key === "medicine" && lineIndex === 0;
         drawTextLine(
@@ -719,10 +974,10 @@ function drawMedicineTable(
           cursorX + 4,
           lineY,
           isMedicineTitle ? fonts.bold : fonts.regular,
-          isMedicineTitle ? 9.5 : 8,
+          isMedicineTitle ? density.medicineTitleSize : density.medicineBodySize,
           isMedicineTitle ? TEXT_COLOR : column.key === "medicine" && lineIndex > 0 ? SUBTLE_TEXT : TEXT_COLOR
         );
-        lineY -= 10;
+        lineY -= density.medicineBodyLineStep;
       });
 
       cursorX += column.width;
@@ -731,7 +986,7 @@ function drawMedicineTable(
     next = { ...next, y: rowBottom };
   }
 
-  return { ...next, y: next.y - SECTION_GAP };
+  return { ...next, y: next.y - density.sectionGap };
 }
 
 function drawOrderedBodySections(
@@ -742,6 +997,7 @@ function drawOrderedBodySections(
 ) {
   let next = state;
   const layout = printable.layout_settings;
+  const density = getPrintDensityProfile(printable);
   const visibleSections = layout.section_order_json.filter(
     (section) => layout.print_visibility_json[section]
   );
@@ -749,18 +1005,31 @@ function drawOrderedBodySections(
   for (const section of visibleSections) {
     switch (section) {
       case "vitals":
-        next = drawVitalsSection(pdf, next, printable, fonts);
+        next = drawVitalsSection(pdf, next, printable, fonts, density);
         break;
       case "complaints":
-        next = drawListSection(
-          pdf,
-          next,
-          "COMPLAINTS",
-          getPrintableComplaints(printable.prescription.complaints).map((item) =>
-            item.toUpperCase()
-          ),
-          fonts
-        );
+        if (printable.layout_settings.complaint_display_mode === "classic_inline") {
+          next = drawListSection(
+            pdf,
+            next,
+            "COMPLAINTS",
+            getPrintableComplaints(
+              printable.prescription.complaints,
+              printable.layout_settings.complaint_display_mode
+            ),
+            fonts,
+            density
+          );
+        } else {
+          next = drawComplaintSection(
+            pdf,
+            next,
+            "COMPLAINTS",
+            getPrintableComplaintEntries(printable.prescription.complaints),
+            fonts,
+            density
+          );
+        }
         break;
       case "diagnosis":
         next = drawListSection(
@@ -768,11 +1037,12 @@ function drawOrderedBodySections(
           next,
           "DIAGNOSIS",
           printable.prescription.diagnosis.map((item) => item.name),
-          fonts
+          fonts,
+          density
         );
         break;
       case "medicines":
-        next = drawMedicineTable(pdf, next, printable, fonts);
+        next = drawMedicineTable(pdf, next, printable, fonts, density);
         break;
       case "advice":
         next = drawListSection(
@@ -780,7 +1050,8 @@ function drawOrderedBodySections(
           next,
           "ADVICE",
           printable.prescription.advice.map((item) => item.name),
-          fonts
+          fonts,
+          density
         );
         break;
       case "tests":
@@ -789,14 +1060,15 @@ function drawOrderedBodySections(
           next,
           "TESTS REQUESTED",
           printable.prescription.tests.map((item) => item.name),
-          fonts
+          fonts,
+          density
         );
         break;
       case "next_visit": {
         const value = printable.prescription.follow_up_appointment
           ? formatFollowUpSummary(printable.prescription.follow_up_appointment)
           : formatDateDdMmYyyy(printable.prescription.next_visit_date);
-        next = drawSimpleSection(pdf, next, "NEXT VISIT", value, fonts);
+        next = drawSimpleSection(pdf, next, "NEXT VISIT", value, fonts, density);
         break;
       }
       default:
@@ -807,7 +1079,8 @@ function drawOrderedBodySections(
             next,
             CLINICAL_HISTORY_LABELS[clinicalSection],
             getClinicalHistoryDetails(printable.prescription, clinicalSection),
-            fonts
+            fonts,
+            density
           );
         }
         break;
@@ -825,7 +1098,14 @@ function drawOrderedBodySections(
     const displayValue = formatCustomFieldPrintValue(field.field_type, value);
     if (!displayValue) continue;
 
-    next = drawSimpleSection(pdf, next, upper(field.field_label), displayValue, fonts);
+    next = drawSimpleSection(
+      pdf,
+      next,
+      upper(field.field_label),
+      displayValue,
+      fonts,
+      density
+    );
   }
 
   return next;

@@ -4,7 +4,9 @@
 
 import { useMemo, useState, type CSSProperties } from "react";
 import EmrPrintActions from "@/components/emr/EmrPrintActions";
+import PrintableComplaintGrid from "@/components/emr/PrintableComplaintGrid";
 import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
+import { getEmrPrintDensityMode } from "@/lib/emr/printDensity";
 import type {
   EmrClinicalHistorySection,
   EmrLayoutSectionKey,
@@ -63,6 +65,10 @@ const CLINICAL_HISTORY_SECTIONS: EmrClinicalHistorySection[] = [
 const MEDICINE_PRINT_GRID_COLUMNS = "0.75fr 2.4fr 1.4fr 1fr 1fr 0.9fr 1fr";
 
 const DOSE_SEPARATOR = " . ";
+
+function joinClasses(...values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(" ");
+}
 
 function formatCustomFieldPrintValue(
   fieldType: "text" | "textarea" | "number" | "date" | "checkbox",
@@ -1414,6 +1420,10 @@ export default function EmrPrintablePrescriptionView({
   const layout = printable.layout_settings;
   const printVisibility = layout.print_visibility_json;
   const prescription = printable.prescription;
+  const printDensity = useMemo(
+    () => getEmrPrintDensityMode(printable),
+    [printable]
+  );
   const printPlacement = layout.page_margin_json;
   const pageTop = cssLength(printPlacement.top, "24px");
   const pageRight = cssLength(printPlacement.right, "24px");
@@ -1475,7 +1485,12 @@ export default function EmrPrintablePrescriptionView({
         return vitalsSummaryEntries.length > 0 ? (
           <section
             key={section}
-            className="emr-print-section space-y-3 print:space-y-1"
+            className={joinClasses(
+              "emr-print-section",
+              printDensity === "compact"
+                ? "space-y-1 print:space-y-0.5"
+                : "space-y-2 print:space-y-0.5"
+            )}
           >
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.vitals)}
@@ -1495,32 +1510,73 @@ export default function EmrPrintablePrescriptionView({
         ) : null;
       case "complaints":
       {
-        const printableComplaints = getPrintableComplaints(prescription.complaints);
-        return printableComplaints.length > 0 ? (
-          <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">
+        const complaintDisplayMode = layout.complaint_display_mode ?? "paired_grid";
+        const printableComplaints = getPrintableComplaints(
+          prescription.complaints,
+          complaintDisplayMode
+        );
+        return prescription.complaints.length > 0 ? (
+          <section
+            key={section}
+            className={joinClasses(
+              "emr-print-section",
+              printDensity === "compact"
+                ? "space-y-1 print:space-y-0.5"
+                : "space-y-1.5 print:space-y-0.5"
+            )}
+          >
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.complaints)}
             </h2>
-            <p className="text-sm text-gray-700">
-              {printableComplaints.map((item) => item.toUpperCase()).join(", ")}
-            </p>
+            {complaintDisplayMode === "classic_inline" ? (
+              <p
+                className={joinClasses(
+                  "text-gray-700",
+                  printDensity === "compact"
+                    ? "text-[12px] leading-4 print:text-[11px]"
+                    : "text-sm"
+                )}
+              >
+                {printableComplaints.join(", ")}
+              </p>
+            ) : (
+              <PrintableComplaintGrid
+                complaints={prescription.complaints}
+                density={printDensity}
+              />
+            )}
           </section>
         ) : null;
       }
       case "diagnosis":
         return prescription.diagnosis.length > 0 ? (
-          <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">
+          <section
+            key={section}
+            className={joinClasses(
+              "emr-print-section",
+              printDensity === "compact"
+                ? "space-y-1 print:space-y-0.5"
+                : "space-y-2 print:space-y-0.5"
+            )}
+          >
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.diagnosis)}
             </h2>
-            <p className="text-sm text-gray-700">{toUpperListDisplay(prescription.diagnosis)}</p>
+            <p className={joinClasses("text-gray-700", printDensity === "compact" ? "text-[12px] leading-4 print:text-[11px]" : "text-sm")}>
+              {toUpperListDisplay(prescription.diagnosis)}
+            </p>
           </section>
         ) : null;
       case "medicines":
         return prescription.medicines.length > 0 ? (
             <section
               key={section}
-            className="emr-print-section emr-print-medicines-section space-y-3 print:space-y-1"
+            className={joinClasses(
+              "emr-print-section emr-print-medicines-section",
+              printDensity === "compact"
+                ? "space-y-1 print:space-y-0.5"
+                : "space-y-2 print:space-y-0.5"
+            )}
           >
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.medicines)}
@@ -1530,13 +1586,13 @@ export default function EmrPrintablePrescriptionView({
                 className="emr-print-rx-grid-header grid border-b border-gray-200 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500"
                 style={{ gridTemplateColumns: MEDICINE_PRINT_GRID_COLUMNS }}
               >
-                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.type)}</div>
-                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.medicine)}</div>
-                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.dose)}</div>
-                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.when)}</div>
-                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.frequency)}</div>
-                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.duration)}</div>
-                <div className="px-3 py-2 print:px-2 print:py-1.5">{toUpperText(t.notes)}</div>
+                <div className="px-3 py-2 print:px-2 print:py-1">{toUpperText(t.type)}</div>
+                <div className="px-3 py-2 print:px-2 print:py-1">{toUpperText(t.medicine)}</div>
+                <div className="px-3 py-2 print:px-2 print:py-1">{toUpperText(t.dose)}</div>
+                <div className="px-3 py-2 print:px-2 print:py-1">{toUpperText(t.when)}</div>
+                <div className="px-3 py-2 print:px-2 print:py-1">{toUpperText(t.frequency)}</div>
+                <div className="px-3 py-2 print:px-2 print:py-1">{toUpperText(t.duration)}</div>
+                <div className="px-3 py-2 print:px-2 print:py-1">{toUpperText(t.notes)}</div>
               </div>
               <div className="divide-y divide-gray-100 bg-white">
                 {prescription.medicines.map((medicine, index) => (
@@ -1545,43 +1601,99 @@ export default function EmrPrintablePrescriptionView({
                     className="emr-print-rx-grid-row grid items-start text-sm text-gray-700"
                     style={{ gridTemplateColumns: MEDICINE_PRINT_GRID_COLUMNS }}
                   >
-                    <div className="px-3 py-2 print:px-2 print:py-1">
+                    <div
+                      className={joinClasses(
+                        "px-3 py-2",
+                        printDensity === "compact"
+                          ? "print:px-2 print:py-0.5"
+                          : "print:px-2 print:py-1"
+                      )}
+                    >
                       {toUpperDisplayValue(medicine.type, "-")}
                     </div>
-                    <div className="px-3 py-2 print:px-2 print:py-1">
-                      <p className="font-semibold text-gray-900">
+                    <div
+                      className={joinClasses(
+                        "px-3 py-2",
+                        printDensity === "compact"
+                          ? "print:px-2 print:py-0.5"
+                          : "print:px-2 print:py-1"
+                      )}
+                    >
+                      <p className={joinClasses("font-semibold text-gray-900", printDensity === "compact" ? "leading-tight text-[12px]" : "leading-tight")}>
                         {medicine.medicine_name?.trim().toUpperCase() || "-"}
                       </p>
                       {medicine.salt_composition?.trim() ? (
-                        <p className="mt-1 text-xs text-gray-500 print:mt-0">
+                        <p
+                          className={joinClasses(
+                            "text-xs leading-tight text-gray-500",
+                            printDensity === "compact"
+                              ? "mt-0 print:mt-0"
+                              : "mt-0.5 print:mt-0"
+                          )}
+                        >
                           {medicine.salt_composition.trim().toUpperCase()}
                         </p>
                       ) : null}
                     </div>
-                    <div className="px-3 py-2 print:px-2 print:py-1">
-                      <p className="font-medium leading-snug text-gray-900">
+                    <div
+                      className={joinClasses(
+                        "px-3 py-2",
+                        printDensity === "compact"
+                          ? "print:px-2 print:py-0.5"
+                          : "print:px-2 print:py-1"
+                      )}
+                    >
+                      <p className={joinClasses("font-medium text-gray-900", printDensity === "compact" ? "leading-tight text-[12px]" : "leading-snug")}>
                         {getDoseExplanation(medicine.dose, language) ||
                           toUpperDisplayValue(formatDoseInput(medicine.dose), "-")}
                       </p>
                     </div>
-                    <div className="px-3 py-2 print:px-2 print:py-1">
+                    <div
+                      className={joinClasses(
+                        "px-3 py-2",
+                        printDensity === "compact"
+                          ? "print:px-2 print:py-0.5 print:text-[11px]"
+                          : "print:px-2 print:py-1"
+                      )}
+                    >
                       {translateControlledValue(
                         medicine.timing,
                         language,
                         CONTROLLED_TIMING_TRANSLATIONS
                       )}
                     </div>
-                    <div className="px-3 py-2 print:px-2 print:py-1">
+                    <div
+                      className={joinClasses(
+                        "px-3 py-2",
+                        printDensity === "compact"
+                          ? "print:px-2 print:py-0.5 print:text-[11px]"
+                          : "print:px-2 print:py-1"
+                      )}
+                    >
                       {translateControlledValue(
                         medicine.frequency,
                         language,
                         CONTROLLED_FREQUENCY_TRANSLATIONS
                       )}
                     </div>
-                    <div className="px-3 py-2 print:px-2 print:py-1">
+                    <div
+                      className={joinClasses(
+                        "px-3 py-2",
+                        printDensity === "compact"
+                          ? "print:px-2 print:py-0.5 print:text-[11px]"
+                          : "print:px-2 print:py-1"
+                      )}
+                    >
                       {formatDuration(medicine, language)}
                     </div>
-                    <div className="break-words px-3 py-2 print:px-2 print:py-1">
+                    <div
+                      className={joinClasses(
+                        "break-words px-3 py-2",
+                        printDensity === "compact"
+                          ? "print:px-2 print:py-0.5 print:text-[11px]"
+                          : "print:px-2 print:py-1"
+                      )}
+                    >
                       {toUpperDisplayValue(medicine.notes, "-")}
                     </div>
                   </div>
@@ -1592,29 +1704,57 @@ export default function EmrPrintablePrescriptionView({
         ) : null;
       case "advice":
         return prescription.advice.length > 0 ? (
-          <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">
+          <section
+            key={section}
+            className={joinClasses(
+              "emr-print-section",
+              printDensity === "compact"
+                ? "space-y-1 print:space-y-0.5"
+                : "space-y-2 print:space-y-0.5"
+            )}
+          >
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.advice)}
             </h2>
-            <p className="text-sm text-gray-700">{toUpperListDisplay(prescription.advice)}</p>
+            <p className={joinClasses("text-gray-700", printDensity === "compact" ? "text-[12px] leading-4 print:text-[11px]" : "text-sm")}>
+              {toUpperListDisplay(prescription.advice)}
+            </p>
           </section>
         ) : null;
       case "tests":
         return prescription.tests.length > 0 ? (
-          <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">
+          <section
+            key={section}
+            className={joinClasses(
+              "emr-print-section",
+              printDensity === "compact"
+                ? "space-y-1 print:space-y-0.5"
+                : "space-y-2 print:space-y-0.5"
+            )}
+          >
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.testsRequested)}
             </h2>
-            <p className="text-sm text-gray-700">{toUpperListDisplay(prescription.tests)}</p>
+            <p className={joinClasses("text-gray-700", printDensity === "compact" ? "text-[12px] leading-4 print:text-[11px]" : "text-sm")}>
+              {toUpperListDisplay(prescription.tests)}
+            </p>
           </section>
         ) : null;
       case "next_visit":
         return hasNextVisit ? (
-          <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">
+          <section
+            key={section}
+            className={joinClasses(
+              "emr-print-section",
+              printDensity === "compact"
+                ? "space-y-1 print:space-y-0.5"
+                : "space-y-2 print:space-y-0.5"
+            )}
+          >
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               {toUpperText(t.nextVisit)}
             </h2>
-            <p className="text-sm text-gray-700">
+            <p className={joinClasses("text-gray-700", printDensity === "compact" ? "text-[12px] leading-4 print:text-[11px]" : "text-sm")}>
               {prescription.follow_up_appointment
                 ? toUpperText(formatFollowUpSummary(prescription.follow_up_appointment))
                 : prescription.next_visit_date
@@ -1630,11 +1770,26 @@ export default function EmrPrintablePrescriptionView({
           if (details.length === 0) return null;
 
           return (
-            <section key={section} className="emr-print-section space-y-2 print:space-y-0.5">
+            <section
+              key={section}
+              className={joinClasses(
+                "emr-print-section",
+                printDensity === "compact"
+                  ? "space-y-1 print:space-y-0.5"
+                  : "space-y-2 print:space-y-0.5"
+              )}
+            >
               <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
                 {toUpperText(getClinicalHistoryHeading(clinicalSection, language))}
               </h2>
-              <p className="whitespace-pre-wrap text-sm text-gray-700">
+              <p
+                className={joinClasses(
+                  "whitespace-pre-wrap text-gray-700",
+                  printDensity === "compact"
+                    ? "text-[12px] leading-4 print:text-[11px]"
+                    : "text-sm"
+                )}
+              >
                 {toUpperText(details.join(", "))}
               </p>
             </section>

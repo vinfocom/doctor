@@ -16,6 +16,7 @@ type LayoutRow = {
   section_order_json: unknown;
   section_visibility_json: unknown;
   print_visibility_json: unknown;
+  complaint_display_mode: string | null;
   custom_fields_json: unknown;
   page_margin_json: unknown;
   pdf_margin_json: unknown;
@@ -134,6 +135,10 @@ const PRINT_PAPER_PRESETS = new Set<EmrPrintPaperPreset>([
   "header_only",
   "custom",
 ]);
+
+function normalizeComplaintDisplayMode(value: unknown) {
+  return value === "classic_inline" ? "classic_inline" : "paired_grid";
+}
 
 function normalizeMeasurement(
   value: string | null | undefined,
@@ -413,6 +418,9 @@ async function mapLayoutRow(row: LayoutRow): Promise<EmrLayoutSettings> {
       row.print_visibility_json,
       DEFAULT_PRINT_VISIBILITY
     ),
+    complaint_display_mode: normalizeComplaintDisplayMode(
+      row.complaint_display_mode
+    ),
     custom_fields_json: jsonCustomFields,
     page_margin_json: normalizeMarginConfig(row.page_margin_json),
     pdf_margin_json: normalizeMarginConfig(row.pdf_margin_json),
@@ -441,6 +449,7 @@ export function getDefaultPrescriptionLayoutSettings(input?: {
     section_order_json: [...DEFAULT_SECTION_ORDER],
     section_visibility_json: { ...DEFAULT_SECTION_VISIBILITY },
     print_visibility_json: { ...DEFAULT_PRINT_VISIBILITY },
+    complaint_display_mode: "paired_grid",
     custom_fields_json: [],
     page_margin_json: { ...DEFAULT_MARGIN_CONFIG },
     pdf_margin_json: { ...DEFAULT_MARGIN_CONFIG },
@@ -531,6 +540,9 @@ export async function resolvePrescriptionLayoutSettings(input: {
       saved.print_visibility_json,
       DEFAULT_PRINT_VISIBILITY
     ),
+    complaint_display_mode: normalizeComplaintDisplayMode(
+      saved.complaint_display_mode
+    ),
     page_margin_json: normalizeMarginConfig(saved.page_margin_json),
     pdf_margin_json: normalizeMarginConfig(saved.pdf_margin_json),
     custom_fields_json: normalizeCustomFieldsJson(saved.custom_fields_json),
@@ -547,6 +559,7 @@ export async function savePrescriptionLayoutSettings(input: {
   sectionOrderJson?: unknown;
   sectionVisibilityJson?: unknown;
   printVisibilityJson?: unknown;
+  complaintDisplayMode?: unknown;
   customFieldsJson?: unknown;
   pageMarginJson?: unknown;
   pdfMarginJson?: unknown;
@@ -568,6 +581,9 @@ export async function savePrescriptionLayoutSettings(input: {
   const normalizedPrintVisibility = normalizeVisibilityMap(
     input.printVisibilityJson,
     DEFAULT_PRINT_VISIBILITY
+  );
+  const normalizedComplaintDisplayMode = normalizeComplaintDisplayMode(
+    input.complaintDisplayMode
   );
   const normalizedCustomFields =
     input.customFields ?? normalizeCustomFieldsJson(input.customFieldsJson);
@@ -602,6 +618,7 @@ export async function savePrescriptionLayoutSettings(input: {
           section_order_json = ${JSON.stringify(normalizedSectionOrder)},
           section_visibility_json = ${JSON.stringify(normalizedSectionVisibility)},
           print_visibility_json = ${JSON.stringify(normalizedPrintVisibility)},
+          complaint_display_mode = ${normalizedComplaintDisplayMode},
           custom_fields_json = ${JSON.stringify(normalizedCustomFields)},
           page_margin_json = ${JSON.stringify(normalizedPageMargins)},
           pdf_margin_json = ${JSON.stringify(normalizedPdfMargins)},
@@ -626,6 +643,7 @@ export async function savePrescriptionLayoutSettings(input: {
           section_order_json,
           section_visibility_json,
           print_visibility_json,
+          complaint_display_mode,
           custom_fields_json,
           page_margin_json,
           pdf_margin_json,
@@ -646,6 +664,7 @@ export async function savePrescriptionLayoutSettings(input: {
           ${JSON.stringify(normalizedSectionOrder)},
           ${JSON.stringify(normalizedSectionVisibility)},
           ${JSON.stringify(normalizedPrintVisibility)},
+          ${normalizedComplaintDisplayMode},
           ${JSON.stringify(normalizedCustomFields)},
           ${JSON.stringify(normalizedPageMargins)},
           ${JSON.stringify(normalizedPdfMargins)},
