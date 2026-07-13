@@ -106,6 +106,10 @@ const COMPLAINT_DISPLAY_MODE_OPTIONS = [
     label: "New 2-column grouped",
   },
   {
+    value: "single_line_stacked",
+    label: "Single-line stacked",
+  },
+  {
     value: "classic_inline",
     label: "Classic inline",
   },
@@ -1458,7 +1462,9 @@ export default function EmrLayoutSettingsForm({
                             complaint_display_mode:
                               event.target.value === "classic_inline"
                                 ? "classic_inline"
-                                : "paired_grid",
+                                : event.target.value === "single_line_stacked"
+                                  ? "single_line_stacked"
+                                  : "paired_grid",
                           }
                         : current
                     )

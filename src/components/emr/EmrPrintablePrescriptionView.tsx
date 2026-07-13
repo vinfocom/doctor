@@ -5,6 +5,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import EmrPrintActions from "@/components/emr/EmrPrintActions";
 import PrintableComplaintGrid from "@/components/emr/PrintableComplaintGrid";
+import PrintableComplaintStack from "@/components/emr/PrintableComplaintStack";
 import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
 import { getEmrPrintDensityMode } from "@/lib/emr/printDensity";
 import type {
@@ -1539,6 +1540,11 @@ export default function EmrPrintablePrescriptionView({
               >
                 {printableComplaints.join(", ")}
               </p>
+            ) : complaintDisplayMode === "single_line_stacked" ? (
+              <PrintableComplaintStack
+                complaints={prescription.complaints}
+                density={printDensity}
+              />
             ) : (
               <PrintableComplaintGrid
                 complaints={prescription.complaints}

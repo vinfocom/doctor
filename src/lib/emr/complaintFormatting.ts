@@ -103,9 +103,17 @@ export function formatClassicComplaintDisplay(complaint: EmrComplaintPayload) {
 }
 
 export function getPrintableComplaintEntries(complaints: EmrComplaintPayload[]) {
+  return getPrintableComplaintEntriesByMode(complaints, "paired_grid");
+}
+
+export function getPrintableComplaintEntriesByMode(
+  complaints: EmrComplaintPayload[],
+  mode: ComplaintDisplayMode
+) {
+  const compactDuration = mode === "paired_grid";
   return complaints
     .map((complaint) =>
-      formatPrintableComplaintEntry(complaint, { compactDuration: true })
+      formatPrintableComplaintEntry(complaint, { compactDuration })
     )
     .filter((value): value is PrintableComplaintEntry => Boolean(value));
 }
@@ -120,7 +128,7 @@ export function getPrintableComplaints(
       .filter((value): value is string => Boolean(value));
   }
 
-  return getPrintableComplaintEntries(complaints).map((complaint) =>
+  return getPrintableComplaintEntriesByMode(complaints, mode).map((complaint) =>
     complaint.plainText.toUpperCase()
   );
 }

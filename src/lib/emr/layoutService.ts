@@ -137,7 +137,9 @@ const PRINT_PAPER_PRESETS = new Set<EmrPrintPaperPreset>([
 ]);
 
 function normalizeComplaintDisplayMode(value: unknown) {
-  return value === "classic_inline" ? "classic_inline" : "paired_grid";
+  if (value === "classic_inline") return "classic_inline";
+  if (value === "single_line_stacked") return "single_line_stacked";
+  return "paired_grid";
 }
 
 function normalizeMeasurement(

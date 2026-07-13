@@ -23,6 +23,7 @@ import {
   Trash2,
 } from "lucide-react";
 import PrintableComplaintGrid from "@/components/emr/PrintableComplaintGrid";
+import PrintableComplaintStack from "@/components/emr/PrintableComplaintStack";
 import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
 import type {
   EmrComplaintPayload,
@@ -2139,6 +2140,8 @@ export default function DoctorAppointmentPadPage() {
   const historyGroupRefs = useRef<(HTMLDivElement | null)[]>([]);
   const prescriptionContentRef = useRef<HTMLDivElement | null>(null);
   const pendingHistoryScrollPrescriptionIdRef = useRef<number | null>(null);
+  const historyStripScrollLeftRef = useRef(0);
+  const historyStripInitializedRef = useRef(false);
   const [historyCanScrollOlder, setHistoryCanScrollOlder] = useState(false);
   const [historyCanScrollNewer, setHistoryCanScrollNewer] = useState(false);
   const [activeHistoryGroupIndex, setActiveHistoryGroupIndex] = useState(0);
@@ -2168,6 +2171,10 @@ export default function DoctorAppointmentPadPage() {
   const orderedHistoryGroups = useMemo(
     () => [...historyGroups].sort((left, right) => left.date.localeCompare(right.date)),
     [historyGroups]
+  );
+  const historyStripStorageKey = useMemo(
+    () => `emr-history-strip:${appointmentId}`,
+    [appointmentId]
   );
 
   const getActiveHistoryGroupIndex = useCallback(() => {
@@ -3208,26 +3215,70 @@ export default function DoctorAppointmentPadPage() {
     const scrollToLatest = () => {
       const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
       container.scrollLeft = maxScrollLeft;
+      historyStripScrollLeftRef.current = maxScrollLeft;
+      historyStripInitializedRef.current = true;
       updateHistoryStripNavigation();
     };
 
-    scrollToLatest();
+    const restoreScrollPosition = () => {
+      const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+      const targetScrollLeft = Math.min(historyStripScrollLeftRef.current, maxScrollLeft);
+      container.scrollLeft = targetScrollLeft;
+      historyStripScrollLeftRef.current = targetScrollLeft;
+      historyStripInitializedRef.current = true;
+      updateHistoryStripNavigation();
+    };
+
+    const restoreStoredScrollPosition = () => {
+      if (typeof window === "undefined") return false;
+
+      try {
+        const storedValue = window.sessionStorage.getItem(historyStripStorageKey);
+        if (!storedValue) return false;
+
+        const parsedValue = Number(storedValue);
+        if (!Number.isFinite(parsedValue) || parsedValue < 0) return false;
+
+        historyStripScrollLeftRef.current = parsedValue;
+        restoreScrollPosition();
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    if (historyStripInitializedRef.current) {
+      restoreScrollPosition();
+    } else if (!restoreStoredScrollPosition()) {
+      scrollToLatest();
+    }
 
     const firstFrame = window.requestAnimationFrame(() => {
-      scrollToLatest();
-      window.requestAnimationFrame(scrollToLatest);
+      if (historyStripInitializedRef.current) {
+        restoreScrollPosition();
+        window.requestAnimationFrame(restoreScrollPosition);
+      } else {
+        scrollToLatest();
+        window.requestAnimationFrame(scrollToLatest);
+      }
     });
-    const timeoutA = window.setTimeout(scrollToLatest, 80);
-    const timeoutB = window.setTimeout(scrollToLatest, 220);
+    const timeoutA = window.setTimeout(
+      historyStripInitializedRef.current ? restoreScrollPosition : scrollToLatest,
+      80
+    );
+    const timeoutB = window.setTimeout(
+      historyStripInitializedRef.current ? restoreScrollPosition : scrollToLatest,
+      220
+    );
 
     const handleResize = () => {
-      scrollToLatest();
+      restoreScrollPosition();
     };
 
     const resizeObserver =
       typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(() => {
-            scrollToLatest();
+            restoreScrollPosition();
           })
         : null;
 
@@ -3241,7 +3292,12 @@ export default function DoctorAppointmentPadPage() {
       resizeObserver?.disconnect();
       window.removeEventListener("resize", handleResize);
     };
-  }, [historyGroups, historyLoading, updateHistoryStripNavigation]);
+  }, [
+    historyGroups,
+    historyLoading,
+    historyStripStorageKey,
+    updateHistoryStripNavigation,
+  ]);
 
   useEffect(() => {
     const container = historyStripRef.current;
@@ -3253,6 +3309,15 @@ export default function DoctorAppointmentPadPage() {
     updateHistoryStripNavigation();
 
     const handleScroll = () => {
+      historyStripScrollLeftRef.current = container.scrollLeft;
+      try {
+        window.sessionStorage.setItem(
+          historyStripStorageKey,
+          String(container.scrollLeft)
+        );
+      } catch {
+        // Ignore storage failures and keep in-memory behavior.
+      }
       updateHistoryStripNavigation();
     };
 
@@ -3263,7 +3328,12 @@ export default function DoctorAppointmentPadPage() {
       container.removeEventListener("scroll", handleScroll);
       window.removeEventListener("resize", handleScroll);
     };
-  }, [historyLoading, orderedHistoryGroups.length, updateHistoryStripNavigation]);
+  }, [
+    historyLoading,
+    historyStripStorageKey,
+    orderedHistoryGroups.length,
+    updateHistoryStripNavigation,
+  ]);
 
   useEffect(() => {
     if (!contextData?.context.doctor?.doctor_id) return;
@@ -3816,12 +3886,22 @@ export default function DoctorAppointmentPadPage() {
   const openPrescriptionFromHistory = useCallback(
     (prescriptionId: number) => {
       pendingHistoryScrollPrescriptionIdRef.current = prescriptionId;
+      const currentScrollLeft = historyStripRef.current?.scrollLeft ?? 0;
+      historyStripScrollLeftRef.current = currentScrollLeft;
+      try {
+        window.sessionStorage.setItem(
+          historyStripStorageKey,
+          String(currentScrollLeft)
+        );
+      } catch {
+        // Ignore storage failures and fall back to in-memory behavior.
+      }
       router.replace(
         `/dashboard/doctor/appointments/${appointmentId}/pad?prescriptionId=${prescriptionId}`,
         { scroll: false }
       );
     },
-    [appointmentId, router]
+    [appointmentId, historyStripStorageKey, router]
   );
 
   const renderConfiguredSection = (section: EmrLayoutSectionKey) => {
@@ -4980,6 +5060,11 @@ export default function DoctorAppointmentPadPage() {
               <p className="mt-1 text-sm text-gray-700">
                 {printableComplaints.join(", ")}
               </p>
+            ) : complaintDisplayMode === "single_line_stacked" ? (
+              <PrintableComplaintStack
+                className="mt-1"
+                complaints={editorState.complaints}
+              />
             ) : (
               <PrintableComplaintGrid className="mt-1" complaints={editorState.complaints} />
             )}

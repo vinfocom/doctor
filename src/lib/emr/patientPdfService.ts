@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import {
   getPrintableComplaints,
-  getPrintableComplaintEntries,
+  getPrintableComplaintEntriesByMode,
   type PrintableComplaintEntry,
 } from "@/lib/emr/complaintFormatting";
 import { getEmrPrintDensityMode } from "@/lib/emr/printDensity";
@@ -537,6 +537,31 @@ function drawListSection(
   return drawSimpleSection(pdf, state, heading, filtered.join(", "), fonts, density);
 }
 
+function drawStackedListSection(
+  pdf: PDFDocument,
+  state: PageState,
+  heading: string,
+  values: string[],
+  fonts: FontSet,
+  density: PrintDensityProfile
+) {
+  const filtered = values.map((value) => upper(value)).filter(Boolean);
+  if (filtered.length === 0) return state;
+
+  let next = drawSectionHeading(pdf, state, heading, fonts, density);
+  for (const value of filtered) {
+    next = drawWrappedParagraph(pdf, next, value, {
+      x: PAGE_MARGIN_X,
+      maxWidth: PAGE_WIDTH - PAGE_MARGIN_X * 2,
+      font: fonts.regular,
+      size: density.mode === "compact" ? 9 : 10,
+      lineHeight: density.mode === "compact" ? 10 : density.paragraphLineHeight,
+    });
+  }
+
+  return { ...next, y: next.y - density.sectionGap };
+}
+
 function splitTextToFit(text: string, font: PDFFont, size: number, maxWidth: number) {
   const safeText = upper(text);
   if (!safeText) return [];
@@ -1020,12 +1045,30 @@ function drawOrderedBodySections(
             fonts,
             density
           );
+        } else if (
+          printable.layout_settings.complaint_display_mode ===
+          "single_line_stacked"
+        ) {
+          next = drawStackedListSection(
+            pdf,
+            next,
+            "COMPLAINTS",
+            getPrintableComplaints(
+              printable.prescription.complaints,
+              printable.layout_settings.complaint_display_mode
+            ),
+            fonts,
+            density
+          );
         } else {
           next = drawComplaintSection(
             pdf,
             next,
             "COMPLAINTS",
-            getPrintableComplaintEntries(printable.prescription.complaints),
+            getPrintableComplaintEntriesByMode(
+              printable.prescription.complaints,
+              printable.layout_settings.complaint_display_mode
+            ),
             fonts,
             density
           );

@@ -1,7 +1,7 @@
-import { getPrintableComplaintEntriesByMode } from "@/lib/emr/complaintFormatting";
+import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
 import type { EmrComplaintPayload } from "@/lib/emr/types";
 
-type PrintableComplaintGridProps = {
+type PrintableComplaintStackProps = {
   complaints: EmrComplaintPayload[];
   className?: string;
   itemClassName?: string;
@@ -12,27 +12,27 @@ function joinClasses(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-export default function PrintableComplaintGrid({
+export default function PrintableComplaintStack({
   complaints,
   className,
   itemClassName,
   density = "normal",
-}: PrintableComplaintGridProps) {
-  const entries = getPrintableComplaintEntriesByMode(complaints, "paired_grid");
-  if (entries.length === 0) return null;
+}: PrintableComplaintStackProps) {
+  const lines = getPrintableComplaints(complaints, "single_line_stacked");
+  if (lines.length === 0) return null;
 
   return (
     <div
       className={joinClasses(
         density === "compact"
-          ? "grid grid-cols-1 gap-x-3 gap-y-1 sm:grid-cols-2 print:grid-cols-2 print:gap-x-2 print:gap-y-0.5"
-          : "grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2 print:grid-cols-2 print:gap-x-3 print:gap-y-1",
+          ? "space-y-0.5 print:space-y-0"
+          : "space-y-1 print:space-y-0.5",
         className
       )}
     >
-      {entries.map((entry, index) => (
+      {lines.map((line, index) => (
         <p
-          key={`${entry.name}-${index}`}
+          key={`${line}-${index}`}
           className={joinClasses(
             density === "compact"
               ? "break-words text-sm leading-4 text-gray-700 print:text-[11px] print:leading-[0.95rem]"
@@ -40,8 +40,7 @@ export default function PrintableComplaintGrid({
             itemClassName
           )}
         >
-          <span className="font-semibold text-gray-900">{entry.name}</span>
-          {entry.detailText ? <span>{` - ${entry.detailText}`}</span> : null}
+          {line}
         </p>
       ))}
     </div>
