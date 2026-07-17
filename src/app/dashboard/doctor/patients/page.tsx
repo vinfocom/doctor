@@ -3,7 +3,7 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import DoctorPrescriptionModal, { type PrescriptionModalTarget } from "@/components/DoctorPrescriptionModal";
 import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
 import type {
@@ -126,12 +126,17 @@ function formatComplaintSummary(items: EmrComplaintPayload[]) {
 }
 
 export default function DoctorPatientsPage() {
+    const PAGE_SIZE = 25;
     const router = useRouter();
     const [, setUser] = useState<{ name: string } | null>(null);
     const [patients, setPatients] = useState<Patient[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
     const [loading, setLoading] = useState(true);
     const [doctorId, setDoctorId] = useState<number | null>(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
     const [emrPadEnabled, setEmrPadEnabled] = useState(false);
     const [prescriptionTarget, setPrescriptionTarget] = useState<PrescriptionModalTarget | null>(null);
     const [emrHistoryTarget, setEmrHistoryTarget] = useState<Patient | null>(null);
@@ -142,7 +147,18 @@ export default function DoctorPatientsPage() {
 
     const fetchData = useCallback(async () => {
         try {
-            const [meRes, patRes] = await Promise.all([fetch("/api/auth/me"), fetch("/api/patients")]);
+            const params = new URLSearchParams({
+                page: String(currentPage),
+                pageSize: String(PAGE_SIZE),
+            });
+            if (debouncedSearchTerm.trim()) {
+                params.set("search", debouncedSearchTerm.trim());
+            }
+
+            const [meRes, patRes] = await Promise.all([
+                fetch("/api/auth/me"),
+                fetch(`/api/patients?${params.toString()}`, { cache: "no-store" }),
+            ]);
             if (!meRes.ok) {
                 router.push("/login");
                 return;
@@ -161,13 +177,28 @@ export default function DoctorPatientsPage() {
             if (patRes.ok) {
                 const data = await patRes.json();
                 setPatients(data.patients || []);
+                setCurrentPage(Number(data.page) || 1);
+                setTotalCount(Number(data.totalCount) || 0);
+                setTotalPages(Number(data.totalPages) || 0);
             }
         } catch (error) {
             console.error("Failed to fetch data:", error);
         } finally {
             setLoading(false);
         }
-    }, [router]);
+    }, [router, currentPage, debouncedSearchTerm]);
+
+    useEffect(() => {
+        const timeout = window.setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm.trim());
+        }, 250);
+
+        return () => window.clearTimeout(timeout);
+    }, [searchTerm]);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [debouncedSearchTerm]);
 
     const loadEmrHistory = useCallback(async (patient: Patient) => {
         setEmrHistoryTarget(patient);
@@ -216,24 +247,7 @@ export default function DoctorPatientsPage() {
         };
     }, [emrHistoryTarget]);
 
-    const filteredPatients = useMemo(() => {
-        const query = searchTerm.trim().toLowerCase();
-        if (!query) {
-            return patients;
-        }
-
-        const normalizedQueryPhone = query.replace(/\D/g, "");
-
-        return patients.filter((patient) => {
-            const normalizedName = String(patient.full_name || "").toLowerCase();
-            const normalizedPhone = String(patient.phone || "").replace(/\D/g, "");
-
-            return (
-                normalizedName.includes(query) ||
-                (normalizedQueryPhone.length > 0 && normalizedPhone.includes(normalizedQueryPhone))
-            );
-        });
-    }, [patients, searchTerm]);
+    const filteredPatients = useMemo(() => patients, [patients]);
 
     if (loading) {
         return (
@@ -393,6 +407,38 @@ export default function DoctorPatientsPage() {
                     </div>
                 )}
             </motion.div>
+            {totalPages > 1 ? (
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-gray-500">
+                        Showing {filteredPatients.length} of {totalCount} patients
+                    </p>
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <button
+                            type="button"
+                            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                            disabled={currentPage <= 1}
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            aria-label="Previous page"
+                        >
+                            <ChevronLeft size={18} />
+                        </button>
+                        <span className="text-sm font-medium text-gray-600">
+                            Page {currentPage} of {totalPages}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                            disabled={currentPage >= totalPages}
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            aria-label="Next page"
+                        >
+                            <ChevronRight size={18} />
+                        </button>
+                    </div>
+                </div>
+            ) : totalCount > PAGE_SIZE ? (
+                <p className="mt-4 text-sm text-gray-500">Showing {filteredPatients.length} of {totalCount} patients</p>
+            ) : null}
             <DoctorPrescriptionModal
                 isOpen={Boolean(prescriptionTarget)}
                 onClose={() => setPrescriptionTarget(null)}

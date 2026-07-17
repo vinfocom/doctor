@@ -203,6 +203,7 @@ export default function DoctorAppointmentsPage() {
     const [customFrom, setCustomFrom] = useState("");
     const [customTo, setCustomTo] = useState("");
     const [searchTerm, setSearchTerm] = useState("");
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
     const [isExportOpen, setIsExportOpen] = useState(false);
     const [prescriptionTarget, setPrescriptionTarget] = useState<PrescriptionModalTarget | null>(null);
 
@@ -241,6 +242,9 @@ export default function DoctorAppointmentsPage() {
                     params.set("dateTo", customFrom);
                 }
             }
+            if (debouncedSearchTerm.trim()) {
+                params.set("search", debouncedSearchTerm.trim());
+            }
 
             const query = params.toString();
             const cacheBust = `_ts=${Date.now()}`;
@@ -262,7 +266,15 @@ export default function DoctorAppointmentsPage() {
             setEmrPadEnabled(Boolean(meData.user.emr_prescription_enabled));
             if (aptRes.ok) { const data = await aptRes.json(); setAppointments(data || []); }
         } catch { router.push("/login"); } finally { setLoading(false); }
-    }, [router, datePreset, customFrom, customTo, statusFilter]);
+    }, [router, datePreset, customFrom, customTo, statusFilter, debouncedSearchTerm]);
+
+    useEffect(() => {
+        const timeout = window.setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm.trim());
+        }, 250);
+
+        return () => window.clearTimeout(timeout);
+    }, [searchTerm]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 

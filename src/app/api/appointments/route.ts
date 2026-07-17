@@ -30,6 +30,49 @@ function normalizePhone(value: string | null | undefined) {
     return String(value || '').replace(/\D/g, '');
 }
 
+async function findPatientIdsBySearch(search: string) {
+    const trimmedSearch = String(search || "").trim();
+    if (!trimmedSearch) return [];
+
+    const normalizedDigits = normalizePhone(trimmedSearch);
+
+    if (!normalizedDigits) {
+        const patients = await prisma.patients.findMany({
+            where: {
+                full_name: {
+                    contains: trimmedSearch,
+                },
+            },
+            select: {
+                patient_id: true,
+            },
+        });
+
+        return patients.map((patient) => patient.patient_id);
+    }
+
+    const likeName = `%${trimmedSearch}%`;
+    const likePhone = `%${normalizedDigits}%`;
+    const rows = await prisma.$queryRaw<Array<{ patient_id: number }>>(Prisma.sql`
+        SELECT patient_id
+        FROM patients
+        WHERE full_name LIKE ${likeName}
+           OR REPLACE(
+                REPLACE(
+                    REPLACE(
+                        REPLACE(
+                            REPLACE(
+                                REPLACE(COALESCE(phone, ''), ' ', ''),
+                            '-', ''),
+                        '+', ''),
+                    '(', ''),
+                ')', ''),
+            '.', '') LIKE ${likePhone}
+    `);
+
+    return rows.map((row) => row.patient_id);
+}
+
 function phonesMatch(left: string | null | undefined, right: string | null | undefined) {
     const normalizedLeft = normalizePhone(left);
     const normalizedRight = normalizePhone(right);
@@ -287,6 +330,7 @@ export async function GET(request: Request) {
         const dateFrom = searchParams.get('dateFrom');
         const dateTo = searchParams.get('dateTo');
         const status = searchParams.get('status');
+        const search = searchParams.get('search')?.trim() || '';
 
         const cookieStore = await cookies();
         let token = cookieStore.get("token")?.value;
@@ -385,6 +429,14 @@ export async function GET(request: Request) {
                 range.lt = new Date(endStart.getTime() + 24 * 60 * 60 * 1000);
             }
             where.appointment_date = range;
+        }
+
+        if (search) {
+            const matchingPatientIds = await findPatientIdsBySearch(search);
+            if (matchingPatientIds.length === 0) {
+                return NextResponse.json([]);
+            }
+            where.patient_id = { in: matchingPatientIds };
         }
 
         const appointments = await prisma.appointment.findMany({
