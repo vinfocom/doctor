@@ -532,6 +532,18 @@ function normalizePatientGender(value: string | null | undefined): PatientGender
   return "";
 }
 
+function buildQuickFollowUpBaseDate(input?: {
+  visitDate?: string | null;
+  appointmentDate?: string | null;
+}) {
+  const baseDateValue =
+    toDateInputValue(input?.visitDate) ||
+    toDateInputValue(input?.appointmentDate) ||
+    new Date().toISOString().slice(0, 10);
+
+  return new Date(`${baseDateValue}T12:00:00`);
+}
+
 function getPatientGenderShortLabel(value: string | null | undefined) {
   const normalized = normalizePatientGender(value);
   return PATIENT_GENDER_OPTIONS.find((option) => option.value === normalized)?.shortLabel ?? null;
@@ -4873,11 +4885,11 @@ export default function DoctorAppointmentPadPage() {
                       return;
                     }
 
-                    const baseAppointmentDate =
-                      contextData?.context.appointment.appointment_date;
-                    const baseDate = baseAppointmentDate
-                      ? new Date(baseAppointmentDate)
-                      : new Date();
+                    const baseDate = buildQuickFollowUpBaseDate({
+                      visitDate: contextData?.draft?.visit_date,
+                      appointmentDate:
+                        contextData?.context.appointment.appointment_date,
+                    });
                     baseDate.setUTCDate(baseDate.getUTCDate() + selectedDays);
                     const computedDate = baseDate.toISOString().slice(0, 10);
                     if (alsoBookAppointment && availableBookingDates.length > 0) {
