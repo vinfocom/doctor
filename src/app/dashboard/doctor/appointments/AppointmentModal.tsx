@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { convertTo12Hour, convertTo24Hour } from '@/lib/timeUtils';
 
@@ -88,10 +88,63 @@ export default function AppointmentModal({
     const [availableDates, setAvailableDates] = useState<string[]>([]);
     const [loadingDates, setLoadingDates] = useState(false);
     const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+    const [loadingSlots, setLoadingSlots] = useState(false);
     const [availabilityNotice, setAvailabilityNotice] = useState('');
     const [matchedPatients, setMatchedPatients] = useState<MatchedPatient[]>([]);
     const [lookupLoading, setLookupLoading] = useState(false);
     const [lockedPatientProfile, setLockedPatientProfile] = useState<MatchedPatient | null>(null);
+    const initializedRescheduleRef = useRef<number | null>(null);
+    const activeSlotsRequestKeyRef = useRef('');
+    const latestSelectedDateRef = useRef('');
+
+    useEffect(() => {
+        latestSelectedDateRef.current = formData.date;
+    }, [formData.date]);
+
+    const fetchClinics = useCallback(async () => {
+        try {
+            const [meRes, clinicsRes] = await Promise.all([
+                fetch('/api/auth/me', { cache: 'no-store' }),
+                fetch('/api/clinics', { cache: 'no-store' }),
+            ]);
+            if (clinicsRes.ok) {
+                const data = await clinicsRes.json();
+                const nextClinics: Clinic[] = data.clinics || [];
+                const doctorsFromApi: DoctorOption[] = Array.isArray(data.doctors) ? data.doctors : [];
+                const doctorsById = new Map<number, DoctorOption>();
+
+                doctorsFromApi.forEach((doctor) => {
+                    doctorsById.set(Number(doctor.doctor_id), doctor);
+                });
+
+                nextClinics.forEach((clinic) => {
+                    if (clinic.doctor?.doctor_id) {
+                        doctorsById.set(Number(clinic.doctor.doctor_id), clinic.doctor);
+                    }
+                });
+
+                const nextDoctors = Array.from(doctorsById.values());
+                setClinics(nextClinics);
+                setDoctors(nextDoctors);
+
+                const meData = meRes.ok ? await meRes.json() : null;
+                const assignedCount = Array.isArray(meData?.user?.assigned_doctor_ids)
+                    ? meData.user.assigned_doctor_ids.length
+                    : nextDoctors.length;
+                const hospitalStaff = meData?.user?.role === 'CLINIC_STAFF' && (assignedCount > 1 || nextDoctors.length > 1);
+                setIsHospitalStaff(hospitalStaff);
+
+                if (hospitalStaff && !initialValues?.clinic_id) {
+                    setFormData((prev) => ({
+                        ...prev,
+                        doctor_id: prev.doctor_id || (nextDoctors[0]?.doctor_id ? String(nextDoctors[0].doctor_id) : ''),
+                    }));
+                }
+            }
+        } catch (err) {
+            console.error("Failed to fetch clinics", err);
+        }
+    }, [initialValues?.clinic_id]);
 
     useEffect(() => {
         if (isOpen) {
@@ -101,29 +154,44 @@ export default function AppointmentModal({
             setAvailableDates([]);
             setAvailableSlots([]);
             setSlotDuration(30);
+            setLoadingDates(false);
+            setLoadingSlots(false);
             setMatchedPatients([]);
             setLockedPatientProfile(null);
             setLookupLoading(false);
-            setFormData({
-                patient_phone: initialValues?.patient_phone || '',
-                patient_name: initialValues?.patient_name || '',
-                doctor_id: '',
-                clinic_id: initialValues?.clinic_id || '',
-                date: initialValues?.date || '',
-                time: initialValues?.time || '',
-                booking_for: initialValues?.booking_for || 'SELF',
-            });
+            const nextAppointmentId = initialValues?.appointmentId ?? null;
+            const shouldInitializeForm =
+                mode !== 'reschedule' || initializedRescheduleRef.current !== nextAppointmentId;
+
+            if (shouldInitializeForm) {
+                setFormData({
+                    patient_phone: initialValues?.patient_phone || '',
+                    patient_name: initialValues?.patient_name || '',
+                    doctor_id: '',
+                    clinic_id: initialValues?.clinic_id || '',
+                    date: initialValues?.date || '',
+                    time: initialValues?.time || '',
+                    booking_for: initialValues?.booking_for || 'SELF',
+                });
+                if (mode === 'reschedule') {
+                    initializedRescheduleRef.current = nextAppointmentId;
+                }
+            }
         } else {
+            initializedRescheduleRef.current = null;
+            activeSlotsRequestKeyRef.current = '';
             setFormData(emptyForm);
             setAvailableDates([]);
             setAvailableSlots([]);
             setError('');
             setAvailabilityNotice('');
+            setLoadingDates(false);
+            setLoadingSlots(false);
             setMatchedPatients([]);
             setLockedPatientProfile(null);
             setLookupLoading(false);
         }
-    }, [initialValues, isOpen]);
+    }, [fetchClinics, initialValues, isOpen, mode]);
 
     useEffect(() => {
         if (!isOpen || mode !== 'create') return;
@@ -179,52 +247,6 @@ export default function AppointmentModal({
         };
     }, [formData.booking_for, formData.patient_phone, isOpen, mode]);
 
-
-    const fetchClinics = async () => {
-        try {
-            const [meRes, clinicsRes] = await Promise.all([
-                fetch('/api/auth/me', { cache: 'no-store' }),
-                fetch('/api/clinics', { cache: 'no-store' }),
-            ]);
-            if (clinicsRes.ok) {
-                const data = await clinicsRes.json();
-                const nextClinics: Clinic[] = data.clinics || [];
-                const doctorsFromApi: DoctorOption[] = Array.isArray(data.doctors) ? data.doctors : [];
-                const doctorsById = new Map<number, DoctorOption>();
-
-                doctorsFromApi.forEach((doctor) => {
-                    doctorsById.set(Number(doctor.doctor_id), doctor);
-                });
-
-                nextClinics.forEach((clinic) => {
-                    if (clinic.doctor?.doctor_id) {
-                        doctorsById.set(Number(clinic.doctor.doctor_id), clinic.doctor);
-                    }
-                });
-
-                const nextDoctors = Array.from(doctorsById.values());
-                setClinics(nextClinics);
-                setDoctors(nextDoctors);
-
-                const meData = meRes.ok ? await meRes.json() : null;
-                const assignedCount = Array.isArray(meData?.user?.assigned_doctor_ids)
-                    ? meData.user.assigned_doctor_ids.length
-                    : nextDoctors.length;
-                const hospitalStaff = meData?.user?.role === 'CLINIC_STAFF' && (assignedCount > 1 || nextDoctors.length > 1);
-                setIsHospitalStaff(hospitalStaff);
-
-                if (hospitalStaff && !initialValues?.clinic_id) {
-                    setFormData((prev) => ({
-                        ...prev,
-                        doctor_id: prev.doctor_id || (nextDoctors[0]?.doctor_id ? String(nextDoctors[0].doctor_id) : ''),
-                    }));
-                }
-            }
-        } catch (err) {
-            console.error("Failed to fetch clinics", err);
-        }
-    };
-
     const selectedDoctorClinics = isHospitalStaff && formData.doctor_id
         ? clinics.filter((clinic) => Number(clinic.doctor_id || clinic.doctor?.doctor_id) === Number(formData.doctor_id))
         : clinics;
@@ -273,13 +295,23 @@ export default function AppointmentModal({
         }
     }, [formData.clinic_id]);
 
-    const fetchSlots = useCallback(async () => {
-        if (!formData.date || !formData.clinic_id) return;
+    const fetchSlots = useCallback(async (dateValue: string, clinicIdValue: string) => {
+        if (!dateValue || !clinicIdValue) {
+            activeSlotsRequestKeyRef.current = '';
+            setAvailableSlots([]);
+            setLoadingSlots(false);
+            return;
+        }
+
+        const requestKey = `${clinicIdValue}:${dateValue}`;
+        activeSlotsRequestKeyRef.current = requestKey;
+        setLoadingSlots(true);
 
         try {
-            const res = await fetch(`/api/slots?date=${formData.date}&clinicId=${formData.clinic_id}`);
+            const res = await fetch(`/api/slots?date=${dateValue}&clinicId=${clinicIdValue}`);
             if (res.ok) {
                 const data = await res.json();
+                if (activeSlotsRequestKeyRef.current !== requestKey) return;
                 setAvailableSlots(data.slots || []);
                 if (data.slot_duration) {
                     setSlotDuration(data.slot_duration);
@@ -292,26 +324,37 @@ export default function AppointmentModal({
                     setAvailabilityNotice('');
                 }
             } else {
+                if (activeSlotsRequestKeyRef.current !== requestKey) return;
                 setAvailableSlots([]);
             }
         } catch (e) {
             console.error(e);
+            if (activeSlotsRequestKeyRef.current !== requestKey) return;
             setAvailableSlots([]);
+        } finally {
+            if (activeSlotsRequestKeyRef.current === requestKey) {
+                setLoadingSlots(false);
+            }
         }
-    }, [formData.clinic_id, formData.date]);
+    }, []);
 
     useEffect(() => {
         if (formData.clinic_id) {
-            fetchAvailableDates(formData.date);
+            fetchAvailableDates(latestSelectedDateRef.current);
         } else {
             setAvailableDates([]);
+            setAvailableSlots([]);
             setAvailabilityNotice('');
         }
-    }, [fetchAvailableDates, formData.clinic_id, formData.date]);
+    }, [fetchAvailableDates, formData.clinic_id]);
 
     useEffect(() => {
         if (formData.clinic_id && formData.date) {
-            fetchSlots();
+            fetchSlots(formData.date, formData.clinic_id);
+        } else {
+            activeSlotsRequestKeyRef.current = '';
+            setAvailableSlots([]);
+            setLoadingSlots(false);
         }
     }, [fetchSlots, formData.clinic_id, formData.date]);
 
@@ -574,6 +617,7 @@ export default function AppointmentModal({
                                         onChange={(e) => {
                                             setAvailabilityNotice('');
                                             setAvailableSlots([]);
+                                            setLoadingSlots(Boolean(e.target.value));
                                             setFormData({ ...formData, date: e.target.value, time: '' });
                                         }}
                                         disabled={!formData.clinic_id || loadingDates || availableDates.length === 0}
@@ -599,14 +643,14 @@ export default function AppointmentModal({
                                     className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                                     value={formData.time}
                                     onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                                    disabled={!formData.date || !formData.clinic_id || availableSlots.length === 0}
+                                    disabled={!formData.date || !formData.clinic_id || loadingSlots || availableSlots.length === 0}
                                 >
-                                    <option value="">Select Time</option>
+                                    <option value="">{loadingSlots ? 'Loading slots...' : 'Select Time'}</option>
                                     {availableSlots.map(slot => (
                                         <option key={slot} value={slot}>{to12HourLabel(slot)}</option>
                                     ))}
                                 </select>
-                                {formData.date && formData.clinic_id && availableSlots.length === 0 && (
+                                {formData.date && formData.clinic_id && !loadingSlots && availableSlots.length === 0 && (
                                     <p className="text-xs text-orange-500 mt-1">No slots available or no schedule for this day.</p>
                                 )}
                             </div>

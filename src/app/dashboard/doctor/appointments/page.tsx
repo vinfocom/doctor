@@ -474,6 +474,19 @@ export default function DoctorAppointmentsPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [rescheduleAppointment, setRescheduleAppointment] = useState<Appointment | null>(null);
     const showFlatDoctorView = isHospitalStaffView && selectedDoctorFilter !== "ALL";
+    const rescheduleInitialValues = useMemo(() => {
+        if (!rescheduleAppointment) return undefined;
+
+        return {
+            appointmentId: rescheduleAppointment.appointment_id,
+            patient_phone: rescheduleAppointment.patient?.phone || '',
+            patient_name: rescheduleAppointment.patient?.full_name || '',
+            clinic_id: rescheduleAppointment.clinic?.clinic_id ? String(rescheduleAppointment.clinic.clinic_id) : '',
+            date: toISTDateInput(rescheduleAppointment.appointment_date),
+            time: formatTime(rescheduleAppointment.start_time),
+            booking_for: rescheduleAppointment.booked_for === 'OTHER' ? 'OTHER' : 'SELF' as const,
+        };
+    }, [rescheduleAppointment]);
 
     if (loading) {
         return (
@@ -789,15 +802,7 @@ export default function DoctorAppointmentsPage() {
                     fetchData();
                 }}
                 mode="reschedule"
-                initialValues={rescheduleAppointment ? {
-                    appointmentId: rescheduleAppointment.appointment_id,
-                    patient_phone: rescheduleAppointment.patient?.phone || '',
-                    patient_name: rescheduleAppointment.patient?.full_name || '',
-                    clinic_id: rescheduleAppointment.clinic?.clinic_id ? String(rescheduleAppointment.clinic.clinic_id) : '',
-                    date: toISTDateInput(rescheduleAppointment.appointment_date),
-                    time: formatTime(rescheduleAppointment.start_time),
-                    booking_for: rescheduleAppointment.booked_for === 'OTHER' ? 'OTHER' : 'SELF',
-                } : undefined}
+                initialValues={rescheduleInitialValues}
             />
             <DoctorPrescriptionModal
                 isOpen={Boolean(prescriptionTarget)}
