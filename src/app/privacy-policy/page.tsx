@@ -6,43 +6,60 @@ export const metadata: Metadata = {
   description: "Privacy Policy for the Dapto mobile and web application.",
 };
 
-const CONTACT_EMAIL = LEGAL_CONTACT_EMAILS[0];
+const PRIMARY_CONTACT_EMAIL = LEGAL_CONTACT_EMAILS[0];
+const ALL_CONTACT_EMAILS = LEGAL_CONTACT_EMAILS.join(", ");
 
 export default function PrivacyPolicyPage() {
   return (
-    <main className="min-h-screen bg-gray-50 py-10 px-4">
+    <main className="min-h-screen bg-gray-50 px-4 py-10">
       <div className="mx-auto max-w-4xl rounded-2xl border border-gray-200 bg-white p-6 md:p-10">
         <h1 className="text-3xl font-bold text-gray-900">Privacy Policy</h1>
         <p className="mt-2 text-sm text-gray-600">Last Updated: {PRIVACY_POLICY_LAST_UPDATED}</p>
         <p className="mt-6 text-gray-700 leading-7">
-          This Privacy Policy describes how Dapto (“we”, “us”, or “our”), operated by an independent development team led by Kanika, collects, uses, discloses, and safeguards your information when you use the Dapto mobile application and related services.
+          This Privacy Policy describes how <strong>Dapto (VISPL)</strong>, operated by{" "}
+          <strong>
+            Vinfocom IT Services Private Limited ("VISPL", "Dapto (VISPL)", "we", "our", or "us")
+          </strong>
+          , collects, uses, discloses, stores, and safeguards your information when you use the
+          Dapto mobile application, website, and related services.
         </p>
 
         <section className="mt-8 space-y-3">
           <h2 className="text-xl font-semibold text-gray-900">1. Information We Collect</h2>
           <ul className="list-disc space-y-2 pl-6 text-gray-700 leading-7">
             <li>
-              Account and profile data, such as name, email, role, phone number, clinic details,
-              and professional profile information.
+              <strong>Account and profile data</strong>, including your name, email, phone number,
+              role, clinic details, profile photo, qualifications, medical registration number,
+              and related profile information.
             </li>
             <li>
-              Patient and appointment data, such as patient name, phone number, gender, age,
-              booking details, appointment date/time, and status.
+              <strong>Patient, appointment, and healthcare data</strong>, including patient
+              details, appointment information, follow-ups, live queue data, booking history, and
+              related healthcare records.
             </li>
             <li>
-              Communication data, such as in-app chat messages, announcements, and related
-              metadata (timestamps, sender role, read status).
+              <strong>Electronic Medical Record (EMR) data</strong>, including complaints,
+              diagnosis, medical history, examination findings, vital signs, prescriptions,
+              medicines, dosage instructions, tests, advice, follow-up notes, and other clinical
+              records created by authorized healthcare professionals.
             </li>
             <li>
-              Uploaded files, such as profile images, clinic barcode images, documents, and chat
+              <strong>Communication data</strong>, including in-app messages, announcements,
+              emails, SMS notifications, OTP records, and related metadata such as timestamps and
+              delivery status.
+            </li>
+            <li>
+              <strong>Uploaded files</strong>, including profile images, prescription images,
+              scanned prescriptions, medical documents, reports, clinic barcode images, and chat
               attachments.
             </li>
             <li>
-              Notification data, such as push notification tokens used to send notification alerts.
+              <strong>Notification data</strong>, including push notification tokens used for
+              reminders, alerts, and announcements.
             </li>
             <li>
-              Authentication/session data, such as hashed passwords (for applicable accounts),
-              phone-based identifiers, and login/session tokens.
+              <strong>Authentication and session data</strong>, including hashed passwords,
+              authentication tokens, session identifiers, verification records, and security logs.
             </li>
           </ul>
         </section>
@@ -51,16 +68,20 @@ export default function PrivacyPolicyPage() {
           <h2 className="text-xl font-semibold text-gray-900">2. Device Permissions We Use</h2>
           <ul className="list-disc space-y-2 pl-6 text-gray-700 leading-7">
             <li>
-              Camera: to capture images for chat, when you choose.
-            </li>
-            <li>Photos/Media Library: to select and upload files or images from your device.</li>
-            <li>
-              Notifications: to send appointment updates, announcements, and chat alerts (when
-              enabled by you).
+              <strong>Camera:</strong> To capture profile photos, prescription images, medical
+              documents, reports, and chat attachments when you choose.
             </li>
             <li>
-              Storage/Files access (where applicable): to export and save generated files such as
-              appointment reports.
+              <strong>Photos/Media Library:</strong> To select and upload images, prescriptions,
+              reports, documents, and other files from your device.
+            </li>
+            <li>
+              <strong>Notifications:</strong> To send appointment updates, announcements, and chat
+              alerts (when enabled by you).
+            </li>
+            <li>
+              <strong>Storage/Files Access (where applicable):</strong> To upload, export,
+              download, print, or save prescriptions, reports, and other generated files.
             </li>
           </ul>
         </section>
@@ -68,12 +89,36 @@ export default function PrivacyPolicyPage() {
         <section className="mt-8 space-y-3">
           <h2 className="text-xl font-semibold text-gray-900">3. How We Use Information</h2>
           <ul className="list-disc space-y-2 pl-6 text-gray-700 leading-7">
-            <li>To create and manage user accounts and provide secure access to the app.</li>
-            <li>To schedule, manage, and track appointments and clinic workflows.</li>
-            <li>To enable real-time communication between doctors and patients.</li>
-            <li>To send chat notifications and announcements.</li>
-            <li>To store and retrieve uploaded files required for app functionality.</li>
-            <li>To maintain service reliability, security, and fraud/abuse prevention.</li>
+            <li>Create and manage user accounts and provide secure authentication.</li>
+            <li>Verify user identity through email or phone-based verification where applicable.</li>
+            <li>
+              Schedule, manage, and track appointments, follow-up visits, live queues, and clinic
+              workflows.
+            </li>
+            <li>
+              Create, store, retrieve, view, print, download, and manage Electronic Medical
+              Records (EMRs) and digital prescriptions.
+            </li>
+            <li>
+              Enable communication between doctors, patients, clinic staff, and administrators.
+            </li>
+            <li>
+              Send appointment reminders, OTP verification, notifications, announcements, and
+              other service communications.
+            </li>
+            <li>
+              Record medical documents, scanned prescriptions, reports, and other files required
+              for services.
+            </li>
+            <li>
+              Maintain platform security, detect fraud or misuse, troubleshoot technical issues,
+              and improve service reliability.
+            </li>
+            <li>
+              Analyze aggregated or de-identified information to improve platform functionality,
+              monitor performance, develop new features, and enhance user experience where
+              permitted by applicable law.
+            </li>
           </ul>
         </section>
 
@@ -82,34 +127,41 @@ export default function PrivacyPolicyPage() {
             4. Legal Basis and Necessity of Processing
           </h2>
           <p className="text-gray-700 leading-7">
-            We process personal data on applicable legal bases, including service delivery needs,
-            legitimate interests, legal obligations, and consent where required by law.
+            We process personal information where necessary to provide our Services, fulfill
+            contractual obligations, comply with applicable legal obligations, protect legitimate
+            interests, and obtain consent where required by applicable law.
           </p>
           <p className="text-gray-700 leading-7">
-            We use personal data only when necessary for core app functions such as login,
-            appointment management, communication, notifications, and support.
+            Personal information is processed only to the extent necessary to provide healthcare
+            management services, account authentication, appointment management, Electronic Medical
+            Records, communication services, customer support, security, and related platform
+            functionality.
           </p>
         </section>
 
         <section className="mt-8 space-y-3">
           <h2 className="text-xl font-semibold text-gray-900">5. How Information Is Shared</h2>
           <p className="text-gray-700 leading-7">
-            We do not sell personal information. We may share information only in the following
-            cases:
+            We do <strong>not sell</strong> your personal information for any other illegal
+            activities.
+          </p>
+          <p className="text-gray-700 leading-7">
+            We may share information only in the following circumstances:
           </p>
           <ul className="list-disc space-y-2 pl-6 text-gray-700 leading-7">
             <li>
-              Service providers and infrastructure partners that process data on our behalf (for
-              example, cloud storage and push notification delivery).
+              With service providers and infrastructure partners that help us operate the Services,
+              including cloud hosting, storage, communication, email, SMS, notification delivery,
+              and other technical infrastructure providers.
             </li>
             <li>
-              Within your authorized organization/workflow, such as doctor, patient, clinic staff,
-              and admin access controls.
+              Within your authorized healthcare workflow, including doctors, patients, clinic
+              staff, and administrators, strictly in accordance with role-based access controls and
+              only where necessary to provide healthcare services.
             </li>
-            <li>When required by law, regulation, legal process, or to protect rights/safety.</li>
             <li>
-              In connection with a merger, acquisition, restructuring, or business transfer, with
-              appropriate safeguards.
+              When required by applicable law, legal process, court order, governmental authority,
+              or to protect the rights, safety, security, or property of users or Dapto (VISPL).
             </li>
           </ul>
         </section>
@@ -117,59 +169,115 @@ export default function PrivacyPolicyPage() {
         <section className="mt-8 space-y-3">
           <h2 className="text-xl font-semibold text-gray-900">6. Data Retention</h2>
           <p className="text-gray-700 leading-7">
-            We retain information for as long as needed to provide services, comply with legal
-            obligations, resolve disputes, and enforce agreements. Retention periods may vary based
-            on data type and operational/legal requirements.
+            We retain personal information only for as long as necessary to provide our Services,
+            comply with applicable legal obligations, resolve disputes, enforce agreements,
+            maintain security, and support legitimate operational requirements.
+          </p>
+          <p className="text-gray-700 leading-7">
+            Medical records, prescriptions, appointment records, and related healthcare
+            information may be retained for periods required by applicable laws, healthcare
+            regulations, professional record-keeping obligations, or legitimate operational needs.
+          </p>
+          <p className="text-gray-700 leading-7">
+            Data may also be securely backed up for disaster recovery, business continuity, and
+            system restoration purposes.
           </p>
         </section>
 
         <section className="mt-8 space-y-3">
-          <h2 className="text-xl font-semibold text-gray-900">7. Data Security and Confidentiality</h2>
+          <h2 className="text-xl font-semibold text-gray-900">
+            7. Data Security and Confidentiality
+          </h2>
           <p className="text-gray-700 leading-7">
-            {/* We use reasonable technical and organizational measures to help protect personal
-            information against unauthorized access, loss, misuse, or alteration. */}
-            We implement reasonable technical and organizational measures to protect personal information against unauthorized access, loss, misuse, or alteration.
+            We implement reasonable technical, administrative, and organizational measures to
+            protect personal information against unauthorized access, disclosure, alteration,
+            misuse, or loss.
           </p>
           <p className="text-gray-700 leading-7">
-            Sensitive data is handled as confidential information and protected with encryption and
-            access controls where applicable.
+            Sensitive healthcare information is handled as confidential information with role-based
+            access controls, secure authentication mechanisms, and other appropriate safeguards.
           </p>
           <p className="text-gray-700 leading-7">
-            We use cloud infrastructure with security controls to protect data in transit and at
-            rest, as configured.
+            Access to patient medical records is restricted based on user roles so that only
+            authorized healthcare professionals, patients, clinic staff, and administrators can
+            access information necessary for their responsibilities.
           </p>
           <p className="text-gray-700 leading-7">
-            {/* No system is 100% secure, and we cannot guarantee absolute security. */}
-            {/* While we take all reasonable measures to protect your data and ensure its security, there may be inherent system vulnerabilities or unforeseen gaps that could result in unauthorized access or data breaches. */}
-            {/* While we take all reasonable steps to protect your data, no method of transmission or storage is completely secure. There may be inherent system vulnerabilities or unforeseen gaps that could result in unauthorized access or data breaches. */}
-            While we implement reasonable and industry-standard security measures to protect your data, no method of transmission or storage is completely secure. We cannot guarantee absolute security of your information, and there may be unforeseen vulnerabilities that could result in unauthorized access, disclosure, or data breaches. We shall not be held liable for any loss or damage arising from such incidents beyond our reasonable control.
+            Uploaded files, including prescription images, reports, and medical documents, are
+            stored using cloud infrastructure.
+          </p>
+          <p className="text-gray-700 leading-7">
+            While we implement reasonable and industry-standard security measures, no method of
+            electronic transmission or storage is completely secure. Accordingly, we cannot
+            guarantee absolute security, and we shall not be liable for unauthorized access,
+            disclosure, or data breaches resulting from circumstances beyond our reasonable
+            control.
           </p>
         </section>
 
         <section className="mt-8 space-y-3">
           <h2 className="text-xl font-semibold text-gray-900">8. Your Choices and Rights</h2>
           <p className="text-gray-700 leading-7">
-            You may have rights to access, correct, delete, or object to certain processing of
-            your personal information.
+            Subject to applicable law, you may have the right to access, correct, update, or
+            request deletion of your personal information.
+          </p>
+          <p className="text-gray-700 leading-7">
+            Account deletion requests may be submitted by contacting us using the contact
+            information provided below. Upon verification, we will process such requests in
+            accordance with applicable laws, operational requirements, and our data retention
+            practices.
+          </p>
+          <p className="text-gray-700 leading-7">
+            Where permitted or required by law, certain healthcare records, prescriptions,
+            appointment records, audit logs, or other information may be retained for legal,
+            regulatory, security, dispute resolution, or legitimate business purposes.
+          </p>
+          <p className="text-gray-700 leading-7">
+            Parents, legal guardians, or authorized representatives may manage information
+            relating to minor patients where permitted by applicable law.
           </p>
         </section>
 
         <section className="mt-8 space-y-3">
           <h2 className="text-xl font-semibold text-gray-900">9. Changes to This Policy</h2>
           <p className="text-gray-700 leading-7">
-            We may update this Privacy Policy from time to time. The updated version will be posted
-            on this page with a revised Last Updated date.
+            We may update this Privacy Policy from time to time. Any changes will become effective
+            when the updated Privacy Policy is published. The "Last Updated" date at the top of
+            this Privacy Policy will indicate the latest revision.
           </p>
         </section>
 
         <section className="mt-8 space-y-3">
           <h2 className="text-xl font-semibold text-gray-900">10. Contact Us</h2>
           <p className="text-gray-700 leading-7">
-            If you have any privacy questions or requests, contact us at{" "}
-            <a className="font-medium text-indigo-600 hover:text-indigo-700" href={`mailto:${CONTACT_EMAIL}`}>
-              {CONTACT_EMAIL}
+            If you have any questions, concerns, or requests regarding this Privacy Policy or your
+            personal information, please contact us:
+          </p>
+          <p className="text-gray-700 leading-7">
+            <strong>Email:</strong>{" "}
+            <a
+              className="font-medium text-indigo-600 hover:text-indigo-700"
+              href={`mailto:${PRIMARY_CONTACT_EMAIL}`}
+            >
+              {ALL_CONTACT_EMAILS}
             </a>
-            .
+          </p>
+          <p className="text-gray-700 leading-7">
+            <strong>Dapto (VISPL)</strong>
+            <br />
+            <strong>Vinfocom IT Services Private Limited (VISPL)</strong>
+          </p>
+        </section>
+
+        <section className="mt-8 space-y-3">
+          <h2 className="text-xl font-semibold text-gray-900">11. Governing Law</h2>
+          <p className="text-gray-700 leading-7">
+            This Privacy Policy shall be governed by and construed in accordance with the laws of
+            India.
+          </p>
+          <p className="text-gray-700 leading-7">
+            Any dispute arising out of or relating to this Privacy Policy shall be subject to the
+            exclusive jurisdiction of the courts located in Delhi, India.
           </p>
         </section>
       </div>
