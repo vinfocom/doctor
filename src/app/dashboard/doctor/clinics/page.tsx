@@ -523,8 +523,18 @@ export default function ClinicsPage() {
                 <div className="relative flex-1">
                     <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                     <input type="text" placeholder="Search clinics..." value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)} className="input-field input-field-with-icon pr-4"
+                        onChange={e => setSearchTerm(e.target.value)} className="input-field input-field-with-icon pr-10"
                         style={{ paddingLeft: "3rem" }} />
+                    {searchTerm ? (
+                        <button
+                            type="button"
+                            onClick={() => setSearchTerm("")}
+                            aria-label="Clear clinic search"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    ) : null}
                 </div>
                 <div className="flex w-full items-center gap-2 md:w-auto">
                     <Filter className="w-4 h-4 text-gray-500" />
@@ -567,7 +577,7 @@ export default function ClinicsPage() {
                                 <label className="text-sm font-medium text-gray-600">Phone Number</label>
                                 <input type="text" name="phone" value={formData.phone}
                                     onChange={handleInputChange} className="input-field"
-                                    placeholder="e.g. +1 234 567 890" />
+                                    placeholder="e.g. 9876543210" />
                             </div>
                         </div>
 
