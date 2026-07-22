@@ -166,6 +166,22 @@ function normalizeDateInput(value: string | Date | null | undefined) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function generateTemporaryPrescriptionNumber(input: {
+  doctorId: number;
+  patientId: number;
+  appointmentId: number;
+}) {
+  const appointmentToken = Math.max(
+    0,
+    Number(input.appointmentId) || 0
+  )
+    .toString(36)
+    .toUpperCase();
+  const timestampToken = Date.now().toString(36).toUpperCase();
+
+  return `TMP-${appointmentToken}-${timestampToken}`;
+}
+
 function mapVitals(row: VitalsRow | undefined): EmrVitalsPayload | null {
   if (!row) return null;
   return {
@@ -634,11 +650,16 @@ export async function getOrCreateDraftPrescription(input: {
     const lockName = buildDraftLockName(input);
     const lockRows = await tx.$queryRaw<Array<{ emr_lock_acquired: number | bigint | null }>>(
       Prisma.sql`
-        SELECT GET_LOCK(${lockName}, 2) AS emr_lock_acquired
+        SELECT GET_LOCK(${lockName}, 5) AS emr_lock_acquired
       `
     );
     const lockAcquired = Number(lockRows[0]?.emr_lock_acquired ?? 0) === 1;
     if (!lockAcquired) {
+      const existingDraft = await findExistingDraftPrescription(input);
+      if (existingDraft) {
+        return existingDraft;
+      }
+
       throw new Error("Could not acquire draft lock. Please try again.");
     }
 
@@ -686,7 +707,7 @@ export async function getOrCreateDraftPrescription(input: {
           updated_at
         )
         VALUES (
-          ${`TMP-${Date.now()}-${input.doctorId}-${input.patientId}-${input.appointmentId}`},
+          ${generateTemporaryPrescriptionNumber(input)},
           NULL,
           ${input.doctorId},
           ${input.patientId},
@@ -710,10 +731,6 @@ export async function getOrCreateDraftPrescription(input: {
     );
 
     insertedId = Number(insertedRows[0]?.id ?? 0);
-    if (!insertedId) {
-      throw new Error("Failed to create prescription draft");
-    }
-
     if (!insertedId) {
       throw new Error("Failed to create prescription draft");
     }
