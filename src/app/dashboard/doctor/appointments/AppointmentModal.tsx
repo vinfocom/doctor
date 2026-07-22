@@ -20,7 +20,7 @@ interface DoctorOption {
     specialization?: string | null;
 }
 
-interface AppointmentModalInitialValues {
+export interface AppointmentModalInitialValues {
     appointmentId?: number;
     patient_phone?: string;
     patient_name?: string;
@@ -38,7 +38,7 @@ interface AppointmentModalProps {
     initialValues?: AppointmentModalInitialValues;
 }
 
-type BookingFor = 'SELF' | 'OTHER';
+export type BookingFor = 'SELF' | 'OTHER';
 
 interface MatchedPatient {
     patient_id: number;

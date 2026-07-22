@@ -68,7 +68,7 @@ interface PrescriptionRecordItem {
     } | null;
 }
 
-import AppointmentModal from "./AppointmentModal";
+import AppointmentModal, { type AppointmentModalInitialValues } from "./AppointmentModal";
 import { formatTime, convertTo12Hour } from "@/lib/timeUtils";
 
 // Format a date string (YYYY-MM-DD or ISO) as a human-readable date in IST.
@@ -474,7 +474,7 @@ export default function DoctorAppointmentsPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [rescheduleAppointment, setRescheduleAppointment] = useState<Appointment | null>(null);
     const showFlatDoctorView = isHospitalStaffView && selectedDoctorFilter !== "ALL";
-    const rescheduleInitialValues = useMemo(() => {
+    const rescheduleInitialValues = useMemo<AppointmentModalInitialValues | undefined>(() => {
         if (!rescheduleAppointment) return undefined;
 
         return {
@@ -484,7 +484,7 @@ export default function DoctorAppointmentsPage() {
             clinic_id: rescheduleAppointment.clinic?.clinic_id ? String(rescheduleAppointment.clinic.clinic_id) : '',
             date: toISTDateInput(rescheduleAppointment.appointment_date),
             time: formatTime(rescheduleAppointment.start_time),
-            booking_for: rescheduleAppointment.booked_for === 'OTHER' ? 'OTHER' : 'SELF' as const,
+            booking_for: rescheduleAppointment.booked_for === 'OTHER' ? 'OTHER' : 'SELF',
         };
     }, [rescheduleAppointment]);
 

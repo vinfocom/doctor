@@ -28,11 +28,11 @@ export default function Main() {
     <div className="relative overflow-hidden">
       {/* Background effects */}
       <div className="page-glow" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-gradient-to-b from-indigo-100/40 to-transparent rounded-full blur-3xl pointer-events-none" />
+      <div className="mobile-gpu-heavy absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-gradient-to-b from-indigo-100/40 to-transparent rounded-full blur-3xl pointer-events-none" />
 
       {/* Hero Section */}
       <section className="relative min-h-screen flex flex-col items-center justify-center px-4 py-20">
-        <Spotlight className="-top-40 left-0 md:left-60 md:-top-20" fill="rgba(79,70,229,0.15)" />
+        <Spotlight className="mobile-gpu-heavy -top-40 left-0 md:left-60 md:-top-20" fill="rgba(79,70,229,0.15)" />
 
         <motion.div
           className="relative z-10 w-full max-w-4xl text-center"
@@ -93,12 +93,12 @@ export default function Main() {
 
         {/* Floating gradient orbs */}
         <motion.div
-          className="absolute bottom-20 left-10 w-72 h-72 bg-indigo-200/30 rounded-full blur-3xl"
+          className="mobile-gpu-heavy absolute bottom-20 left-10 w-72 h-72 bg-indigo-200/30 rounded-full blur-3xl"
           animate={{ y: [0, -20, 0], opacity: [0.3, 0.6, 0.3] }}
           transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
         />
         <motion.div
-          className="absolute top-40 right-10 w-96 h-96 bg-purple-200/20 rounded-full blur-3xl"
+          className="mobile-gpu-heavy absolute top-40 right-10 w-96 h-96 bg-purple-200/20 rounded-full blur-3xl"
           animate={{ y: [0, 15, 0], opacity: [0.2, 0.5, 0.2] }}
           transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
         />

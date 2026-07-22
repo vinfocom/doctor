@@ -329,7 +329,7 @@ export default function DoctorDashboard() {
 
         return (
             <div className="relative mx-auto min-h-screen w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-                <div className="fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
+                <div className="mobile-gpu-heavy fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
                     <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] animate-pulse" />
                     <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-[100px]" />
                 </div>
@@ -528,7 +528,7 @@ export default function DoctorDashboard() {
     return (
         <div className="relative mx-auto min-h-screen w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
             {/* Background Gradients */}
-            <div className="fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
+            <div className="mobile-gpu-heavy fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
                 <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] animate-pulse" />
                 <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-[100px]" />
             </div>
