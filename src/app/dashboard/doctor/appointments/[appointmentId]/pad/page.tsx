@@ -237,6 +237,7 @@ const MEDICINE_TYPE_OPTIONS = [
 const MEDICINE_UNIT_OPTIONS = ["mg", "mcg", "g", "ml", "IU", "%"];
 
 const QUICK_FOLLOW_UP_OPTIONS = [
+  { label: "After 5 days", days: 5 },
   { label: "After 7 days", days: 7 },
   { label: "After 15 days", days: 15 },
   { label: "After 1 month", days: 30 },
@@ -393,6 +394,28 @@ function formatDateInputDraft(value: string) {
   if (digits.length <= 2) return digits;
   if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function countDigitsBeforeCursor(value: string, cursor: number) {
+  return value
+    .slice(0, Math.max(0, cursor))
+    .replace(/\D/g, "").length;
+}
+
+function getCursorPositionForDigitIndex(value: string, digitIndex: number) {
+  if (digitIndex <= 0) return 0;
+
+  let digitsSeen = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    if (/\d/.test(value[index])) {
+      digitsSeen += 1;
+      if (digitsSeen === digitIndex) {
+        return index + 1;
+      }
+    }
+  }
+
+  return value.length;
 }
 
 function formatHistoryTimestamp(value: string | null | undefined) {
@@ -2148,6 +2171,7 @@ export default function DoctorAppointmentPadPage() {
   const durationInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const durationAnchorRefs = useRef<(HTMLDivElement | null)[]>([]);
   const vitalInputRefs = useRef<Partial<Record<VitalInputKey, HTMLInputElement | null>>>({});
+  const nextVisitInputRef = useRef<HTMLInputElement | null>(null);
   const historyStripRef = useRef<HTMLDivElement | null>(null);
   const historyGroupRefs = useRef<(HTMLDivElement | null)[]>([]);
   const prescriptionContentRef = useRef<HTMLDivElement | null>(null);
@@ -2176,6 +2200,7 @@ export default function DoctorAppointmentPadPage() {
   const inFlightRef = useRef(false);
   const queuedSaveRef = useRef(false);
   const queuedSaveTimerRef = useRef<number | null>(null);
+  const pendingNextVisitCursorRef = useRef<number | null>(null);
   const latestStateRef = useRef<DraftEditorState | null>(null);
   const lastSerializedRef = useRef("");
   const hasHydratedRef = useRef(false);
@@ -2576,6 +2601,23 @@ export default function DoctorAppointmentPadPage() {
   useEffect(() => {
     setNextVisitInputValue(formatDateDdMmYyyy(editorState?.next_visit_date));
   }, [editorState?.next_visit_date]);
+
+  useLayoutEffect(() => {
+    if (pendingNextVisitCursorRef.current === null) return;
+
+    const input = nextVisitInputRef.current;
+    if (!input || document.activeElement !== input) {
+      pendingNextVisitCursorRef.current = null;
+      return;
+    }
+
+    const nextCursor = Math.min(
+      pendingNextVisitCursorRef.current,
+      nextVisitInputValue.length
+    );
+    input.setSelectionRange(nextCursor, nextCursor);
+    pendingNextVisitCursorRef.current = null;
+  }, [nextVisitInputValue]);
 
   const applyFollowUpDate = useCallback(
     (nextDate: string, options?: { clearQuickSelection?: boolean }) => {
@@ -4827,13 +4869,23 @@ export default function DoctorAppointmentPadPage() {
               <label className="space-y-1">
                 <span className="text-xs font-medium text-gray-500">Follow-up date</span>
                 <input
+                  ref={nextVisitInputRef}
                   type="text"
                   inputMode="numeric"
                   placeholder="DD/MM/YYYY"
                   maxLength={10}
                   value={nextVisitInputValue}
                   onChange={(event) => {
-                    setNextVisitInputValue(formatDateInputDraft(event.target.value));
+                    const selectionStart =
+                      event.target.selectionStart ?? event.target.value.length;
+                    const nextDigitIndex = countDigitsBeforeCursor(
+                      event.target.value,
+                      selectionStart
+                    );
+                    const formattedValue = formatDateInputDraft(event.target.value);
+                    pendingNextVisitCursorRef.current =
+                      getCursorPositionForDigitIndex(formattedValue, nextDigitIndex);
+                    setNextVisitInputValue(formattedValue);
                   }}
                   onBlur={() => {
                     const normalizedDate = normalizeFollowUpDateInput(nextVisitInputValue);
