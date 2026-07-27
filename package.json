@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "node server.js",
-    "build": "npm run prisma:generate && next build",
+    "// build": "Use webpack for production builds because Turbopack intermittently hangs on process exit after a successful build due to leaked CLOSE_WAIT sockets between the build process and its worker pool. Revisit when upgrading Next.js in case this is fixed upstream.",
+    "build": "npm run prisma:generate && next build --webpack",
     "prisma:generate": "prisma generate",
     "start": "NODE_ENV=production node server.js",
     "lint": "eslint",
