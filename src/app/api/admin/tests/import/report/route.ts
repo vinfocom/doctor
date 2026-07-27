@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import {
-  buildMedicineImportReportWorkbook,
-  type MedicineImportPreview,
-} from "@/lib/admin/medicineImport";
 import { getSessionFromRequest } from "@/lib/request-auth";
+import {
+  buildTestImportReportWorkbook,
+  type TestImportPreview,
+} from "@/lib/admin/testImport";
 
 function isSuperAdmin(role?: string | null) {
   return role === "SUPER_ADMIN";
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = (await request.json()) as { preview?: MedicineImportPreview };
+    const body = (await request.json()) as { preview?: TestImportPreview };
     if (!body.preview) {
       return NextResponse.json(
         { error: "Preview data is required to build the report." },
@@ -24,11 +24,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const workbook = await buildMedicineImportReportWorkbook(body.preview);
+    const workbook = await buildTestImportReportWorkbook(body.preview);
     const buffer = await workbook.xlsx.writeBuffer();
     const safeBaseName =
       body.preview.file_name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]+/g, "_") ||
-      "medicine_import";
+      "test_import";
     const fileName = `${safeBaseName}_preview_report.xlsx`;
 
     return new NextResponse(buffer, {
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error("Medicine import report error:", error);
+    console.error("Test import report error:", error);
     return NextResponse.json(
       {
         error:

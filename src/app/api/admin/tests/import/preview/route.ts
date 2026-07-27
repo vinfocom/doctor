@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/request-auth";
-import { generateMedicineImportPreview } from "@/lib/admin/medicineImport";
+import { generateTestImportPreview } from "@/lib/admin/testImport";
 
 function isSuperAdmin(role?: string | null) {
   return role === "SUPER_ADMIN";
@@ -31,10 +31,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const preview = await generateMedicineImportPreview(uploaded);
+    const preview = await generateTestImportPreview(uploaded);
     return NextResponse.json({ preview });
   } catch (error) {
-    console.error("Medicine import preview error:", error);
+    console.error("Test import preview error:", error);
     return NextResponse.json(
       {
         error:

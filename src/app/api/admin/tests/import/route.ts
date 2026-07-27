@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/request-auth";
-import { importMedicineRows } from "@/lib/admin/medicineImport";
+import { importTestRows } from "@/lib/admin/testImport";
 
 function isSuperAdmin(role?: string | null) {
   return role === "SUPER_ADMIN";
@@ -17,10 +17,6 @@ export async function POST(request: Request) {
       rows?: Array<{
         name: string;
         normalized_name: string;
-        type?: string | null;
-        strength?: string | null;
-        salt_composition?: string | null;
-        company?: string | null;
       }>;
     };
 
@@ -31,25 +27,22 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await importMedicineRows({
+    const result = await importTestRows({
       rows: body.rows.map((row) => ({
         name: row.name,
         normalized_name: row.normalized_name,
-        type: row.type ?? null,
-        strength: row.strength ?? null,
-        salt_composition: row.salt_composition ?? null,
-        company: row.company ?? null,
       })),
     });
+
     return NextResponse.json({ result });
   } catch (error) {
-    console.error("Medicine import error:", error);
+    console.error("Test import error:", error);
     return NextResponse.json(
       {
         error:
           error instanceof Error
             ? error.message
-            : "Could not import medicines right now. Please retry.",
+            : "Could not import tests right now. Please retry.",
       },
       { status: 500 }
     );
