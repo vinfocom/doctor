@@ -86,6 +86,44 @@ type TestImportPreview = {
   groups: Record<ImportStatus, TestImportRow[]>;
 };
 
+type ComplaintImportRow = {
+  row_number: number;
+  name: string;
+  normalized_name: string;
+  status: ImportStatus;
+  reasons: string[];
+  source: {
+    raw_name: string;
+  };
+};
+
+type ComplaintImportPreview = {
+  file_name: string;
+  generated_at: string;
+  summary: ImportSummary;
+  rows: ComplaintImportRow[];
+  groups: Record<ImportStatus, ComplaintImportRow[]>;
+};
+
+type DiagnosisImportRow = {
+  row_number: number;
+  name: string;
+  normalized_name: string;
+  status: ImportStatus;
+  reasons: string[];
+  source: {
+    raw_name: string;
+  };
+};
+
+type DiagnosisImportPreview = {
+  file_name: string;
+  generated_at: string;
+  summary: ImportSummary;
+  rows: DiagnosisImportRow[];
+  groups: Record<ImportStatus, DiagnosisImportRow[]>;
+};
+
 type SectionConfig<TPreview, TRow> = {
   title: string;
   description: string;
@@ -628,6 +666,72 @@ const testColumns = [
   },
 ];
 
+const complaintColumns = [
+  {
+    header: "Row / Complaint",
+    accessorKey: (row: ComplaintImportRow) => (
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+          Row {row.row_number}
+        </div>
+        <div className="font-semibold text-gray-900">{row.name || "-"}</div>
+        <div className="text-xs text-gray-500">{row.normalized_name || "-"}</div>
+      </div>
+    ),
+  },
+  {
+    header: "Status",
+    accessorKey: (row: ComplaintImportRow) => <StatusBadge status={row.status} />,
+  },
+  {
+    header: "Reason",
+    accessorKey: (row: ComplaintImportRow) => (
+      <div className="max-w-xl text-sm text-gray-700">
+        {row.reasons.length > 0 ? row.reasons.join(" ") : "Ready to import."}
+      </div>
+    ),
+  },
+  {
+    header: "Source",
+    accessorKey: (row: ComplaintImportRow) => (
+      <div className="text-sm text-gray-700">{row.source.raw_name || "-"}</div>
+    ),
+  },
+];
+
+const diagnosisColumns = [
+  {
+    header: "Row / Diagnosis",
+    accessorKey: (row: DiagnosisImportRow) => (
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+          Row {row.row_number}
+        </div>
+        <div className="font-semibold text-gray-900">{row.name || "-"}</div>
+        <div className="text-xs text-gray-500">{row.normalized_name || "-"}</div>
+      </div>
+    ),
+  },
+  {
+    header: "Status",
+    accessorKey: (row: DiagnosisImportRow) => <StatusBadge status={row.status} />,
+  },
+  {
+    header: "Reason",
+    accessorKey: (row: DiagnosisImportRow) => (
+      <div className="max-w-xl text-sm text-gray-700">
+        {row.reasons.length > 0 ? row.reasons.join(" ") : "Ready to import."}
+      </div>
+    ),
+  },
+  {
+    header: "Source",
+    accessorKey: (row: DiagnosisImportRow) => (
+      <div className="text-sm text-gray-700">{row.source.raw_name || "-"}</div>
+    ),
+  },
+];
+
 export default function BulkImportPageClient() {
   return (
     <div className="mx-auto max-w-7xl space-y-10 px-4 py-6 sm:px-6 sm:py-8">
@@ -710,6 +814,60 @@ export default function BulkImportPageClient() {
           searchText: (row) =>
             [row.name, row.normalized_name, row.source.raw_name, row.reasons.join(" ")].join(" "),
           columns: testColumns,
+        }}
+      />
+
+      <ImportSection<ComplaintImportPreview, ComplaintImportRow>
+        config={{
+          title: "Complaint Bulk Import",
+          description:
+            "Upload a complaints `.xlsx` or `.csv`, review pending or rejected collisions carefully, and import only the rows that are safe to add to the complaints master table.",
+          uploadHelp:
+            "Required column: name. Accepted aliases include complaint name, complaint_name, complaint, and symptom.",
+          filePrefix: "complaint_import",
+          previewEndpoint: "/api/admin/complaints/import/preview",
+          reportEndpoint: "/api/admin/complaints/import/report",
+          importEndpoint: "/api/admin/complaints/import",
+          mapImportRows: (preview) =>
+            preview.groups.will_import.map((row) => ({
+              name: row.name,
+              normalized_name: row.normalized_name,
+            })),
+          buildSuccessMessage: (result) =>
+            `Import completed. ${result.inserted_count} new complaints were inserted.`,
+          buildConfirmTitle: () => "Confirm Complaint Import",
+          buildConfirmBody: (preview) =>
+            `This will insert ${preview.summary.will_import} new complaints into the master table. Rows marked as Needs Review, Invalid, Duplicate In File, and Already Exists will not be imported.`,
+          searchText: (row) =>
+            [row.name, row.normalized_name, row.source.raw_name, row.reasons.join(" ")].join(" "),
+          columns: complaintColumns,
+        }}
+      />
+
+      <ImportSection<DiagnosisImportPreview, DiagnosisImportRow>
+        config={{
+          title: "Diagnosis Bulk Import",
+          description:
+            "Upload a diagnosis `.xlsx` or `.csv`, review pending or rejected collisions carefully, and import only the rows that are safe to add to the diagnosis master table.",
+          uploadHelp:
+            "Required column: name. Accepted aliases include diagnosis name, diagnosis_name, diagnosis, and dx.",
+          filePrefix: "diagnosis_import",
+          previewEndpoint: "/api/admin/diagnosis/import/preview",
+          reportEndpoint: "/api/admin/diagnosis/import/report",
+          importEndpoint: "/api/admin/diagnosis/import",
+          mapImportRows: (preview) =>
+            preview.groups.will_import.map((row) => ({
+              name: row.name,
+              normalized_name: row.normalized_name,
+            })),
+          buildSuccessMessage: (result) =>
+            `Import completed. ${result.inserted_count} new diagnosis rows were inserted.`,
+          buildConfirmTitle: () => "Confirm Diagnosis Import",
+          buildConfirmBody: (preview) =>
+            `This will insert ${preview.summary.will_import} new diagnosis rows into the master table. Rows marked as Needs Review, Invalid, Duplicate In File, and Already Exists will not be imported.`,
+          searchText: (row) =>
+            [row.name, row.normalized_name, row.source.raw_name, row.reasons.join(" ")].join(" "),
+          columns: diagnosisColumns,
         }}
       />
     </div>
