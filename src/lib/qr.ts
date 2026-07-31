@@ -1,7 +1,11 @@
+import { getQrHospitalCode, getQrHospitalName, isNahHospitalGroupCode } from "@/lib/qrHospital";
+
 const QR_PREVIEW_ENDPOINT = "https://daptoservices.vinfocom.co.in/qr/generate";
 const QR_DOWNLOAD_ENDPOINT = "https://daptoservices.vinfocom.co.in/qr/generate/download";
 const HOSPITAL_QR_PREVIEW_ENDPOINT = "https://daptoservices.vinfocom.co.in/qr/hospital/generate";
 const HOSPITAL_QR_DOWNLOAD_ENDPOINT = "https://daptoservices.vinfocom.co.in/qr/hospital/generate/download";
+const HOSPITAL_REGISTRATION_QR_PREVIEW_ENDPOINT = "https://daptoservices.vinfocom.co.in/qr/hospital/registration/generate";
+const HOSPITAL_REGISTRATION_QR_DOWNLOAD_ENDPOINT = "https://daptoservices.vinfocom.co.in/qr/hospital/registration/generate/download";
 
 type PreviewPayload = {
     doctor_id: number;
@@ -10,6 +14,7 @@ type PreviewPayload = {
 
 type HospitalPreviewPayload = {
     hospital_code: string;
+    hospital_name?: string;
 };
 
 const CANDIDATE_KEYS = [
@@ -86,10 +91,19 @@ export function getQrDownloadUrl(doctorId: number, clinicId: number) {
     return `${QR_DOWNLOAD_ENDPOINT}?${params.toString()}`;
 }
 
-export function getHospitalQrDownloadUrl(hospitalCode: string) {
+export function getHospitalQrDownloadUrl(hospitalCode: string, hospitalName?: string) {
+    const normalizedCode = getQrHospitalCode(hospitalCode);
     const params = new URLSearchParams({
-        hospital_code: hospitalCode,
+        hospital_code: normalizedCode,
     });
+
+    if (isNahHospitalGroupCode(hospitalCode)) {
+        const resolvedHospitalName = getQrHospitalName(hospitalCode, hospitalName);
+        if (resolvedHospitalName) {
+            params.set("hospital_name", resolvedHospitalName);
+        }
+        return `${HOSPITAL_REGISTRATION_QR_DOWNLOAD_ENDPOINT}?${params.toString()}`;
+    }
 
     return `${HOSPITAL_QR_DOWNLOAD_ENDPOINT}?${params.toString()}`;
 }
@@ -99,7 +113,17 @@ export async function getQrPreviewDataUrl(payload: PreviewPayload) {
 }
 
 export async function getHospitalQrPreviewDataUrl(payload: HospitalPreviewPayload) {
-    return getPreviewDataUrl(HOSPITAL_QR_PREVIEW_ENDPOINT, payload);
+    const normalizedCode = getQrHospitalCode(payload.hospital_code);
+    if (isNahHospitalGroupCode(payload.hospital_code)) {
+        return getPreviewDataUrl(HOSPITAL_REGISTRATION_QR_PREVIEW_ENDPOINT, {
+            hospital_code: normalizedCode,
+            hospital_name: getQrHospitalName(payload.hospital_code, payload.hospital_name),
+        });
+    }
+
+    return getPreviewDataUrl(HOSPITAL_QR_PREVIEW_ENDPOINT, {
+        hospital_code: normalizedCode,
+    });
 }
 
 async function getPreviewDataUrl(endpoint: string, payload: PreviewPayload | HospitalPreviewPayload) {

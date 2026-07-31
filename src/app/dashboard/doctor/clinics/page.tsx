@@ -10,6 +10,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { PremiumButton } from "@/components/ui/PremiumButton";
 import { formatTime, convertTo12Hour, convertTo24Hour } from "@/lib/timeUtils";
 import { Button } from "@/components/ui/moving-border";
+import { getQrHospitalCode, getQrHospitalName, isNahHospitalGroupCode } from "@/lib/qrHospital";
 
 interface Clinic {
     clinic_id: number;
@@ -76,7 +77,14 @@ function getQrDownloadHref(clinic?: Clinic | null) {
     if (!clinic) return "#";
     const hospitalGroupCode = getHospitalGroupCode(clinic);
     if (hospitalGroupCode) {
-        return `/api/qr/hospital/generate/download?hospital_code=${encodeURIComponent(hospitalGroupCode)}`;
+        const params = new URLSearchParams({
+            hospital_code: getQrHospitalCode(hospitalGroupCode),
+        });
+        const hospitalName = getQrHospitalName(hospitalGroupCode, clinic.clinic_name);
+        if (hospitalName) {
+            params.set("hospital_name", hospitalName);
+        }
+        return `/api/qr/hospital/generate/download?${params.toString()}`;
     }
 
     return `/api/qr/generate/download?doctor_id=${clinic.doctor_id}&clinic_id=${clinic.clinic_id}`;
@@ -396,7 +404,10 @@ export default function ClinicsPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(isHospitalClinic
-                    ? { hospital_code: hospitalGroupCode }
+                    ? {
+                        hospital_code: getQrHospitalCode(hospitalGroupCode),
+                        hospital_name: getQrHospitalName(hospitalGroupCode, clinic.clinic_name),
+                    }
                     : {
                         doctor_id: clinic.doctor_id,
                         clinic_id: clinic.clinic_id,
@@ -411,7 +422,19 @@ export default function ClinicsPage() {
             setQrPreviewImage(previewData.dataUrl || "");
 
             const url = isHospitalClinic
-                ? `https://daptoservices.vinfocom.co.in/qr/hospital/generate/download?hospital_code=${encodeURIComponent(hospitalGroupCode)}`
+                ? (() => {
+                    const params = new URLSearchParams({
+                        hospital_code: getQrHospitalCode(hospitalGroupCode),
+                    });
+                    const hospitalName = getQrHospitalName(hospitalGroupCode, clinic.clinic_name);
+                    if (hospitalName) {
+                        params.set("hospital_name", hospitalName);
+                    }
+                    const path = isNahHospitalGroupCode(hospitalGroupCode)
+                        ? "qr/hospital/registration/generate/download"
+                        : "qr/hospital/generate/download";
+                    return `https://daptoservices.vinfocom.co.in/${path}?${params.toString()}`;
+                })()
                 : `https://daptoservices.vinfocom.co.in/download?doctor_id=${clinic.doctor_id}&clinic_id=${clinic.clinic_id}`;
             await fetch(`/api/clinics/${clinic.clinic_id}`, {
                 method: "PUT",

@@ -36,6 +36,7 @@ interface AppointmentModalProps {
     onSuccess: () => void;
     mode?: 'create' | 'reschedule';
     initialValues?: AppointmentModalInitialValues;
+    registrationCopy?: boolean;
 }
 
 export type BookingFor = 'SELF' | 'OTHER';
@@ -61,6 +62,8 @@ const formatAvailableDate = (date: string): string => {
     });
 };
 
+const getTodayDateInput = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
 const emptyForm = {
     patient_phone: '',
     patient_name: '',
@@ -77,10 +80,12 @@ export default function AppointmentModal({
     onSuccess,
     mode = 'create',
     initialValues,
+    registrationCopy = false,
 }: AppointmentModalProps) {
     const [clinics, setClinics] = useState<Clinic[]>([]);
     const [doctors, setDoctors] = useState<DoctorOption[]>([]);
     const [isHospitalStaff, setIsHospitalStaff] = useState(false);
+    const [isNahRegistrationView, setIsNahRegistrationView] = useState(registrationCopy);
     const [slotDuration, setSlotDuration] = useState<number>(30);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -100,6 +105,12 @@ export default function AppointmentModal({
     useEffect(() => {
         latestSelectedDateRef.current = formData.date;
     }, [formData.date]);
+
+    useEffect(() => {
+        if (registrationCopy) {
+            setIsNahRegistrationView(true);
+        }
+    }, [registrationCopy]);
 
     const fetchClinics = useCallback(async () => {
         try {
@@ -132,7 +143,17 @@ export default function AppointmentModal({
                     ? meData.user.assigned_doctor_ids.length
                     : nextDoctors.length;
                 const hospitalStaff = meData?.user?.role === 'CLINIC_STAFF' && (assignedCount > 1 || nextDoctors.length > 1);
+                const hospitalGroupCodes = [
+                    meData?.user?.clinic_staff?.clinics?.hospital_group_code,
+                    ...(Array.isArray(meData?.user?.hospital_group_codes) ? meData.user.hospital_group_codes : []),
+                ];
+                const nextIsNahRegistrationView =
+                    registrationCopy ||
+                    (meData?.user?.role === 'CLINIC_STAFF' &&
+                        hospitalGroupCodes.some((code) => String(code || '').trim().toUpperCase() === 'NAH'));
+
                 setIsHospitalStaff(hospitalStaff);
+                setIsNahRegistrationView(nextIsNahRegistrationView);
 
                 if (hospitalStaff && !initialValues?.clinic_id) {
                     setFormData((prev) => ({
@@ -144,7 +165,7 @@ export default function AppointmentModal({
         } catch (err) {
             console.error("Failed to fetch clinics", err);
         }
-    }, [initialValues?.clinic_id]);
+    }, [initialValues?.clinic_id, registrationCopy]);
 
     useEffect(() => {
         if (isOpen) {
@@ -274,6 +295,7 @@ export default function AppointmentModal({
             const data = await res.json();
             const nextAvailableDates = Array.isArray(data.availableDates) ? data.availableDates : [];
             const isSelectedDateInvalid = Boolean(selectedDate) && !nextAvailableDates.includes(selectedDate);
+            const today = getTodayDateInput();
 
             setAvailableDates(nextAvailableDates);
 
@@ -282,8 +304,11 @@ export default function AppointmentModal({
                 setAvailableSlots([]);
                 setAvailabilityNotice('Doctor is on leave or unavailable on the previously selected date. Please choose another date.');
             } else if (nextAvailableDates.length === 0) {
-                setAvailabilityNotice('No available dates for this clinic right now.');
+                setAvailabilityNotice(`No available dates for this ${isNahRegistrationView ? 'hospital' : 'clinic'} right now.`);
             } else {
+                if (isNahRegistrationView && mode === 'create' && !selectedDate && nextAvailableDates.includes(today)) {
+                    setFormData((prev) => prev.date ? prev : { ...prev, date: today, time: '' });
+                }
                 setAvailabilityNotice('');
             }
         } catch (e) {
@@ -293,7 +318,23 @@ export default function AppointmentModal({
         } finally {
             setLoadingDates(false);
         }
-    }, [formData.clinic_id]);
+    }, [formData.clinic_id, isNahRegistrationView, mode]);
+
+    useEffect(() => {
+        if (!isOpen || !isNahRegistrationView || mode !== 'create' || formData.clinic_id) {
+            return;
+        }
+
+        const nextClinics = isHospitalStaff && formData.doctor_id
+            ? clinics.filter((clinic) => Number(clinic.doctor_id || clinic.doctor?.doctor_id) === Number(formData.doctor_id))
+            : clinics;
+
+        if (nextClinics.length !== 1) {
+            return;
+        }
+
+        setFormData((prev) => prev.clinic_id ? prev : { ...prev, clinic_id: String(nextClinics[0].clinic_id) });
+    }, [clinics, formData.clinic_id, formData.doctor_id, isHospitalStaff, isNahRegistrationView, isOpen, mode]);
 
     const fetchSlots = useCallback(async (dateValue: string, clinicIdValue: string) => {
         if (!dateValue || !clinicIdValue) {
@@ -366,6 +407,9 @@ export default function AppointmentModal({
         setFormData({ ...formData, clinic_id: clinicId, date: '', time: '' });
     };
 
+    const appointmentLabel = isNahRegistrationView ? 'Registration' : 'Appointment';
+    const clinicLabel = isNahRegistrationView ? 'Hospital' : 'Clinic';
+
     const handleDoctorChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         setAvailableDates([]);
         setAvailableSlots([]);
@@ -432,7 +476,7 @@ export default function AppointmentModal({
                 onClose();
             } else {
                 const data = await res.json();
-                setError(data.error || 'Failed to create appointment');
+                setError(data.error || `Failed to create ${appointmentLabel.toLowerCase()}`);
             }
         } catch {
             setError('An error occurred');
@@ -453,7 +497,7 @@ export default function AppointmentModal({
                     >
                         <div className="flex items-center justify-between border-b border-gray-100 p-5 sm:p-6">
                             <h2 className="text-xl font-bold text-gray-800">
-                                {mode === 'reschedule' ? 'Reschedule Appointment' : 'New Appointment'}
+                                {mode === 'reschedule' ? `Reschedule ${appointmentLabel}` : `New ${appointmentLabel}`}
                             </h2>
                             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -591,7 +635,7 @@ export default function AppointmentModal({
 
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Clinic</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">{clinicLabel}</label>
                                     <select
                                         required
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
@@ -599,7 +643,7 @@ export default function AppointmentModal({
                                         onChange={handleClinicChange}
                                         disabled={mode === 'reschedule' || (isHospitalStaff && mode === 'create' && !formData.doctor_id)}
                                     >
-                                        <option value="">{isHospitalStaff && mode === 'create' && !formData.doctor_id ? 'Select doctor first' : 'Select Clinic'}</option>
+                                        <option value="">{isHospitalStaff && mode === 'create' && !formData.doctor_id ? 'Select doctor first' : `Select ${clinicLabel}`}</option>
                                         {selectedDoctorClinics.map(c => (
                                             <option key={c.clinic_id} value={c.clinic_id}>
                                                 {c.clinic_name}
@@ -670,7 +714,7 @@ export default function AppointmentModal({
                                 >
                                     {loading
                                         ? (mode === 'reschedule' ? 'Saving...' : 'Creating...')
-                                        : (mode === 'reschedule' ? 'Save Reschedule' : 'Create Appointment')}
+                                        : (mode === 'reschedule' ? 'Save Reschedule' : `Create ${appointmentLabel}`)}
                                 </button>
                             </div>
                         </form>

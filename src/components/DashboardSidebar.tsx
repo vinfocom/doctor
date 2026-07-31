@@ -18,6 +18,7 @@ import {
     FileText,
     Menu,
     X,
+    Search,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -26,6 +27,7 @@ interface SidebarProps {
     staffRole?: string | null;
     emrPrescriptionEnabled?: boolean;
     assignedDoctorCount?: number;
+    hasNahSearchTokenAccess?: boolean;
 }
 
 export default function DashboardSidebar({
@@ -34,6 +36,7 @@ export default function DashboardSidebar({
     staffRole,
     emrPrescriptionEnabled = false,
     assignedDoctorCount = 0,
+    hasNahSearchTokenAccess = false,
 }: SidebarProps) {
     const pathname = usePathname();
     const router = useRouter();
@@ -86,7 +89,10 @@ export default function DashboardSidebar({
         ],
         CLINIC_STAFF: [
             { href: "/dashboard/doctor", label: "Overview", icon: <LayoutDashboard size={20} /> },
-            { href: "/dashboard/doctor/appointments", label: "Appointments", icon: <Calendar size={20} /> },
+            { href: "/dashboard/doctor/appointments", label: hasNahSearchTokenAccess ? "Registrations" : "Appointments", icon: <Calendar size={20} /> },
+            ...(hasNahSearchTokenAccess
+                ? [{ href: "/dashboard/doctor/search-token", label: "Search Token", icon: <Search size={20} /> }]
+                : []),
             ...(staffRole === "HAVE_ACCESS"
                 ? [{
                     href: assignedDoctorCount > 1 ? "/dashboard/doctor/live-hospital" : "/dashboard/doctor/live",

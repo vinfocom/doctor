@@ -20,6 +20,7 @@ export default async function DoctorLayout({
     let staffRole: string | null = null;
     let emrPrescriptionEnabled = false;
     let assignedDoctorCount = 0;
+    let hasNahSearchTokenAccess = false;
 
     if (session.role === "DOCTOR") {
         const doctor = await prisma.doctors.findUnique({
@@ -61,6 +62,7 @@ export default async function DoctorLayout({
         staffRole = staff?.staff_role || null;
         assignedDoctorCount = staff ? (await resolveEffectiveAssignedDoctorIds(prisma, staff)).length : 0;
         userName = staff?.users?.name?.trim() || userName;
+        hasNahSearchTokenAccess = String(staff?.clinics?.hospital_group_code || "").trim().toUpperCase() === "NAH";
     }
 
     return (
@@ -71,6 +73,7 @@ export default async function DoctorLayout({
                 staffRole={staffRole}
                 emrPrescriptionEnabled={emrPrescriptionEnabled}
                 assignedDoctorCount={assignedDoctorCount}
+                hasNahSearchTokenAccess={hasNahSearchTokenAccess}
             />
             <div className="dashboard-main">
                 {children}

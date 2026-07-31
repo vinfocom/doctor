@@ -6,6 +6,7 @@ export async function POST(req: Request) {
     try {
         const body = await req.json();
         const hospitalCode = String(body?.hospital_code || "").trim();
+        const hospitalName = String(body?.hospital_name || "").trim();
 
         if (!hospitalCode) {
             return NextResponse.json({ error: "hospital_code is required" }, { status: 400 });
@@ -13,6 +14,7 @@ export async function POST(req: Request) {
 
         const dataUrl = await getHospitalQrPreviewDataUrl({
             hospital_code: hospitalCode,
+            hospital_name: hospitalName || undefined,
         });
 
         const { contentType, buffer } = parseQrDataUrl(dataUrl);

@@ -484,6 +484,12 @@ export async function POST(request: Request) {
         const end_time = body.end_time;
         const patient_phone = String(body.patient_phone || '').trim();
         const patient_name = String(body.patient_name || '').trim();
+        const requestedPatientId = Number(body.patient_id);
+        const rawPaymentStatus = String(body.payment_status || "").trim().toUpperCase();
+        const payment_status =
+            rawPaymentStatus === "PENDING" || rawPaymentStatus === "DONE"
+                ? rawPaymentStatus
+                : null;
 
         // Resolve IDs from session
         const cookieStore = await cookies();
@@ -623,16 +629,34 @@ export async function POST(request: Request) {
         const targetProfileType = booking_for === "OTHER" ? "OTHER" : "SELF";
         const matchingPatientsForProfile = matchingPatientsOnPhone.filter((p) => p.profile_type === targetProfileType);
         const normalizedPatientName = patient_name.trim().toLowerCase();
-        let patient =
-            matchingPatientsForProfile.find((p) =>
-                String(p.full_name || '').trim().toLowerCase() === normalizedPatientName &&
-                Number(p.doctor_id || 0) === Number(doctor_id)
-            ) ||
-            matchingPatientsForProfile.find((p) =>
-                String(p.full_name || '').trim().toLowerCase() === normalizedPatientName
-            ) ||
-            matchingPatientsForProfile[0] ||
-            null;
+        let patient = Number.isFinite(requestedPatientId) && requestedPatientId > 0
+            ? await prisma.patients.findFirst({
+                where: {
+                    patient_id: requestedPatientId,
+                    admin_id: Number(admin_id),
+                },
+                select: {
+                    patient_id: true,
+                    full_name: true,
+                    phone: true,
+                    doctor_id: true,
+                    profile_type: true,
+                },
+            })
+            : null;
+
+        if (!patient) {
+            patient =
+                matchingPatientsForProfile.find((p) =>
+                    String(p.full_name || '').trim().toLowerCase() === normalizedPatientName &&
+                    Number(p.doctor_id || 0) === Number(doctor_id)
+                ) ||
+                matchingPatientsForProfile.find((p) =>
+                    String(p.full_name || '').trim().toLowerCase() === normalizedPatientName
+                ) ||
+                matchingPatientsForProfile[0] ||
+                null;
+        }
 
         if (!patient) {
             patient = await prisma.patients.create({
@@ -704,6 +728,7 @@ export async function POST(request: Request) {
                     status: "BOOKED",
                     booked_for: booking_for,
                     channel: "web",
+                    payment_status,
                     rescheduled_by: String(sessionUser?.role || "DOCTOR"),
                     ...(appointmentBookingId != null ? { booking_id: appointmentBookingId } : {}),
                 },
@@ -738,6 +763,7 @@ export async function POST(request: Request) {
                 appointment_date: dateObj,
                 start_time: startTimeObj,
                 end_time: endTimeObj,
+                payment_status,
                 patient: {
                     connect: { patient_id: patient.patient_id },
                 },

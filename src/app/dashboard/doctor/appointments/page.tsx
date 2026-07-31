@@ -1,8 +1,8 @@
 "use client";
-import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { Check, UserX, CalendarSync, Trash2, X, Filter, RotateCcw, Stethoscope, User, Download, ChevronDown, Upload, ImagePlus, ZoomIn, ZoomOut, FileText, Search } from "lucide-react";
+import { Check, UserX, CalendarSync, Trash2, X, Filter, RotateCcw, Stethoscope, User, Download, ChevronDown, Search } from "lucide-react";
 import AppointmentExportModal from "@/components/AppointmentExportModal";
 import DoctorPrescriptionModal, { type PrescriptionModalTarget } from "@/components/DoctorPrescriptionModal";
 
@@ -26,46 +26,6 @@ interface Appointment {
 interface HospitalDoctorOption {
     doctor_id: number;
     doctor_name?: string | null;
-}
-
-interface PrescriptionPageItem {
-    prescription_page_id: number;
-    page_number: number;
-    storage_key: string;
-    file_url: string;
-    mime_type: string | null;
-    original_file_name: string | null;
-    file_size_bytes: number | null;
-    width: number | null;
-    height: number | null;
-    created_at: string;
-}
-
-interface PrescriptionRecordItem {
-    prescription_id: number;
-    patient_id: number;
-    doctor_id: number;
-    clinic_id: number | null;
-    appointment_id: number | null;
-    uploaded_by_role: "PATIENT" | "DOCTOR" | "STAFF";
-    uploaded_by_user_id: number | null;
-    uploaded_by_patient_id: number | null;
-    note: string | null;
-    page_count: number;
-    status: "ACTIVE" | "ARCHIVED" | "DELETED";
-    created_at: string;
-    updated_at: string;
-    pages: PrescriptionPageItem[];
-    uploaded_by_user?: {
-        user_id: number;
-        name?: string | null;
-        email?: string | null;
-    } | null;
-    uploaded_by_patient?: {
-        patient_id: number;
-        full_name?: string | null;
-        phone?: string | null;
-    } | null;
 }
 
 import AppointmentModal, { type AppointmentModalInitialValues } from "./AppointmentModal";
@@ -193,7 +153,6 @@ const parseAppointmentStart = (appointment: Pick<Appointment, "appointment_date"
 
 export default function DoctorAppointmentsPage() {
     const router = useRouter();
-    const [user, setUser] = useState<{ name: string } | null>(null);
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(true);
     const [deleteAppointment, setDeleteAppointment] = useState<Appointment | null>(null);
@@ -213,6 +172,7 @@ export default function DoctorAppointmentsPage() {
     const [hospitalDoctors, setHospitalDoctors] = useState<HospitalDoctorOption[]>([]);
     const [selectedDoctorFilter, setSelectedDoctorFilter] = useState<string>("ALL");
     const [emrPadEnabled, setEmrPadEnabled] = useState(false);
+    const [isNahRegistrationView, setIsNahRegistrationView] = useState(false);
 
     const fetchData = useCallback(async () => {
         try {
@@ -259,11 +219,18 @@ export default function DoctorAppointmentsPage() {
             const meData = await meRes.json();
             // Allow both DOCTOR and CLINIC_STAFF
             if (meData.user.role !== "DOCTOR" && meData.user.role !== "CLINIC_STAFF") { router.push("/login"); return; }
-            setUser(meData.user);
             setUserRole(meData.user.role);
             setStaffRole(meData.user.staff_role || "");
             setAssignedDoctorCount(Array.isArray(meData.user.assigned_doctor_ids) ? meData.user.assigned_doctor_ids.length : 0);
             setEmrPadEnabled(Boolean(meData.user.emr_prescription_enabled));
+            const hospitalGroupCodes = [
+                meData.user?.clinic_staff?.clinics?.hospital_group_code,
+                ...(Array.isArray(meData.user?.hospital_group_codes) ? meData.user.hospital_group_codes : []),
+            ];
+            setIsNahRegistrationView(
+                meData.user.role === "CLINIC_STAFF" &&
+                hospitalGroupCodes.some((code) => String(code || "").trim().toUpperCase() === "NAH")
+            );
             if (aptRes.ok) { const data = await aptRes.json(); setAppointments(data || []); }
         } catch { router.push("/login"); } finally { setLoading(false); }
     }, [router, datePreset, customFrom, customTo, statusFilter, debouncedSearchTerm]);
@@ -501,10 +468,15 @@ export default function DoctorAppointmentsPage() {
         );
     }
 
+    const registrationCopy = isNahRegistrationView;
+    const pageTitle = registrationCopy ? "Registrations" : "Appointments";
+    const singleLabel = registrationCopy ? "registration" : "appointment";
+    const titleSingleLabel = registrationCopy ? "Registration" : "Appointment";
+
     const renderAppointmentTable = (items: Appointment[]) => (
         <div className="overflow-x-auto">
             <table className="data-table">
-                <thead><tr><th>Patient</th><th>Appointment No.</th><th>Phone</th><th>Date & Time</th><th>Status</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Patient</th><th>{titleSingleLabel} No.</th><th>Phone</th><th>Date & Time</th><th>Status</th><th>Actions</th></tr></thead>
                 <tbody>
                     {items.map((apt, i) => (
                         <motion.tr key={apt.appointment_id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.03 }}>
@@ -628,9 +600,11 @@ export default function DoctorAppointmentsPage() {
         <div className="w-full">
             <div className="mb-8 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
-                    <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Appointments</h1>
+                    <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{pageTitle}</h1>
                     <p className="text-gray-500 mt-1 text-sm">
-                        {userRole === "CLINIC_STAFF"
+                        {registrationCopy
+                            ? "Viewing assigned hospital doctor registrations"
+                            : userRole === "CLINIC_STAFF"
                             ? assignedDoctorCount > 1
                                 ? "Viewing assigned hospital doctor appointments"
                                 : "Viewing clinic appointments"
@@ -693,7 +667,7 @@ export default function DoctorAppointmentsPage() {
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                                 <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
                             </svg>
-                            Add Appointment
+                            Add {titleSingleLabel}
                         </motion.button>
                     )}
                 </div>
@@ -792,6 +766,7 @@ export default function DoctorAppointmentsPage() {
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onSuccess={() => { fetchData(); }}
+                registrationCopy={registrationCopy}
             />
             <AppointmentExportModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} />
             <AppointmentModal
@@ -803,6 +778,7 @@ export default function DoctorAppointmentsPage() {
                 }}
                 mode="reschedule"
                 initialValues={rescheduleInitialValues}
+                registrationCopy={registrationCopy}
             />
             <DoctorPrescriptionModal
                 isOpen={Boolean(prescriptionTarget)}
@@ -872,7 +848,7 @@ export default function DoctorAppointmentsPage() {
                         <div className="flex items-center justify-between gap-3">
                             <div>
                                 <h2 className="text-sm font-semibold text-gray-800">Doctors</h2>
-                                <p className="mt-1 text-xs text-gray-500">Choose a doctor to narrow the visible appointments.</p>
+                                <p className="mt-1 text-xs text-gray-500">Choose a doctor to narrow the visible {singleLabel}s.</p>
                             </div>
                             <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
                                 {visibleAppointments.length} visible
@@ -928,11 +904,11 @@ export default function DoctorAppointmentsPage() {
 
                 {appointments.length === 0 ? (
                     <div className="text-center py-12">
-                        <p className="text-gray-400">No appointments yet</p>
+                        <p className="text-gray-400">No {singleLabel}s yet</p>
                     </div>
                 ) : groupedAppointments.length === 0 ? (
                     <div className="text-center py-12">
-                        <p className="text-lg font-semibold text-gray-700">No matching appointments</p>
+                        <p className="text-lg font-semibold text-gray-700">No matching {singleLabel}s</p>
                         <p className="mt-2 text-sm text-gray-400">Try searching by another name or phone number.</p>
                     </div>
                 ) : showFlatDoctorView ? (
@@ -960,7 +936,7 @@ export default function DoctorAppointmentsPage() {
                                             </div>
                                             <div className="flex items-center gap-3 self-start sm:self-auto">
                                                 <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
-                                                    {group.appointments.length} appointment{group.appointments.length !== 1 ? "s" : ""}
+                                                    {group.appointments.length} {singleLabel}{group.appointments.length !== 1 ? "s" : ""}
                                                 </span>
                                                 <ChevronDown size={16} className="text-gray-400 transition-transform group-open:rotate-180" />
                                             </div>
