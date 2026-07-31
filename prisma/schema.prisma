@@ -274,6 +274,8 @@ model patients {
   gender                  String?                            @db.VarChar(20)
   password                String?                            @db.VarChar(255)
   push_token              String?                            @db.VarChar(255)
+  tmpregtoken             String?                            @db.VarChar(50)
+  hospital_group_code     String?                            @db.VarChar(191)
   announcement_recipients announcement_campaign_recipients[]
   appointments            appointment[]
   chat_messages           chat_messages[]
@@ -409,6 +411,7 @@ model appointment {
   booking_id                  Int?
   cancelled_by                String?                        @db.VarChar(255)
   rescheduled_by              String?                        @db.VarChar(255)
+  payment_status              String?                        @db.VarChar(20)
   notify_telegram_chat_id     BigInt?
   admin                       admins?                        @relation(fields: [admin_id], references: [admin_id])
   clinic                      clinics?                       @relation(fields: [clinic_id], references: [clinic_id])
