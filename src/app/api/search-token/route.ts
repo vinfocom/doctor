@@ -71,12 +71,6 @@ function buildDateSearchVariants(input: string) {
     return Array.from(variants);
 }
 
-function getTokenDate(token: string | null | undefined) {
-    const match = String(token || "").match(/^[A-Z]+\/(\d{4})\/(\d{2})\/(\d{2})\//i);
-    if (!match) return null;
-    return `${match[1]}-${match[2]}-${match[3]}`;
-}
-
 function formatDateInput(value: Date | string | null | undefined) {
     if (!value) return null;
     if (typeof value === "string") return value.slice(0, 10);
@@ -179,61 +173,62 @@ export async function GET(req: Request) {
         const month = String(searchParams.get("month") || todayParts.month).replace(/\D/g, "").slice(0, 2).padStart(2, "0") || todayParts.month;
         const day = String(searchParams.get("day") || todayParts.day).replace(/\D/g, "").slice(0, 2).padStart(2, "0") || todayParts.day;
         const tokenPrefix = `${hospitalGroupCode}/${year}/${month}/${day}/`;
-        const todayPrefix = `${hospitalGroupCode}/${todayParts.year}/${todayParts.month}/${todayParts.day}/`;
+        const todayDate = `${todayParts.year}-${todayParts.month}-${todayParts.day}`;
 
-        const where: Prisma.patientsWhereInput = {
-            admin_id: adminId,
+        const where: Prisma.hospital_registrationsWhereInput = {
             hospital_group_code: hospitalGroupCode,
             OR: [
-                { doctor_id: null },
-                { doctor_id: { in: assignedDoctorIds.length > 0 ? assignedDoctorIds : [-1] } },
+                { admin_id: adminId },
+                { admin_id: null },
+            ],
+            AND: [
+                {
+                    OR: [
+                        { doctor_id: null },
+                        { doctor_id: { in: assignedDoctorIds.length > 0 ? assignedDoctorIds : [-1] } },
+                    ],
+                },
             ],
         };
 
         if (mode === "token") {
             if (serial) {
-                where.tmpregtoken = serial.length === 5
+                where.token = serial.length === 5
                     ? `${tokenPrefix}${serial}`
                     : { startsWith: `${tokenPrefix}${serial}` };
             } else {
-                where.tmpregtoken = { startsWith: tokenPrefix };
+                where.token = { startsWith: tokenPrefix };
             }
         } else {
             if (requestedScope === "TODAY") {
-                where.tmpregtoken = { startsWith: todayPrefix };
+                where.reg_date = new Date(`${todayDate}T00:00:00.000Z`);
             }
 
             if (query) {
                 const dateVariants = buildDateSearchVariants(query);
+                const matchingDoctors = assignedDoctorIds.length > 0
+                    ? await prisma.doctors.findMany({
+                        where: {
+                            doctor_id: { in: assignedDoctorIds },
+                            doctor_name: { contains: query },
+                        },
+                        select: { doctor_id: true },
+                        take: 25,
+                    })
+                    : [];
+
                 where.AND = [
+                    ...(Array.isArray(where.AND) ? where.AND : []),
                     {
                         OR: [
-                            {
-                                full_name: {
-                                    contains: query,
-                                },
-                            },
-                            {
-                                phone: {
-                                    contains: query,
-                                },
-                            },
-                            {
-                                tmpregtoken: {
-                                    contains: query,
-                                },
-                            },
-                            {
-                                doctor: {
-                                    is: {
-                                        doctor_name: {
-                                            contains: query,
-                                        },
-                                    },
-                                },
-                            },
+                            { patient_name: { contains: query } },
+                            { phone: { contains: query } },
+                            { token: { contains: query } },
+                            ...(matchingDoctors.length > 0
+                                ? [{ doctor_id: { in: matchingDoctors.map((doctor) => doctor.doctor_id) } }]
+                                : []),
                             ...dateVariants.map((variant) => ({
-                                tmpregtoken: {
+                                token: {
                                     contains: variant,
                                 },
                             })),
@@ -243,54 +238,68 @@ export async function GET(req: Request) {
             }
         }
 
-        const patients = await prisma.patients.findMany({
+        const registrations = await prisma.hospital_registrations.findMany({
             where,
             select: {
-                patient_id: true,
-                full_name: true,
+                registration_id: true,
+                hospital_group_code: true,
+                reg_date: true,
+                token: true,
+                patient_name: true,
                 phone: true,
                 age: true,
                 gender: true,
-                tmpregtoken: true,
                 doctor_id: true,
-                profile_type: true,
-                doctor: {
-                    select: {
-                        doctor_id: true,
-                        doctor_name: true,
-                    },
-                },
+                admin_id: true,
+                created_at: true,
             },
             orderBy: [
-                {
-                    tmpregtoken: "desc",
-                },
-                {
-                    patient_id: "desc",
-                },
+                { reg_date: "desc" },
+                { seq_no: "desc" },
+                { registration_id: "desc" },
             ],
             take: limit,
         });
 
-        const patientIds = patients.map((patient) => patient.patient_id);
-        const tokenDateByPatientId = new Map(
-            patients.map((patient) => [patient.patient_id, getTokenDate(patient.tmpregtoken)])
+        const registrationPhones = Array.from(new Set(registrations.map((registration) => registration.phone).filter(Boolean)));
+        const registrationDoctorIds = Array.from(
+            new Set(registrations.map((registration) => registration.doctor_id).filter((id): id is number => typeof id === "number" && Number.isFinite(id)))
         );
-        const tokenDates = Array.from(new Set(Array.from(tokenDateByPatientId.values()).filter(Boolean))) as string[];
-        const sortedTokenDates = [...tokenDates].sort();
-        const earliestTokenDate = sortedTokenDates[0] || null;
+        const doctorIdsToLoad = Array.from(new Set([...assignedDoctorIds, ...registrationDoctorIds]));
+        const doctors = doctorIdsToLoad.length > 0
+            ? await prisma.doctors.findMany({
+                where: { doctor_id: { in: doctorIdsToLoad } },
+                select: { doctor_id: true, doctor_name: true },
+            })
+            : [];
+        const doctorById = new Map(doctors.map((doctor) => [doctor.doctor_id, doctor]));
 
-        const existingAppointments = patientIds.length > 0
+        const regDateByPhone = new Map<string, string>();
+        for (const registration of registrations) {
+            const regDate = formatDateInput(registration.reg_date);
+            if (!regDate) continue;
+            const current = regDateByPhone.get(registration.phone);
+            if (!current || regDate < current) {
+                regDateByPhone.set(registration.phone, regDate);
+            }
+        }
+        const earliestRegDate = Array.from(regDateByPhone.values()).sort()[0] || null;
+
+        const existingAppointments = registrationPhones.length > 0
             ? await prisma.appointment.findMany({
                 where: {
-                    patient_id: { in: patientIds },
                     admin_id: adminId,
                     doctor_id: { in: assignedDoctorIds.length > 0 ? assignedDoctorIds : [-1] },
                     status: { not: "CANCELLED" },
-                    ...(earliestTokenDate
+                    patient: {
+                        is: {
+                            phone: { in: registrationPhones },
+                        },
+                    },
+                    ...(earliestRegDate
                         ? {
                             appointment_date: {
-                                gte: new Date(`${earliestTokenDate}T00:00:00.000Z`),
+                                gte: new Date(`${earliestRegDate}T00:00:00.000Z`),
                             },
                         }
                         : {}),
@@ -306,6 +315,11 @@ export async function GET(req: Request) {
                     payment_status: true,
                     status: true,
                     created_at: true,
+                    patient: {
+                        select: {
+                            phone: true,
+                        },
+                    },
                 },
                 orderBy: [
                     { appointment_date: "desc" },
@@ -315,24 +329,30 @@ export async function GET(req: Request) {
             })
             : [];
 
-        const appointmentByPatientId = new Map<number, (typeof existingAppointments)[number]>();
-        for (const appointment of existingAppointments) {
-            const patientId = Number(appointment.patient_id);
-            const tokenDate = tokenDateByPatientId.get(patientId);
-            const appointmentDate = formatDateInput(appointment.appointment_date);
-            if (tokenDate && appointmentDate && appointmentDate < tokenDate) {
-                continue;
-            }
-
-            if (!appointmentByPatientId.has(patientId)) {
-                appointmentByPatientId.set(patientId, appointment);
-            }
-        }
-
-        const patientsWithAppointmentStatus = patients.map((patient) => {
-            const appointment = appointmentByPatientId.get(patient.patient_id);
+        const rows = registrations.map((registration) => {
+            const registrationDate = formatDateInput(registration.reg_date);
+            const appointment = existingAppointments.find((item) => {
+                if (item.patient?.phone !== registration.phone) return false;
+                const appointmentDate = formatDateInput(item.appointment_date);
+                return !registrationDate || !appointmentDate || appointmentDate >= registrationDate;
+            });
+            const doctor = registration.doctor_id ? doctorById.get(registration.doctor_id) : null;
             return {
-                ...patient,
+                registration_id: registration.registration_id,
+                patient_id: appointment?.patient_id ?? null,
+                full_name: registration.patient_name,
+                phone: registration.phone,
+                age: registration.age,
+                gender: registration.gender,
+                token: registration.token,
+                doctor_id: registration.doctor_id,
+                profile_type: "SELF",
+                doctor: doctor
+                    ? {
+                        doctor_id: doctor.doctor_id,
+                        doctor_name: doctor.doctor_name,
+                    }
+                    : null,
                 confirmed_appointment: appointment
                     ? {
                         appointment_id: appointment.appointment_id,
@@ -349,16 +369,15 @@ export async function GET(req: Request) {
         });
 
         return NextResponse.json({
-            patients: patientsWithAppointmentStatus,
+            patients: rows,
             meta: {
                 mode,
                 scope: requestedScope,
                 tokenPrefix,
-                todayPrefix,
             },
         });
     } catch (error) {
-        console.error("Search token patients error:", error);
-        return NextResponse.json({ error: "Failed to fetch search token patients" }, { status: 500 });
+        console.error("Search token registrations error:", error);
+        return NextResponse.json({ error: "Failed to fetch search token registrations" }, { status: 500 });
     }
 }

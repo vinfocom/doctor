@@ -274,7 +274,6 @@ model patients {
   gender                  String?                            @db.VarChar(20)
   password                String?                            @db.VarChar(255)
   push_token              String?                            @db.VarChar(255)
-  tmpregtoken             String?                            @db.VarChar(50)
   hospital_group_code     String?                            @db.VarChar(191)
   announcement_recipients announcement_campaign_recipients[]
   appointments            appointment[]
@@ -291,6 +290,25 @@ model patients {
   @@index([admin_id], map: "patients_admin_id_fkey")
   @@index([doctor_id], map: "patients_doctor_id_fkey")
   @@index([admin_id, phone, profile_type], map: "idx_patients_admin_phone_profile_type")
+}
+
+model hospital_registrations {
+  registration_id     Int       @id @default(autoincrement())
+  hospital_group_code String    @db.VarChar(50)
+  reg_date            DateTime  @db.Date
+  seq_no              Int
+  token               String    @unique(map: "uq_token") @db.VarChar(50)
+  patient_name        String    @db.VarChar(255)
+  phone               String    @db.VarChar(20)
+  age                 Int?
+  gender              String?   @db.VarChar(20)
+  doctor_id           Int?
+  admin_id            Int?
+  created_at          DateTime? @default(now()) @db.Timestamp(0)
+
+  @@unique([hospital_group_code, reg_date, seq_no], map: "uq_daily_seq")
+  @@unique([hospital_group_code, phone, reg_date], map: "uq_one_per_day")
+  @@index([hospital_group_code, reg_date], map: "idx_lookup")
 }
 
 model inbound_turn_queue {

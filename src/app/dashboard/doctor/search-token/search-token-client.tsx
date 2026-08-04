@@ -15,12 +15,13 @@ interface DoctorOption {
 }
 
 interface PatientRow {
-    patient_id: number;
+    registration_id: number;
+    patient_id: number | null;
     full_name: string | null;
     phone: string | null;
     age: number | null;
     gender: string | null;
-    tmpregtoken: string | null;
+    token: string | null;
     doctor_id: number | null;
     profile_type: "SELF" | "OTHER";
     doctor: {
@@ -201,7 +202,8 @@ export default function SearchTokenClient({
             const next: Record<number, RowState> = {};
 
             for (const patient of patients) {
-                const existing = previous[patient.patient_id];
+                const rowKey = patient.registration_id;
+                const existing = previous[rowKey];
                 const confirmedAppointment = patient.confirmed_appointment;
                 const defaultDoctorId = patient.doctor_id && doctorOptionMap[patient.doctor_id]
                     ? String(patient.doctor_id)
@@ -220,7 +222,7 @@ export default function SearchTokenClient({
                     }
                     : null;
 
-                next[patient.patient_id] = {
+                next[rowKey] = {
                     selectedDoctorId: confirmedDoctorId || existing?.selectedDoctorId || defaultDoctorId,
                     appointmentDate: confirmedAppointment?.appointment_date || existing?.appointmentDate || todayYmd,
                     paymentStatus: confirmedAppointment?.payment_status === "DONE"
@@ -232,8 +234,8 @@ export default function SearchTokenClient({
                     loadingAvailability: false,
                     feedback: existing?.feedback ?? null,
                     booking: false,
-                    confirmed: Boolean(confirmedAppointment) || Boolean(existing?.confirmed),
-                    confirmedAppointmentId: confirmedAppointment?.appointment_id ?? existing?.confirmedAppointmentId ?? null,
+                    confirmed: Boolean(confirmedAppointment),
+                    confirmedAppointmentId: confirmedAppointment?.appointment_id ?? null,
                 };
             }
 
@@ -381,12 +383,12 @@ export default function SearchTokenClient({
 
     useEffect(() => {
         for (const patient of patients) {
-            const row = rows[patient.patient_id];
+            const row = rows[patient.registration_id];
             if (!row || row.confirmed || row.loadingAvailability || row.availability || !row.selectedDoctorId || !row.appointmentDate) {
                 continue;
             }
 
-            void ensureAvailability(patient.patient_id, row.selectedDoctorId, row.appointmentDate);
+            void ensureAvailability(patient.registration_id, row.selectedDoctorId, row.appointmentDate);
         }
     }, [ensureAvailability, patients, rows]);
 
@@ -410,7 +412,8 @@ export default function SearchTokenClient({
     }
 
     async function handleBooking(patient: PatientRow) {
-        const row = rows[patient.patient_id];
+        const rowKey = patient.registration_id;
+        const row = rows[rowKey];
         if (!row) return;
         if (row.confirmed) return;
 
@@ -418,8 +421,8 @@ export default function SearchTokenClient({
         if (!selectedDoctor) {
             setRows((previous) => ({
                 ...previous,
-                [patient.patient_id]: {
-                    ...previous[patient.patient_id],
+                [rowKey]: {
+                    ...previous[rowKey],
                     feedback: { tone: "error", message: "Select a doctor before confirming." },
                 },
             }));
@@ -429,8 +432,8 @@ export default function SearchTokenClient({
         if (!patient.phone) {
             setRows((previous) => ({
                 ...previous,
-                [patient.patient_id]: {
-                    ...previous[patient.patient_id],
+                [rowKey]: {
+                    ...previous[rowKey],
                     feedback: { tone: "error", message: "Patient phone number is required before booking." },
                 },
             }));
@@ -440,8 +443,8 @@ export default function SearchTokenClient({
         if (!row.availability?.startTime || !row.availability?.endTime) {
             setRows((previous) => ({
                 ...previous,
-                [patient.patient_id]: {
-                    ...previous[patient.patient_id],
+                [rowKey]: {
+                    ...previous[rowKey],
                     feedback: { tone: "error", message: "No slot is currently available for this selection." },
                 },
             }));
@@ -450,8 +453,8 @@ export default function SearchTokenClient({
 
         setRows((previous) => ({
             ...previous,
-            [patient.patient_id]: {
-                ...previous[patient.patient_id],
+            [rowKey]: {
+                ...previous[rowKey],
                 booking: true,
                 feedback: null,
             },
@@ -464,7 +467,7 @@ export default function SearchTokenClient({
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    patient_id: patient.patient_id,
+                    ...(patient.patient_id ? { patient_id: patient.patient_id } : {}),
                     patient_name: patient.full_name || "Patient",
                     patient_phone: patient.phone || "",
                     doctor_id: selectedDoctor.doctor_id,
@@ -493,7 +496,7 @@ export default function SearchTokenClient({
                             typedValue.selectedDoctorId === row.selectedDoctorId &&
                             typedValue.appointmentDate === row.appointmentDate;
 
-                        if (Number(key) === patient.patient_id) {
+                        if (Number(key) === rowKey) {
                             return [
                                 key,
                                 {
@@ -530,8 +533,8 @@ export default function SearchTokenClient({
             availabilityCache.current.delete(cacheKey);
             setRows((previous) => ({
                 ...previous,
-                [patient.patient_id]: {
-                    ...previous[patient.patient_id],
+                [rowKey]: {
+                    ...previous[rowKey],
                     booking: false,
                     availability: null,
                     feedback: {
@@ -734,14 +737,15 @@ export default function SearchTokenClient({
                     ) : (
                         <div className="overflow-hidden border border-slate-200 bg-white">
                             {patients.map((patient) => {
-                                const row = rows[patient.patient_id];
+                                const rowKey = patient.registration_id;
+                                const row = rows[rowKey];
                                 const feedbackTone = row?.feedback?.tone === "success"
                                     ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                                     : "border-rose-200 bg-rose-50 text-rose-700";
 
                                 return (
                                     <div
-                                        key={patient.patient_id}
+                                        key={rowKey}
                                         className="border-b border-black px-3 py-2 last:border-b-0"
                                     >
                                         <div className="grid gap-2 xl:grid-cols-[minmax(0,1.95fr)_190px_95px_120px]">
@@ -756,7 +760,7 @@ export default function SearchTokenClient({
                                                 </div>
                                                 <div className="min-w-0">
                                                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Token no</p>
-                                                    <p className="mt-1 break-all text-sm font-semibold text-slate-900">{patient.tmpregtoken || "N/A"}</p>
+                                                    <p className="mt-1 break-all text-sm font-semibold text-slate-900">{patient.token || "N/A"}</p>
                                                 </div>
                                                 <div className="min-w-0 self-start">
                                                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Age / Gender</p>
@@ -775,14 +779,14 @@ export default function SearchTokenClient({
                                                         const nextDoctorId = event.target.value;
                                                         setRows((previous) => ({
                                                             ...previous,
-                                                            [patient.patient_id]: {
-                                                                ...previous[patient.patient_id],
+                                                            [rowKey]: {
+                                                                ...previous[rowKey],
                                                                 selectedDoctorId: nextDoctorId,
                                                                 availability: null,
                                                                 feedback: null,
                                                             },
                                                         }));
-                                                        void ensureAvailability(patient.patient_id, nextDoctorId, row?.appointmentDate || todayYmd);
+                                                        void ensureAvailability(rowKey, nextDoctorId, row?.appointmentDate || todayYmd);
                                                     }}
                                                     className="mt-0.5 w-full border border-slate-300 bg-white px-1.5 py-1 text-[13px] font-semibold text-slate-900 outline-none"
                                                 >
@@ -802,14 +806,14 @@ export default function SearchTokenClient({
                                                         const nextDate = event.target.value;
                                                         setRows((previous) => ({
                                                             ...previous,
-                                                            [patient.patient_id]: {
-                                                                ...previous[patient.patient_id],
+                                                            [rowKey]: {
+                                                                ...previous[rowKey],
                                                                 appointmentDate: nextDate,
                                                                 availability: null,
                                                                 feedback: null,
                                                             },
                                                         }));
-                                                        void ensureAvailability(patient.patient_id, row?.selectedDoctorId || "", nextDate);
+                                                        void ensureAvailability(rowKey, row?.selectedDoctorId || "", nextDate);
                                                     }}
                                                     className="mt-0.5 w-full border border-slate-300 bg-white px-1.5 py-1 text-[13px] font-semibold text-slate-900 outline-none"
                                                 />
@@ -823,8 +827,8 @@ export default function SearchTokenClient({
                                                     onChange={(event) =>
                                                         setRows((previous) => ({
                                                             ...previous,
-                                                            [patient.patient_id]: {
-                                                                ...previous[patient.patient_id],
+                                                            [rowKey]: {
+                                                                ...previous[rowKey],
                                                                 paymentStatus: event.target.value as PaymentStatus,
                                                             },
                                                         }))
