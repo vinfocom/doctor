@@ -261,7 +261,13 @@ export async function GET(req: Request) {
             take: limit,
         });
 
-        const registrationPhones = Array.from(new Set(registrations.map((registration) => registration.phone).filter(Boolean)));
+        const registrationPhones = Array.from(
+            new Set(
+                registrations
+                    .map((registration) => registration.phone)
+                    .filter((phone): phone is string => typeof phone === "string" && phone.trim().length > 0)
+            )
+        );
         const registrationDoctorIds = Array.from(
             new Set(registrations.map((registration) => registration.doctor_id).filter((id): id is number => typeof id === "number" && Number.isFinite(id)))
         );
