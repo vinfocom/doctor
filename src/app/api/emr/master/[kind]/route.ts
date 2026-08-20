@@ -6,8 +6,8 @@ import {
   getEmrAccessErrorResponse,
   getRateLimitErrorResponse,
   getRequestIp,
-  validateDoctorEmrFeatureAccess,
 } from "@/lib/emr";
+import { resolveEmrDoctorFeatureScope } from "@/lib/emr/doctorFeatureScope";
 import { recordPrescriptionAuditSafe } from "@/lib/emr/auditService";
 import {
   createOrGetMasterItem,
@@ -25,7 +25,7 @@ export async function POST(
 ) {
   try {
     const session = await getSessionFromRequest(req);
-    const doctorScope = await validateDoctorEmrFeatureAccess({ session });
+    const doctorScope = await resolveEmrDoctorFeatureScope({ req, legacySession: session });
     const { kind } = await params;
     const masterType = resolveMasterKind(kind);
 
@@ -89,6 +89,15 @@ export async function POST(
 
     return NextResponse.json({ item }, { status: 201 });
   } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message.includes("EMR is disabled") ||
+        error.message.includes("Only doctors") ||
+        error.message.includes("HMS doctor profile"))
+    ) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
     const rateLimitResponse = getRateLimitErrorResponse(error);
     if (rateLimitResponse) {
       return NextResponse.json(rateLimitResponse.body, {

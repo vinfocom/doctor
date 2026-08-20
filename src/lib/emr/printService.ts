@@ -69,6 +69,7 @@ export async function getPrintablePrescriptionData(input: {
       registration_no: doctor.registration_no,
       specialization: doctor.specialization,
     },
+    referred_to_doctor: null,
     patient: {
       patient_id: patient.patient_id,
       full_name: patient.full_name,

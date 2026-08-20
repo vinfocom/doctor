@@ -41,15 +41,32 @@ model users {
   email        String?       @unique @db.VarChar(255)
   password     String?       @db.VarChar(255)
   role         users_role
+  hospital_id  Int?
+  force_password_change Boolean? @default(false)
+  password_reset_at DateTime? @db.Timestamp(0)
+  password_reset_by Int?
   created_at   DateTime?     @default(now()) @db.Timestamp(0)
   admin        admins?
   clinic_staff clinic_staff?
   doctor       doctors?
+  hospital     hospitals?     @relation(fields: [hospital_id], references: [hospital_id], onDelete: SetNull, onUpdate: Cascade, map: "fk_users_hospital_id")
+  password_reset_by_user users? @relation("users_password_reset_by", fields: [password_reset_by], references: [user_id], onDelete: SetNull, onUpdate: Cascade, map: "fk_users_password_reset_by")
+  password_resets_performed users[] @relation("users_password_reset_by")
+  hospital_staff hospital_staff?
   password_reset_otps user_password_otps[]
   user_tokens  user_tokens[]
   uploaded_prescriptions prescription_records[] @relation("prescription_uploaded_by_user")
   emr_deleted_prescriptions prescriptions[] @relation("emr_prescription_deleted_by")
+  created_visits visits[] @relation("visits_created_by_user")
+  cancelled_visits visits[] @relation("visits_cancelled_by_user")
+  resolved_hospital_registrations hospital_registrations[]
+  visit_print_events visit_print_events[]
+  created_hospital_wide_ads hospital_wide_ads[]
   reviewed_emr_master_logs  prescription_master_review_logs[]
+
+  @@index([hospital_id], map: "idx_users_hospital_id")
+  @@index([force_password_change], map: "idx_users_force_password_change")
+  @@index([password_reset_by], map: "idx_users_password_reset_by")
 }
 
 model admins {
@@ -63,7 +80,123 @@ model admins {
   leaves                doctor_leaves[]
   doctorRemainderQueues doctor_remainder_queue[]
   doctors               doctors[]
+  hospital              hospitals?
   patients              patients[]
+  visits                visits[]
+}
+
+model hospitals {
+  hospital_id       Int                          @id @default(autoincrement())
+  code              String                       @unique(map: "uq_hospitals_code") @db.VarChar(50)
+  name              String                       @db.VarChar(255)
+  admin_id          Int                          @unique(map: "uq_hospitals_admin_id")
+  status            String                       @default("ACTIVE") @db.VarChar(20)
+  temptokenprefix   String?                      @db.VarChar(50)
+  created_at        DateTime?                    @default(now()) @db.Timestamp(0)
+  updated_at        DateTime?                    @default(now()) @updatedAt @db.Timestamp(0)
+  admin             admins                       @relation(fields: [admin_id], references: [admin_id], onDelete: Restrict, onUpdate: Cascade, map: "fk_hospitals_admin_id")
+  users             users[]
+  policy_settings   hospital_policy_settings?
+  feature_flags     hospital_feature_flags?
+  sequence_counters hospital_sequence_counters[]
+  hospital_staff    hospital_staff[]
+  hospital_doctors  hospital_doctors[]
+  visits            visits[]
+  hospital_wide_ads hospital_wide_ads[]
+  hospital_holidays hospital_holidays[]
+
+  @@index([status], map: "idx_hospitals_status")
+}
+
+model hospital_holidays {
+  id           Int       @id @default(autoincrement())
+  hospital_id  Int
+  holiday_date DateTime  @db.Date
+  description  String?   @db.VarChar(255)
+  created_at   DateTime? @default(now()) @db.Timestamp(0)
+  hospital     hospitals @relation(fields: [hospital_id], references: [hospital_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_hospital_holidays_hospital_id")
+
+  @@unique([hospital_id, holiday_date], map: "uq_hospital_holidays_hospital_date")
+  @@index([hospital_id], map: "idx_hospital_holidays_hospital_id")
+  @@index([holiday_date], map: "idx_hospital_holidays_date")
+}
+
+model hospital_policy_settings {
+  id          Int       @id @default(autoincrement())
+  hospital_id Int       @unique(map: "uq_hospital_policy_settings_hospital_id")
+  policies    Json
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+  updated_at  DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  hospital    hospitals @relation(fields: [hospital_id], references: [hospital_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_hospital_policy_settings_hospital_id")
+}
+
+model hospital_feature_flags {
+  id          Int       @id @default(autoincrement())
+  hospital_id Int       @unique(map: "uq_hospital_feature_flags_hospital_id")
+  flags       Json
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+  updated_at  DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  hospital    hospitals @relation(fields: [hospital_id], references: [hospital_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_hospital_feature_flags_hospital_id")
+}
+
+model hospital_sequence_counters {
+  counter_id    BigInt    @id @default(autoincrement())
+  hospital_id   Int
+  sequence_type String    @db.VarChar(20)
+  period_key    String    @default("") @db.VarChar(20)
+  current_seq   BigInt    @default(0)
+  created_at    DateTime? @default(now()) @db.Timestamp(0)
+  updated_at    DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  hospital      hospitals @relation(fields: [hospital_id], references: [hospital_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_hospital_sequence_counters_hospital_id")
+
+  @@unique([hospital_id, sequence_type, period_key], map: "uq_hospital_sequence_counter_scope")
+  @@index([hospital_id, sequence_type], map: "idx_hospital_sequence_counters_hospital_type")
+}
+
+model hospital_staff {
+  staff_id      Int                            @id @default(autoincrement())
+  hospital_id   Int
+  user_id       Int                            @unique(map: "uq_hospital_staff_user_id")
+  staff_type    String                         @db.VarChar(20)
+  status        String                         @default("ACTIVE") @db.VarChar(20)
+  valid_from    DateTime?                      @db.Date
+  valid_to      DateTime?                      @db.Date
+  created_at    DateTime?                      @default(now()) @db.Timestamp(0)
+  updated_at    DateTime?                      @default(now()) @updatedAt @db.Timestamp(0)
+  hospital      hospitals                      @relation(fields: [hospital_id], references: [hospital_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_hospital_staff_hospital_id")
+  user          users                          @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_hospital_staff_user_id")
+  doctor_access hospital_staff_doctor_access[]
+
+  @@index([hospital_id], map: "idx_hospital_staff_hospital_id")
+  @@index([hospital_id, staff_type, status], map: "idx_hospital_staff_type_status")
+}
+
+model hospital_doctors {
+  id          Int       @id @default(autoincrement())
+  hospital_id Int
+  doctor_id   Int
+  room_no     String?   @db.VarChar(50)
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+  updated_at  DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  hospital    hospitals @relation(fields: [hospital_id], references: [hospital_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_hospital_doctors_hospital_id")
+  doctor      doctors   @relation(fields: [doctor_id], references: [doctor_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_hospital_doctors_doctor_id")
+
+  @@unique([hospital_id, doctor_id], map: "uq_hospital_doctors_hospital_doctor")
+  @@index([doctor_id], map: "idx_hospital_doctors_doctor_id")
+  @@index([hospital_id, room_no], map: "idx_hospital_doctors_hospital_room")
+}
+
+model hospital_staff_doctor_access {
+  access_id  Int            @id @default(autoincrement())
+  staff_id   Int
+  doctor_id  Int
+  created_at DateTime?      @default(now()) @db.Timestamp(0)
+  staff      hospital_staff @relation(fields: [staff_id], references: [staff_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_hospital_staff_doctor_access_staff")
+  doctor     doctors        @relation(fields: [doctor_id], references: [doctor_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_hospital_staff_doctor_access_doctor")
+
+  @@unique([staff_id, doctor_id], map: "uq_hospital_staff_doctor_access")
+  @@index([staff_id], map: "idx_hospital_staff_doctor_access_staff")
+  @@index([doctor_id], map: "idx_hospital_staff_doctor_access_doctor")
 }
 
 model channel_accounts {
@@ -116,6 +249,8 @@ model doctors {
   chat_messages          chat_messages[]
   clinic_staff           clinic_staff[]
   clinic_staff_access    clinic_staff_doctor_access[]
+  hospital_doctors       hospital_doctors[]
+  hospital_staff_access  hospital_staff_doctor_access[]
   clinics                clinics[]
   schedules              doctor_clinic_schedule[]
   leaves                 doctor_leaves[]
@@ -132,6 +267,7 @@ model doctors {
   prescriptions          prescription_records[] @relation("prescription_record_doctor")
   emr_settings           doctor_emr_settings?
   emr_prescriptions      prescriptions[] @relation("emr_prescription_doctor")
+  emr_referred_to_prescriptions prescriptions[] @relation("emr_prescription_referred_to_doctor")
   medicines_master       medicines_master[] @relation("emr_medicines_master_created_by")
   complaints_master      complaints_master[] @relation("emr_complaints_master_created_by")
   diagnosis_master       diagnosis_master[] @relation("emr_diagnosis_master_created_by")
@@ -139,6 +275,8 @@ model doctors {
   advice_master          advice_master[] @relation("emr_advice_master_created_by")
   prescription_audit_logs prescription_audit_logs[] @relation("emr_prescription_audit_doctor")
   prescription_layout_settings prescription_layout_settings[]
+  visits                 visits[] @relation("visits_doctor")
+  referred_visits        visits[] @relation("visits_referred_by_doctor")
 
   @@index([admin_id], map: "doctors_admin_id_fkey")
 }
@@ -261,6 +399,7 @@ model clinics {
 
 model patients {
   patient_id              Int                                @id @default(autoincrement())
+  uhid                    String?                            @db.VarChar(100)
   full_name               String?                            @db.VarChar(255)
   admin_id                Int
   doctor_id               Int?
@@ -272,6 +411,9 @@ model patients {
   patient_count           Int?                               @default(0)
   age                     Int?
   gender                  String?                            @db.VarChar(20)
+  city                    String?                            @db.VarChar(100)
+  location                String?                            @db.VarChar(255)
+  address                 String?                            @db.VarChar(500)
   password                String?                            @db.VarChar(255)
   push_token              String?                            @db.VarChar(255)
   hospital_group_code     String?                            @db.VarChar(191)
@@ -286,10 +428,64 @@ model patients {
   whatsapp_numbers        patient_whatsapp_numbers[]
   admin                   admins                             @relation(fields: [admin_id], references: [admin_id])
   doctor                  doctors?                           @relation(fields: [doctor_id], references: [doctor_id])
+  visits                  visits[]
+  hospital_registrations  hospital_registrations[]
 
   @@index([admin_id], map: "patients_admin_id_fkey")
   @@index([doctor_id], map: "patients_doctor_id_fkey")
   @@index([admin_id, phone, profile_type], map: "idx_patients_admin_phone_profile_type")
+  @@index([uhid], map: "idx_patients_uhid")
+  @@unique([hospital_group_code, uhid], map: "uq_patients_hospital_group_uhid")
+}
+
+model visits {
+  visit_id             Int       @id @default(autoincrement())
+  hospital_id          Int
+  hospital_group_code  String    @db.VarChar(50)
+  admin_id             Int
+  patient_id           Int
+  doctor_id            Int
+  referred_by_doctor_id Int?
+  referring_prescription_id Int?
+  visit_date           DateTime  @db.Date
+  visit_type           String    @db.VarChar(20)
+  visit_number         String?   @db.VarChar(100)
+  daily_token_number   Int?
+  status               String    @default("WAITING") @db.VarChar(20)
+  fee_charged          Decimal   @default(0.00) @db.Decimal(10, 2)
+  payment_mode         String    @db.VarChar(20)
+  payment_status       String    @default("PENDING") @db.VarChar(20)
+  fee_waived_reason    String?   @db.VarChar(500)
+  override_reason      String?   @db.VarChar(500)
+  created_by_user_id   Int?
+  cancelled_by_user_id Int?
+  started_at           DateTime? @db.Timestamp(0)
+  finalized_at         DateTime? @db.Timestamp(0)
+  cancelled_at         DateTime? @db.Timestamp(0)
+  created_at           DateTime? @default(now()) @db.Timestamp(0)
+  updated_at           DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  hospital             hospitals @relation(fields: [hospital_id], references: [hospital_id], onDelete: Restrict, onUpdate: Cascade, map: "fk_visits_hospital_id")
+  admin                admins    @relation(fields: [admin_id], references: [admin_id], onDelete: Restrict, onUpdate: Cascade, map: "fk_visits_admin_id")
+  patient              patients  @relation(fields: [patient_id], references: [patient_id], onDelete: Restrict, onUpdate: Cascade, map: "fk_visits_patient_id")
+  doctor               doctors   @relation("visits_doctor", fields: [doctor_id], references: [doctor_id], onDelete: Restrict, onUpdate: Cascade, map: "fk_visits_doctor_id")
+  referred_by_doctor   doctors?  @relation("visits_referred_by_doctor", fields: [referred_by_doctor_id], references: [doctor_id], onDelete: SetNull, onUpdate: Cascade, map: "fk_visits_referred_by_doctor_id")
+  referring_prescription prescriptions? @relation("visits_referring_prescription", fields: [referring_prescription_id], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "fk_visits_referring_prescription_id")
+  created_by_user      users?    @relation("visits_created_by_user", fields: [created_by_user_id], references: [user_id], onDelete: SetNull, onUpdate: Cascade, map: "fk_visits_created_by_user_id")
+  cancelled_by_user    users?    @relation("visits_cancelled_by_user", fields: [cancelled_by_user_id], references: [user_id], onDelete: SetNull, onUpdate: Cascade, map: "fk_visits_cancelled_by_user_id")
+  hospital_registrations hospital_registrations[]
+  print_events         visit_print_events[]
+  prescriptions         prescriptions[]
+
+  @@unique([hospital_group_code, visit_number], map: "uq_visits_hospital_group_visit_number")
+  @@unique([hospital_id, doctor_id, visit_date, daily_token_number], map: "uq_visits_daily_doctor_token")
+  @@index([hospital_id, visit_date], map: "idx_visits_hospital_date")
+  @@index([doctor_id, visit_date, status], map: "idx_visits_doctor_date_status")
+  @@index([hospital_id, doctor_id, visit_date, status, daily_token_number], map: "idx_visits_tv_queue")
+  @@index([hospital_id, admin_id, patient_id, doctor_id, visit_date, status], map: "idx_hms_visits_followup_lookup")
+  @@index([referred_by_doctor_id], map: "idx_visits_referred_by_doctor_id")
+  @@index([referring_prescription_id], map: "idx_visits_referring_prescription_id")
+  @@index([patient_id, visit_date], map: "idx_visits_patient_date")
+  @@index([admin_id, visit_date], map: "idx_visits_admin_date")
 }
 
 model hospital_registrations {
@@ -299,16 +495,46 @@ model hospital_registrations {
   seq_no              Int
   token               String    @unique(map: "uq_token") @db.VarChar(50)
   patient_name        String    @db.VarChar(255)
-  phone               String    @db.VarChar(20)
+  phone               String?   @db.VarChar(20)
   age                 Int?
   gender              String?   @db.VarChar(20)
   doctor_id           Int?
   admin_id            Int?
+  patient_id          Int?
+  visit_id            Int?
+  resolved_at         DateTime? @db.Timestamp(0)
+  resolved_by_user_id Int?
   created_at          DateTime? @default(now()) @db.Timestamp(0)
+  patient             patients? @relation(fields: [patient_id], references: [patient_id], onDelete: SetNull, onUpdate: Cascade, map: "fk_hospital_registrations_patient_id")
+  visit               visits?   @relation(fields: [visit_id], references: [visit_id], onDelete: SetNull, onUpdate: Cascade, map: "fk_hospital_registrations_visit_id")
+  resolved_by_user    users?    @relation(fields: [resolved_by_user_id], references: [user_id], onDelete: SetNull, onUpdate: Cascade, map: "fk_hospital_registrations_resolved_by_user_id")
 
   @@unique([hospital_group_code, reg_date, seq_no], map: "uq_daily_seq")
   @@unique([hospital_group_code, phone, reg_date], map: "uq_one_per_day")
   @@index([hospital_group_code, reg_date], map: "idx_lookup")
+  @@index([patient_id], map: "idx_hospital_registrations_patient_id")
+  @@index([visit_id], map: "idx_hospital_registrations_visit_id")
+  @@index([hospital_group_code, patient_id, visit_id], map: "idx_hospital_registrations_hospital_patient_visit")
+  @@index([resolved_by_user_id], map: "idx_hospital_registrations_resolved_by_user_id")
+}
+
+model visit_print_events {
+  event_id           BigInt         @id @default(autoincrement())
+  visit_id           Int
+  prescription_id    Int?
+  print_type         String         @db.VarChar(30)
+  start_offset_mm    Decimal        @default(0.00) @db.Decimal(8, 2)
+  rendered_height_mm Decimal?       @db.Decimal(8, 2)
+  created_by_user_id Int?
+  created_at         DateTime?      @default(now()) @db.Timestamp(0)
+  visit              visits         @relation(fields: [visit_id], references: [visit_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_visit_print_events_visit_id")
+  prescription       prescriptions? @relation(fields: [prescription_id], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "fk_visit_print_events_prescription_id")
+  created_by_user    users?         @relation(fields: [created_by_user_id], references: [user_id], onDelete: SetNull, onUpdate: Cascade, map: "fk_visit_print_events_created_by_user_id")
+
+  @@index([visit_id, created_at], map: "idx_visit_print_events_visit_created")
+  @@index([visit_id, print_type, created_at], map: "idx_visit_print_events_visit_type_created")
+  @@index([prescription_id], map: "idx_visit_print_events_prescription_id")
+  @@index([created_by_user_id], map: "idx_visit_print_events_created_by_user_id")
 }
 
 model inbound_turn_queue {
@@ -599,6 +825,7 @@ model prescriptions {
   doctor_id                  Int
   patient_id                 Int
   appointment_id             Int?
+  visit_id                   Int?
   clinic_id                  Int?
   visit_date                 DateTime                  @db.DateTime(0)
   next_visit_date            DateTime?                 @db.DateTime(0)
@@ -608,6 +835,8 @@ model prescriptions {
   finalized_at               DateTime?                 @db.DateTime(0)
   previous_version_id        Int?
   copied_from_prescription_id Int?
+  referring_prescription_id  Int?
+  referred_to_doctor_id      Int?
   version_number             Int                       @default(1)
   edit_reason                String?                   @db.VarChar(500)
   is_deleted                 Boolean                   @default(false)
@@ -619,11 +848,16 @@ model prescriptions {
   doctor                     doctors                   @relation("emr_prescription_doctor", fields: [doctor_id], references: [doctor_id], onDelete: Restrict)
   patient                    patients                  @relation("emr_prescription_patient", fields: [patient_id], references: [patient_id], onDelete: Restrict)
   appointment                appointment?              @relation("emr_prescription_appointment", fields: [appointment_id], references: [appointment_id], onDelete: SetNull)
+  visit                      visits?                   @relation(fields: [visit_id], references: [visit_id], onDelete: SetNull, onUpdate: Cascade, map: "fk_prescriptions_visit_id")
   clinic                     clinics?                  @relation("emr_prescription_clinic", fields: [clinic_id], references: [clinic_id], onDelete: SetNull)
   previous_version           prescriptions?            @relation("emr_prescription_versions", fields: [previous_version_id], references: [id], onDelete: SetNull)
   next_versions              prescriptions[]           @relation("emr_prescription_versions")
   copied_from_prescription   prescriptions?            @relation("emr_prescription_copies", fields: [copied_from_prescription_id], references: [id], onDelete: SetNull)
   copied_prescriptions       prescriptions[]           @relation("emr_prescription_copies")
+  referring_prescription     prescriptions?            @relation("emr_prescription_referrals", fields: [referring_prescription_id], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "fk_prescriptions_referring_prescription_id")
+  referred_prescriptions     prescriptions[]           @relation("emr_prescription_referrals")
+  referred_to_doctor         doctors?                  @relation("emr_prescription_referred_to_doctor", fields: [referred_to_doctor_id], references: [doctor_id], onDelete: SetNull, onUpdate: Cascade, map: "fk_prescriptions_referred_to_doctor_id")
+  referring_visits           visits[]                  @relation("visits_referring_prescription")
   deleted_by_user            users?                    @relation("emr_prescription_deleted_by", fields: [deleted_by], references: [user_id], onDelete: SetNull)
   vitals                     prescription_vitals?
   complaints                 prescription_complaints[]
@@ -633,15 +867,20 @@ model prescriptions {
   advice                     prescription_advice[]
   custom_fields              prescription_custom_fields[]
   audit_logs                 prescription_audit_logs[]
+  visit_print_events         visit_print_events[]
 
   @@index([doctor_id, patient_id, visit_date], map: "idx_prescriptions_doctor_patient_visit_date")
   @@index([appointment_id], map: "idx_prescriptions_appointment_id")
+  @@index([visit_id], map: "idx_prescriptions_visit_id")
   @@index([clinic_id], map: "idx_prescriptions_clinic_id")
   @@index([status], map: "idx_prescriptions_status")
   @@index([previous_version_id], map: "idx_prescriptions_previous_version_id")
   @@index([copied_from_prescription_id], map: "idx_prescriptions_copied_from_prescription_id")
+  @@index([referring_prescription_id], map: "idx_prescriptions_referring_prescription_id")
+  @@index([referred_to_doctor_id], map: "idx_prescriptions_referred_to_doctor_id")
   @@index([deleted_by], map: "idx_prescriptions_deleted_by")
   @@index([doctor_id, patient_id, appointment_id, status], map: "idx_prescriptions_doctor_patient_appointment_status")
+  @@index([doctor_id, patient_id, visit_id, status], map: "idx_prescriptions_doctor_patient_visit_status")
   @@index([doctor_id, doctor_sequence_no], map: "idx_prescriptions_doctor_sequence_lookup")
   @@unique([doctor_id, doctor_sequence_no], map: "uq_prescriptions_doctor_sequence")
 }
@@ -911,6 +1150,7 @@ model doctor_leaves {
 
   @@index([admin_id], map: "doctor_leaves_admin_id_fkey")
   @@index([doctor_id], map: "doctor_leaves_doctor_id_fkey")
+  @@index([doctor_id, admin_id, leave_date], map: "idx_hms_doctor_leave_date_lookup")
 }
 
 model doctor_clinic_schedule {
@@ -921,6 +1161,9 @@ model doctor_clinic_schedule {
   start_time            String?                  @db.VarChar(20)
   end_time              String?                  @db.VarChar(20)
   slot_duration         Int?
+  scheduling_type       String?                  @db.VarChar(30)
+  daily_capacity        Int?
+  capacity_count_categories Json?
   day_of_week           Int                      @db.TinyInt
   effective_from        DateTime                 @db.Date
   effective_to          DateTime                 @db.Date
@@ -931,6 +1174,8 @@ model doctor_clinic_schedule {
 
   @@index([admin_id], map: "doctor_clinic_schedule_admin_id_fkey")
   @@index([clinic_id], map: "doctor_clinic_schedule_clinic_id_fkey")
+  @@index([doctor_id, admin_id, scheduling_type], map: "idx_doctor_clinic_schedule_capacity_lookup")
+  @@index([doctor_id, admin_id, scheduling_type, day_of_week, effective_from, effective_to], map: "idx_hms_schedule_bookable_lookup")
   @@index([doctor_id], map: "doctor_clinic_schedule_doctor_id_fkey")
 }
 
@@ -1147,6 +1392,32 @@ model live_queue_side_ads {
   @@index([doctor_id, clinic_id, position, is_active], map: "idx_live_queue_side_ads_lookup")
   @@index([clinic_id], map: "live_queue_side_ads_clinic_id_fkey")
   @@index([doctor_id], map: "live_queue_side_ads_doctor_id_fkey")
+}
+
+model hospital_wide_ads {
+  ad_id              Int                 @id @default(autoincrement())
+  hospital_id        Int
+  position           QueueSideAdPosition
+  type               QueueSideAdType
+  asset_url          String              @db.VarChar(1000)
+  storage_key        String?             @db.VarChar(1000)
+  mime_type          String?             @db.VarChar(255)
+  original_filename  String?             @db.VarChar(255)
+  file_size_bytes    BigInt?
+  title              String?             @db.VarChar(255)
+  is_active          Boolean             @default(true)
+  active_from        DateTime?           @db.Date
+  active_to          DateTime?           @db.Date
+  sort_order         Int                 @default(0)
+  created_by_user_id Int?
+  created_at         DateTime            @default(now()) @db.Timestamp(0)
+  updated_at         DateTime            @default(now()) @updatedAt @db.Timestamp(0)
+  hospital           hospitals           @relation(fields: [hospital_id], references: [hospital_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_hospital_wide_ads_hospital_id")
+  created_by_user    users?              @relation(fields: [created_by_user_id], references: [user_id], onDelete: SetNull, onUpdate: Cascade, map: "fk_hospital_wide_ads_created_by_user_id")
+
+  @@index([hospital_id, position, is_active, active_from, active_to], map: "idx_hospital_wide_ads_lookup")
+  @@index([hospital_id, position, sort_order, created_at], map: "idx_hospital_wide_ads_sort")
+  @@index([created_by_user_id], map: "idx_hospital_wide_ads_created_by_user_id")
 }
 
 model live_queue_display_settings {

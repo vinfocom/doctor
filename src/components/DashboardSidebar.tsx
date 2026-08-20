@@ -75,6 +75,7 @@ export default function DashboardSidebar({
             { href: "/dashboard/admin/patients", label: "Patients", icon: <Users size={20} /> },
             { href: "/dashboard/admin/clinics", label: "Clinics", icon: <Building2 size={20} /> },
             { href: "/dashboard/admin/hospitals", label: "Hospitals", icon: <Building2 size={20} /> },
+            { href: "/hms/super-admin", label: "HMS", icon: <Building2 size={20} /> },
             { href: "/dashboard/admin/appointments", label: "Appointments", icon: <Calendar size={20} /> },
             { href: "/dashboard/admin/medicine-import", label: "EMR Bulk Import", icon: <Pill size={20} /> },
 

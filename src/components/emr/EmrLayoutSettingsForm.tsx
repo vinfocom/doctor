@@ -46,12 +46,20 @@ type Props = {
   doctorId?: number;
   title: string;
   subtitle: string;
+  apiBasePath?: string;
+  uploadPathOverride?: string;
+  uploadTypeOverride?: string;
+  theme?: "legacy" | "hms";
+  hideClinicSelector?: boolean;
+  headerAddon?: React.ReactNode;
+  extraSavePayload?: Record<string, unknown>;
 };
 
 const SECTION_LABELS: Record<EmrLayoutSectionKey, string> = {
   vitals: "Vitals",
   complaints: "Complaints",
   diagnosis: "Diagnosis",
+  referral: "Referral",
   examination_findings: "Examination Findings",
   investigation_findings: "Investigation Findings",
   past_medical_history: "Past Medical History",
@@ -910,6 +918,13 @@ export default function EmrLayoutSettingsForm({
   doctorId,
   title,
   subtitle,
+  apiBasePath = "/api/emr/layout-settings",
+  uploadPathOverride,
+  uploadTypeOverride,
+  theme = "legacy",
+  hideClinicSelector = false,
+  headerAddon,
+  extraSavePayload,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -923,8 +938,9 @@ export default function EmrLayoutSettingsForm({
   const [defaults, setDefaults] = useState<EmrLayoutSettings | null>(null);
   const [customFieldDrafts, setCustomFieldDrafts] = useState<EmrLayoutCustomField[]>([]);
 
-  const uploadPath = role === "DOCTOR" ? "/api/doctors/upload" : "/api/upload";
-  const uploadType = role === "DOCTOR" ? "document" : undefined;
+  const uploadPath = uploadPathOverride || (role === "DOCTOR" ? "/api/doctors/upload" : "/api/upload");
+  const uploadType = uploadTypeOverride ?? (role === "DOCTOR" ? "document" : undefined);
+  const isHmsTheme = theme === "hms";
 
   const fetchSettings = useCallback(async (clinicId?: number | null) => {
     setLoading(true);
@@ -933,7 +949,7 @@ export default function EmrLayoutSettingsForm({
     try {
       const query = buildQuery(doctorId, clinicId);
       const res = await fetch(
-        `/api/emr/layout-settings${query ? `?${query}` : ""}`,
+        `${apiBasePath}${query ? `?${query}` : ""}`,
         { cache: "no-store" }
       );
       const data = (await res.json()) as LayoutSettingsResponse & { error?: string };
@@ -953,7 +969,7 @@ export default function EmrLayoutSettingsForm({
     } finally {
       setLoading(false);
     }
-  }, [doctorId]);
+  }, [apiBasePath, doctorId]);
 
   useEffect(() => {
     void fetchSettings(null);
@@ -1131,10 +1147,10 @@ export default function EmrLayoutSettingsForm({
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <div className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 p-6 shadow-sm">
+      <div className={`rounded-3xl border p-6 shadow-sm ${isHmsTheme ? "border-gray-200 bg-white" : "border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-cyan-50"}`}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-700">
+            <div className={`inline-flex items-center gap-2 rounded-full border bg-white px-3 py-1 text-xs font-semibold ${isHmsTheme ? "border-gray-300 text-gray-950" : "border-indigo-200 text-indigo-700"}`}>
               <Settings2 size={14} />
               EMR Layout Settings
             </div>
@@ -1147,7 +1163,7 @@ export default function EmrLayoutSettingsForm({
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            {scopeClinics.length > 0 ? (
+            {!hideClinicSelector && scopeClinics.length > 0 ? (
               <select
                 value={selectedClinicId ?? ""}
                 onChange={(event) => {
@@ -1175,7 +1191,7 @@ export default function EmrLayoutSettingsForm({
                   setError("");
                   const query = buildQuery(doctorId, selectedClinicId);
                   const res = await fetch(
-                    `/api/emr/layout-settings${query ? `?${query}` : ""}`,
+                    `${apiBasePath}${query ? `?${query}` : ""}`,
                     {
                       method: "PUT",
                       headers: {
@@ -1199,6 +1215,7 @@ export default function EmrLayoutSettingsForm({
                         header_height: settings.header_height,
                         footer_height: settings.footer_height,
                         custom_fields: customFieldDrafts,
+                        ...(extraSavePayload || {}),
                       }),
                     }
                   );
@@ -1216,7 +1233,7 @@ export default function EmrLayoutSettingsForm({
                   setSaving(false);
                 }
               }}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${isHmsTheme ? "bg-black hover:bg-gray-900" : "bg-indigo-600 hover:bg-indigo-700"}`}
             >
               {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
               {saving ? "Saving..." : "Save Layout"}
@@ -1233,6 +1250,7 @@ export default function EmrLayoutSettingsForm({
             {error}
           </div>
         ) : null}
+        {headerAddon ? <div className="mt-4">{headerAddon}</div> : null}
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">

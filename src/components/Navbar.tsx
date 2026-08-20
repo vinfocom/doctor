@@ -47,6 +47,9 @@ export default function Navbar({ className }: { className?: string }) {
             <Link href="/login" className="font-bold">
               <MenuItem setActive={setActive} active={active} item="Login" />
             </Link>
+            <Link href="/hms/login" className="font-bold">
+              <MenuItem setActive={setActive} active={active} item="Hospital Login" />
+            </Link>
           </Menu>
         </div>
 

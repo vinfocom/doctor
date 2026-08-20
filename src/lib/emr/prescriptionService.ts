@@ -33,6 +33,7 @@ type PrescriptionRow = {
   doctor_id: number;
   patient_id: number;
   appointment_id: number | null;
+  visit_id: number | null;
   clinic_id: number | null;
   visit_date: Date;
   next_visit_date: Date | null;
@@ -42,6 +43,8 @@ type PrescriptionRow = {
   finalized_at: Date | null;
   previous_version_id: number | null;
   copied_from_prescription_id: number | null;
+  referring_prescription_id: number | null;
+  referred_to_doctor_id: number | null;
   version_number: number;
   edit_reason: string | null;
   is_deleted: boolean | number;
@@ -169,17 +172,18 @@ function normalizeDateInput(value: string | Date | null | undefined) {
 function generateTemporaryPrescriptionNumber(input: {
   doctorId: number;
   patientId: number;
-  appointmentId: number;
+  appointmentId?: number | null;
+  visitId?: number | null;
 }) {
-  const appointmentToken = Math.max(
+  const sourceToken = Math.max(
     0,
-    Number(input.appointmentId) || 0
+    Number(input.appointmentId ?? input.visitId) || 0
   )
     .toString(36)
     .toUpperCase();
   const timestampToken = Date.now().toString(36).toUpperCase();
 
-  return `TMP-${appointmentToken}-${timestampToken}`;
+  return `TMP-${sourceToken}-${timestampToken}`;
 }
 
 function mapVitals(row: VitalsRow | undefined): EmrVitalsPayload | null {
@@ -427,9 +431,13 @@ async function nextDoctorPrescriptionSequence(
 function buildDraftLockName(input: {
   doctorId: number;
   patientId: number;
-  appointmentId: number;
+  appointmentId?: number | null;
+  visitId?: number | null;
 }) {
-  return `emr:draft:${input.doctorId}:${input.patientId}:${input.appointmentId}`;
+  const source = input.visitId
+    ? `visit:${input.visitId}`
+    : `appointment:${input.appointmentId}`;
+  return `emr:draft:${input.doctorId}:${input.patientId}:${source}`;
 }
 
 function buildSaveLockName(input: { doctorId: number; prescriptionId: number }) {
@@ -439,15 +447,20 @@ function buildSaveLockName(input: { doctorId: number; prescriptionId: number }) 
 export async function findExistingDraftPrescription(input: {
   doctorId: number;
   patientId: number;
-  appointmentId: number;
+  appointmentId?: number | null;
+  visitId?: number | null;
 }) {
+  const sourceFilter = input.visitId
+    ? Prisma.sql`AND visit_id = ${input.visitId}`
+    : Prisma.sql`AND appointment_id = ${input.appointmentId}`;
+
   const rows = await prisma.$queryRaw<Array<{ id: number }>>(
     Prisma.sql`
       SELECT id
       FROM prescriptions
       WHERE doctor_id = ${input.doctorId}
         AND patient_id = ${input.patientId}
-        AND appointment_id = ${input.appointmentId}
+        ${sourceFilter}
         AND status = 'draft'
         AND is_deleted = 0
       ORDER BY updated_at DESC, id DESC
@@ -609,6 +622,8 @@ async function loadPrescriptionRecord(
     finalized_at: toIsoString(base.finalized_at),
     previous_version_id: base.previous_version_id,
     copied_from_prescription_id: base.copied_from_prescription_id,
+    referring_prescription_id: base.referring_prescription_id,
+    referred_to_doctor_id: base.referred_to_doctor_id,
     version_number: base.version_number,
     edit_reason: base.edit_reason,
     is_deleted: toBoolean(base.is_deleted),
@@ -641,7 +656,8 @@ export async function getPrescriptionRecord(
 export async function getOrCreateDraftPrescription(input: {
   doctorId: number;
   patientId: number;
-  appointmentId: number;
+  appointmentId?: number | null;
+  visitId?: number | null;
   clinicId?: number | null;
   visitDate?: string | Date | null;
   timezone?: string | null;
@@ -664,13 +680,17 @@ export async function getOrCreateDraftPrescription(input: {
     }
 
     try {
+    const sourceFilter = input.visitId
+      ? Prisma.sql`AND visit_id = ${input.visitId}`
+      : Prisma.sql`AND appointment_id = ${input.appointmentId}`;
+
     const draftRows = await tx.$queryRaw<PrescriptionRow[]>(
       Prisma.sql`
         SELECT *
         FROM prescriptions
         WHERE doctor_id = ${input.doctorId}
           AND patient_id = ${input.patientId}
-          AND appointment_id = ${input.appointmentId}
+          ${sourceFilter}
           AND status = 'draft'
           AND is_deleted = 0
         ORDER BY updated_at DESC, id DESC
@@ -695,6 +715,7 @@ export async function getOrCreateDraftPrescription(input: {
           doctor_id,
           patient_id,
           appointment_id,
+          visit_id,
           clinic_id,
           visit_date,
           next_visit_date,
@@ -711,7 +732,8 @@ export async function getOrCreateDraftPrescription(input: {
           NULL,
           ${input.doctorId},
           ${input.patientId},
-          ${input.appointmentId},
+          ${input.appointmentId ?? null},
+          ${input.visitId ?? null},
           ${input.clinicId ?? null},
           ${visitDate},
           NULL,
@@ -744,7 +766,8 @@ export async function getOrCreateDraftPrescription(input: {
         entityType: "prescription",
         entityId: insertedId,
         newValue: {
-          appointment_id: input.appointmentId,
+          appointment_id: input.appointmentId ?? null,
+          visit_id: input.visitId ?? null,
           clinic_id: input.clinicId ?? null,
           status: "draft",
         },
@@ -1032,6 +1055,10 @@ export async function saveDraftPrescription(
       const nextVisitDate = normalizeDateInput(payload.next_visit_date);
       const nextClinicId = payload.clinic_id ?? existing.clinic_id;
       const nextTimezone = payload.timezone ?? existing.timezone;
+      const nextReferredToDoctorId =
+        payload.referred_to_doctor_id === undefined
+          ? existing.referred_to_doctor_id
+          : payload.referred_to_doctor_id;
 
       await tx.$executeRaw(
         Prisma.sql`
@@ -1041,6 +1068,7 @@ export async function saveDraftPrescription(
             visit_date = ${visitDate},
             next_visit_date = ${nextVisitDate},
             timezone = ${nextTimezone},
+            referred_to_doctor_id = ${nextReferredToDoctorId},
             last_saved_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = ${prescriptionId}
@@ -1131,6 +1159,7 @@ export async function saveDraftPrescription(
         clinicId: nextClinicId,
         visitDate,
         nextVisitDate,
+        referredToDoctorId: nextReferredToDoctorId,
         medicineMasterIds,
       };
     } finally {
@@ -1152,6 +1181,7 @@ export async function saveDraftPrescription(
         clinic_id: saveResult.clinicId,
         visit_date: saveResult.visitDate.toISOString(),
         next_visit_date: saveResult.nextVisitDate?.toISOString() ?? null,
+        referred_to_doctor_id: saveResult.referredToDoctorId,
       },
     }),
     ...saveResult.medicineMasterIds.map((medicineMasterId) =>
@@ -1469,7 +1499,8 @@ export async function clonePrescriptionAsDraft(input: {
   sourcePrescriptionId: number;
   doctorId: number;
   patientId: number;
-  appointmentId: number;
+  appointmentId?: number | null;
+  visitId?: number | null;
   clinicId?: number | null;
   visitDate?: string | Date | null;
   timezone?: string | null;
@@ -1498,7 +1529,8 @@ export async function clonePrescriptionAsDraft(input: {
   const draft = await getOrCreateDraftPrescription({
     doctorId: input.doctorId,
     patientId: input.patientId,
-    appointmentId: input.appointmentId,
+    appointmentId: input.appointmentId ?? null,
+    visitId: input.visitId ?? null,
     clinicId: input.clinicId ?? source.clinic_id,
     visitDate: input.visitDate,
     timezone: input.timezone ?? source.timezone,
@@ -1554,6 +1586,7 @@ export async function clonePrescriptionAsDraft(input: {
     medicines: source.medicines,
     tests: source.tests,
     advice: source.advice,
+    referred_to_doctor_id: source.referred_to_doctor_id,
     clinical_history: source.clinical_history ?? [],
     custom_fields: source.custom_fields ?? [],
   });
@@ -1592,7 +1625,8 @@ export async function createPrescriptionRevisionDraft(input: {
   sourcePrescriptionId: number;
   doctorId: number;
   patientId: number;
-  appointmentId: number;
+  appointmentId?: number | null;
+  visitId?: number | null;
   clinicId?: number | null;
   visitDate?: string | Date | null;
   timezone?: string | null;
@@ -1624,7 +1658,8 @@ export async function createPrescriptionRevisionDraft(input: {
     sourcePrescriptionId: input.sourcePrescriptionId,
     doctorId: input.doctorId,
     patientId: input.patientId,
-    appointmentId: input.appointmentId,
+    appointmentId: input.appointmentId ?? null,
+    visitId: input.visitId ?? null,
     clinicId: input.clinicId ?? source.clinic_id,
     visitDate: input.visitDate,
     timezone: input.timezone ?? source.timezone,

@@ -14,7 +14,7 @@ import type {
   EmrPrintablePrescription,
 } from "@/lib/emr/types";
 
-type PrintLanguage =
+export type PrintLanguage =
   | "en"
   | "hi"
   | "bn"
@@ -27,7 +27,7 @@ type PrintLanguage =
   | "bho"
   | "pa";
 
-const LANGUAGE_OPTIONS: Array<{ value: PrintLanguage; label: string }> = [
+export const LANGUAGE_OPTIONS: Array<{ value: PrintLanguage; label: string }> = [
   { value: "en", label: "English" },
   { value: "hi", label: "Hindi" },
   { value: "bn", label: "Bengali" },
@@ -379,6 +379,20 @@ const UI_TRANSLATIONS: Record<
     doctorSignature: "\u0a21\u0a3e\u0a15\u0a1f\u0a30 \u0a26\u0a47 \u0a26\u0a38\u0a24\u0a16\u0a24 / \u0a2e\u0a41\u0a39\u0a30",
     printLanguage: "\u0a2a\u0a4d\u0a30\u0a3f\u0a70\u0a1f \u0a2d\u0a3e\u0a36\u0a3e",
   },
+};
+
+const REFER_TO_LABEL_TRANSLATIONS: Record<PrintLanguage, string> = {
+  en: "Refer to",
+  hi: "\u0930\u0947\u092b\u0930 \u0915\u0930\u0947\u0902",
+  bn: "\u09b0\u09c7\u09ab\u09be\u09b0 \u0995\u09b0\u09c1\u09a8",
+  mr: "\u0930\u0947\u092b\u0930 \u0915\u0930\u093e",
+  gu: "\u0ab0\u0ac7\u0aab\u0ab0 \u0a95\u0ab0\u0acb",
+  ta: "\u0baa\u0bb0\u0bbf\u0ba8\u0bcd\u0ba4\u0bc1\u0bb0\u0bc8",
+  te: "\u0c30\u0c46\u0c2b\u0c30\u0c4d \u0c1a\u0c47\u0c2f\u0c02\u0c21\u0c3f",
+  kn: "\u0cb0\u0cc6\u0cab\u0cb0\u0ccd \u0cae\u0cbe\u0ca1\u0cbf",
+  ml: "\u0d31\u0d46\u0d2b\u0d7c \u0d1a\u0d46\u0d2f\u0d4d\u0d2f\u0d41\u0d15",
+  bho: "\u0930\u0947\u092b\u0930 \u0915\u0930\u0940\u0902",
+  pa: "\u0a30\u0a48\u0a2b\u0a30 \u0a15\u0a30\u0a4b",
 };
 
 const CLINICAL_HISTORY_HEADING_TRANSLATIONS: Record<
@@ -1412,11 +1426,16 @@ function formatDoctorSpecificPrescriptionNumber(input: {
 export default function EmrPrintablePrescriptionView({
   printable,
   backHref,
+  embedded = false,
+  printLanguage,
 }: {
   printable: EmrPrintablePrescription;
   backHref: string;
+  embedded?: boolean;
+  printLanguage?: PrintLanguage;
 }) {
-  const [language, setLanguage] = useState<PrintLanguage>("en");
+  const [selectedLanguage, setSelectedLanguage] = useState<PrintLanguage>("en");
+  const language = printLanguage ?? selectedLanguage;
 
   const layout = printable.layout_settings;
   const printVisibility = layout.print_visibility_json;
@@ -1432,31 +1451,33 @@ export default function EmrPrintablePrescriptionView({
   const pageLeft = cssLength(printPlacement.left, "24px");
   const offsetX = cssLength(printPlacement.offset_x, "0mm");
   const offsetY = cssLength(printPlacement.offset_y, "0mm");
-  const headerSpace = cssLength(printPlacement.header_space, "0mm");
+  const headerSpace = embedded ? "0mm" : cssLength(printPlacement.header_space, "0mm");
   const footerSpace = cssLength(printPlacement.footer_space, "0mm");
   const leftStripSpace = cssLength(printPlacement.left_strip_space, "0mm");
   const rightStripSpace = cssLength(printPlacement.right_strip_space, "0mm");
-  const showHeaderImage =
+  const showHeaderImage = !embedded &&
     printPlacement.show_header_image !== false && Boolean(layout.header_image_url);
-  const showFooterImage =
+  const showFooterImage = !embedded &&
     printPlacement.show_footer_image !== false && Boolean(layout.footer_image_url);
-  const showClinicLogo =
+  const showClinicLogo = !embedded &&
     printPlacement.show_clinic_logo !== false && Boolean(layout.clinic_logo_url);
-  const showSignature =
+  const showSignature = !embedded &&
     printPlacement.show_signature !== false && Boolean(layout.doctor_signature_url);
   const showPrescriptionValidity =
     printPlacement.show_prescription_validity === true &&
     Boolean(printPlacement.prescription_validity_value) &&
     Boolean(printPlacement.prescription_validity_unit);
-  const showPrescriptionNumber = printPlacement.show_prescription_number === true;
-  const hasHeaderReserve =
+  const showPrescriptionNumber = !embedded && printPlacement.show_prescription_number === true;
+  const hasHeaderReserve = !embedded && (
     hasVisibleReservedSpace(printPlacement.header_space) ||
     showHeaderImage ||
-    showClinicLogo;
-  const hasFooterReserve =
+    showClinicLogo
+  );
+  const hasFooterReserve = !embedded && (
     hasVisibleReservedSpace(printPlacement.footer_space) ||
     showFooterImage ||
-    showSignature;
+    showSignature
+  );
   const repeatingPageMargins = buildRepeatingPageMarginCss({
     top: cssPageCalc(pageTop, headerSpace, offsetY),
     right: cssPageCalc(pageRight, rightStripSpace),
@@ -1746,6 +1767,25 @@ export default function EmrPrintablePrescriptionView({
             </p>
           </section>
         ) : null;
+      case "referral":
+        return printable.referred_to_doctor?.doctor_name ? (
+          <section
+            key={section}
+            className={joinClasses(
+              "emr-print-section",
+              printDensity === "compact"
+                ? "space-y-1 print:space-y-0.5"
+                : "space-y-2 print:space-y-0.5"
+            )}
+          >
+            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+              {toUpperText(REFER_TO_LABEL_TRANSLATIONS[language])}
+            </h2>
+            <p className={joinClasses("text-gray-700", printDensity === "compact" ? "text-[12px] leading-4 print:text-[11px]" : "text-sm")}>
+              {toUpperText(`Dr. ${printable.referred_to_doctor.doctor_name}`)}
+            </p>
+          </section>
+        ) : null;
       case "next_visit":
         return hasNextVisit ? (
           <section
@@ -1806,28 +1846,13 @@ export default function EmrPrintablePrescriptionView({
     }
   };
 
-  return (
-    <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 print:max-w-none print:space-y-0 print:px-0 print:py-0">
-      <style>{repeatingPageMargins}</style>
-      <EmrPrintActions backHref={backHref}>
-        <label className="inline-flex items-center gap-2 text-sm text-gray-600">
-          <span>{toUpperText(t.printLanguage)}</span>
-          <select
-            value={language}
-            onChange={(event) => setLanguage(event.target.value as PrintLanguage)}
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-          >
-            {LANGUAGE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </EmrPrintActions>
-
+  const printArticle = (
       <article
-        className="emr-a4-print-page emr-print-surface rounded-3xl border border-gray-200 bg-white shadow-sm print:rounded-none print:border-0 print:shadow-none print:overflow-visible"
+        className={
+          embedded
+            ? "emr-print-surface bg-white print:overflow-visible"
+            : "emr-a4-print-page emr-print-surface rounded-3xl border border-gray-200 bg-white shadow-sm print:rounded-none print:border-0 print:shadow-none print:overflow-visible"
+        }
         style={buildPrintSurfaceStyle(layout)}
       >
         {hasHeaderReserve ? (
@@ -1864,31 +1889,33 @@ export default function EmrPrintablePrescriptionView({
         <div
           className="emr-print-content space-y-6 print:space-y-2"
           style={{
-            paddingTop: `calc(${pageTop} + ${offsetY})`,
+            paddingTop: embedded ? "0mm" : `calc(${pageTop} + ${offsetY})`,
             paddingRight: `calc(${pageRight} + ${rightStripSpace})`,
-            paddingBottom: pageBottom,
+            paddingBottom: embedded ? `calc(${pageBottom} + ${footerSpace})` : pageBottom,
             paddingLeft: `calc(${pageLeft} + ${leftStripSpace} + ${offsetX})`,
           }}
         >
-          <header className="emr-print-section border-b border-gray-200 pb-4 print:pb-1.5">
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-700 print:gap-x-3 print:gap-y-0.5">
-              <p className="font-semibold text-gray-900">
-                {formatPatientSummary(printable.patient)}
-              </p>
-              <p>
-                {toUpperText(t.visitDate)}: {toUpperText(formatDateDdMmYyyy(prescription.visit_date))}
-              </p>
-              {showPrescriptionNumber ? (
-                <p className="whitespace-nowrap font-medium text-gray-700">
-                  {toUpperText(
-                    `${PRESCRIPTION_NUMBER_LABEL_TRANSLATIONS[language]}: ${formatDoctorSpecificPrescriptionNumber(
-                      prescription
-                    )}`
-                  )}
+          {!embedded ? (
+            <header className="emr-print-section border-b border-gray-200 pb-4 print:pb-1.5">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-700 print:gap-x-3 print:gap-y-0.5">
+                <p className="font-semibold text-gray-900">
+                  {formatPatientSummary(printable.patient)}
                 </p>
-              ) : null}
-            </div>
-          </header>
+                <p>
+                  {toUpperText(t.visitDate)}: {toUpperText(formatDateDdMmYyyy(prescription.visit_date))}
+                </p>
+                {showPrescriptionNumber ? (
+                  <p className="whitespace-nowrap font-medium text-gray-700">
+                    {toUpperText(
+                      `${PRESCRIPTION_NUMBER_LABEL_TRANSLATIONS[language]}: ${formatDoctorSpecificPrescriptionNumber(
+                        prescription
+                      )}`
+                    )}
+                  </p>
+                ) : null}
+              </div>
+            </header>
+          ) : null}
 
           {visiblePrintSectionOrder.map((section) => renderPrintSection(section))}
 
@@ -1959,6 +1986,33 @@ export default function EmrPrintablePrescriptionView({
           </footer>
         ) : null}
       </article>
+  );
+
+  if (embedded) {
+    return <div className="emr-embedded-print">{printArticle}</div>;
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 print:max-w-none print:space-y-0 print:px-0 print:py-0">
+      <style>{repeatingPageMargins}</style>
+      <EmrPrintActions backHref={backHref}>
+        <label className="inline-flex items-center gap-2 text-sm text-gray-600">
+          <span>{toUpperText(t.printLanguage)}</span>
+          <select
+            value={language}
+            onChange={(event) => setSelectedLanguage(event.target.value as PrintLanguage)}
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+          >
+            {LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </EmrPrintActions>
+
+      {printArticle}
     </div>
   );
 }

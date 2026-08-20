@@ -5,8 +5,17 @@ const JWT_SECRET = process.env.JWT_SECRET || "SUPER_SECRET_KEY";
 export interface JWTPayload {
   userId: number;
   email?: string;
-  role: "SUPER_ADMIN" | "ADMIN" | "DOCTOR" | "PATIENT" | "CLINIC_STAFF";
+  role: "SUPER_ADMIN" | "ADMIN" | "DOCTOR" | "PATIENT" | "CLINIC_STAFF" | "HOSPITAL_ADMIN" | "HOSPITAL_STAFF";
   patientId?: number;
+  forcePasswordChange?: boolean;
+  hospitalContext?: {
+    hospitalId: number;
+    hospitalCode: string;
+    hospitalName: string;
+    adminId: number;
+    userId: number;
+    role: "HOSPITAL_ADMIN" | "HOSPITAL_STAFF" | "DOCTOR";
+  };
 }
 
 export function generateToken(payload: JWTPayload): string {

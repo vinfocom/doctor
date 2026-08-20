@@ -95,6 +95,7 @@ export type EmrDraftSavePayload = {
   next_visit_date?: string | Date | null;
   clinic_id?: number | null;
   timezone?: string | null;
+  referred_to_doctor_id?: number | null;
   vitals?: EmrVitalsPayload | null;
   complaints?: EmrComplaintPayload[];
   diagnosis?: EmrNamedItemPayload[];
@@ -129,6 +130,8 @@ export type EmrPrescriptionRecord = {
   finalized_at: string | null;
   previous_version_id: number | null;
   copied_from_prescription_id: number | null;
+  referring_prescription_id: number | null;
+  referred_to_doctor_id: number | null;
   version_number: number;
   edit_reason: string | null;
   is_deleted: boolean;
@@ -196,6 +199,7 @@ export type EmrLayoutSectionKey =
   | "vitals"
   | "complaints"
   | "diagnosis"
+  | "referral"
   | "examination_findings"
   | "investigation_findings"
   | "past_medical_history"
@@ -282,6 +286,12 @@ export type EmrPrintablePrescription = {
     registration_no: string | null;
     specialization: string | null;
   };
+  referred_to_doctor?: {
+    doctor_id: number;
+    doctor_name: string | null;
+    specialization: string | null;
+    qualification: string | null;
+  } | null;
   patient: {
     patient_id: number;
     full_name: string | null;

@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { getDoctorEmrEnabled } from "@/lib/emrFeatureGate";
 import { getClinicStaffAccessBlockReason, resolveEffectiveAssignedDoctorIds } from "@/lib/clinicStaffAccess";
 import { redirect } from "next/navigation";
+import { shouldRedirectLegacySessionToHms } from "@/lib/hms-legacy-guard";
 
 export default async function DoctorLayout({
     children,
@@ -14,6 +15,9 @@ export default async function DoctorLayout({
 
     if (!session || (session.role !== "DOCTOR" && session.role !== "CLINIC_STAFF")) {
         redirect("/login");
+    }
+    if (await shouldRedirectLegacySessionToHms(session)) {
+        redirect("/hms/login");
     }
     const fallbackUserName = session.email?.split("@")[0] || (session.role === "DOCTOR" ? "Doctor" : "Staff");
     let userName = fallbackUserName;

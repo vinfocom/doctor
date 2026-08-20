@@ -2,6 +2,7 @@
 import { getSession } from "@/lib/auth";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import { redirect } from "next/navigation";
+import { shouldRedirectLegacySessionToHms } from "@/lib/hms-legacy-guard";
 
 export default async function AdminLayout({
     children,
@@ -12,6 +13,9 @@ export default async function AdminLayout({
 
     if (!session || (session.role !== "ADMIN" && session.role !== "SUPER_ADMIN")) {
         redirect("/login");
+    }
+    if (await shouldRedirectLegacySessionToHms(session)) {
+        redirect("/hms/login");
     }
     const userName = session.email?.split("@")[0] || "Admin";
 

@@ -8,8 +8,8 @@ import {
   getRateLimitErrorResponse,
   getRequestIp,
   logEmrOperationalError,
-  validateDoctorEmrFeatureAccess,
 } from "@/lib/emr";
+import { resolveEmrDoctorFeatureScope } from "@/lib/emr/doctorFeatureScope";
 import { getMasterCorrectionSuggestion } from "@/lib/emr/masterCorrectionService";
 import { resolveMasterKind } from "@/app/api/emr/master/_shared";
 
@@ -21,7 +21,7 @@ export async function GET(
 ) {
   try {
     const session = await getSessionFromRequest(req);
-    const doctorScope = await validateDoctorEmrFeatureAccess({ session });
+    const doctorScope = await resolveEmrDoctorFeatureScope({ req, legacySession: session });
     const { kind } = await params;
     const masterType = resolveMasterKind(kind);
 
@@ -57,6 +57,15 @@ export async function GET(
 
     return NextResponse.json(suggestion);
   } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message.includes("EMR is disabled") ||
+        error.message.includes("Only doctors") ||
+        error.message.includes("HMS doctor profile"))
+    ) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
     const rateLimitResponse = getRateLimitErrorResponse(error);
     if (rateLimitResponse) {
       return NextResponse.json(rateLimitResponse.body, {
