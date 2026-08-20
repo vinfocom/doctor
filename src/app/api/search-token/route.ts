@@ -278,6 +278,7 @@ export async function GET(req: Request) {
         for (const registration of registrations) {
             const regDate = formatDateInput(registration.reg_date);
             if (!regDate) continue;
+            if (!registration.phone) continue;
             const current = regDateByPhone.get(registration.phone);
             if (!current || regDate < current) {
                 regDateByPhone.set(registration.phone, regDate);
