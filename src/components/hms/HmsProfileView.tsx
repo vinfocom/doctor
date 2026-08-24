@@ -3,6 +3,7 @@ import HmsPreRegistrationQrCard from "@/components/hms/HmsPreRegistrationQrCard"
 import prisma from "@/lib/prisma";
 import type { HospitalContext } from "@/lib/hms-auth";
 import { isHmsFeatureEnabled } from "@/lib/hms-feature-flags";
+import { toHospitalSmsPayload, type HospitalSmsSnapshot } from "@/lib/hospitalSms";
 
 type UserRow = {
     name: string | null;
@@ -20,6 +21,15 @@ type DoctorRow = {
 type StaffRow = {
     staff_type: string | null;
     status: string | null;
+};
+
+type HospitalSmsRow = {
+    sms_service_enabled: boolean | number | null;
+    sms_service_status: string | null;
+    sms_credit_total: number | bigint | null;
+    sms_credit_used: number | bigint | null;
+    current_pack_total: number | bigint | null;
+    current_pack_used: number | bigint | null;
 };
 
 function formatDoctorName(name: string | null | undefined) {
@@ -41,6 +51,7 @@ async function loadProfile(context: HospitalContext) {
 
     let doctor: DoctorRow | null = null;
     let staff: StaffRow | null = null;
+    let smsService: HospitalSmsSnapshot | null = null;
 
     if (context.role === "DOCTOR") {
         const rows = await prisma.$queryRawUnsafe<DoctorRow[]>(
@@ -76,11 +87,30 @@ async function loadProfile(context: HospitalContext) {
         staff = rows[0] || null;
     }
 
-    return { user: users[0] || null, doctor, staff };
+    if (context.role === "HOSPITAL_ADMIN") {
+        const rows = await prisma.$queryRawUnsafe<HospitalSmsRow[]>(
+            `
+            SELECT
+                sms_service_enabled,
+                sms_service_status,
+                sms_credit_total,
+                sms_credit_used,
+                current_pack_total,
+                current_pack_used
+            FROM hospital_sms_service
+            WHERE hospital_id = ?
+            LIMIT 1
+            `,
+            context.hospitalId
+        );
+        smsService = toHospitalSmsPayload(rows[0] || null);
+    }
+
+    return { user: users[0] || null, doctor, staff, smsService };
 }
 
 export default async function HmsProfileView({ context }: { context: HospitalContext }) {
-    const { user, doctor, staff } = await loadProfile(context);
+    const { user, doctor, staff, smsService } = await loadProfile(context);
     const displayName = doctor ? formatDoctorName(doctor.doctor_name) : user?.name || context.role.replace("_", " ");
     const showPreRegistrationQr = context.role === "HOSPITAL_ADMIN" && await isHmsFeatureEnabled(context, "qr_temp_token_enabled");
 
@@ -105,6 +135,8 @@ export default async function HmsProfileView({ context }: { context: HospitalCon
                 <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
                     <ProfileItem label="Role" value={context.role.replace("_", " ")} />
                     <ProfileItem label="Hospital" value={context.hospitalName} />
+                    {smsService && <ProfileItem label="SMS Balance" value={smsService.displayText} />}
+                    {smsService && <ProfileItem label="SMS Status" value={smsService.status} />}
                     {doctor && <ProfileItem label="Room" value={doctor.room_no || "-"} />}
                     {doctor && <ProfileItem label="Specialization" value={doctor.specialization || "-"} />}
                     {doctor && <ProfileItem label="Registration No." value={doctor.registration_no || "-"} />}

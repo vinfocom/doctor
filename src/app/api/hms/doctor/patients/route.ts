@@ -89,7 +89,9 @@ export async function GET(req: Request) {
         const pageSize = parsePositiveInt(searchParams.get("page_size"), 25, 10, 100);
         const offset = (page - 1) * pageSize;
         const containsQuery = `%${query}%`;
-        const phoneQuery = `%${query.replace(/\D/g, "")}%`;
+        const startsWithQuery = `${query}%`;
+        const phoneDigits = query.replace(/\D/g, "");
+        const phoneQuery = phoneDigits ? `%${phoneDigits}%` : "";
         const dateFilterSql = query || !visitDate
             ? ""
             : `
@@ -114,7 +116,7 @@ export async function GET(req: Request) {
                 OR CAST(v.visit_id AS CHAR) LIKE ?
                 OR CAST(v.daily_token_number AS CHAR) LIKE ?
                 OR COALESCE(p.full_name, '') LIKE ?
-                OR (? <> '' AND p.phone LIKE ?)
+                OR (? <> '' AND ? <> '' AND p.phone LIKE ?)
               )
         `;
         const countRows = await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(
@@ -132,7 +134,8 @@ export async function GET(req: Request) {
             containsQuery,
             containsQuery,
             containsQuery,
-            phoneQuery,
+            query,
+            phoneDigits,
             phoneQuery
         );
         const total = Number(countRows[0]?.total || 0);
@@ -178,7 +181,7 @@ export async function GET(req: Request) {
                 OR CAST(v.visit_id AS CHAR) LIKE ?
                 OR CAST(v.daily_token_number AS CHAR) LIKE ?
                 OR COALESCE(p.full_name, '') LIKE ?
-                OR (? <> '' AND p.phone LIKE ?)
+                OR (? <> '' AND ? <> '' AND p.phone LIKE ?)
               )
             GROUP BY
                 p.patient_id,
@@ -189,7 +192,15 @@ export async function GET(req: Request) {
                 p.gender,
                 p.city,
                 p.location
-            ORDER BY last_visit_date DESC, p.full_name ASC, p.patient_id DESC
+            ORDER BY
+                CASE
+                    WHEN LOWER(COALESCE(p.full_name, '')) = LOWER(?) THEN 2
+                    WHEN LOWER(COALESCE(p.full_name, '')) LIKE LOWER(?) THEN 1
+                    ELSE 0
+                END DESC,
+                last_visit_date DESC,
+                p.full_name ASC,
+                p.patient_id DESC
             LIMIT ? OFFSET ?
             `,
             context.doctorId,
@@ -206,8 +217,11 @@ export async function GET(req: Request) {
             containsQuery,
             containsQuery,
             containsQuery,
+            query,
+            phoneDigits,
             phoneQuery,
-            phoneQuery,
+            query,
+            startsWithQuery,
             pageSize,
             offset
         );

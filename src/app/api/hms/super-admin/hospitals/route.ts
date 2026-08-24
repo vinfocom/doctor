@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/request-auth";
 import { generateTemporaryPassword } from "@/lib/hms-passwords";
+import { toHospitalSmsPayload } from "@/lib/hospitalSms";
 
 type InsertIdRow = {
     id: bigint | number;
@@ -34,6 +35,12 @@ type HospitalListRow = {
     doctor_count: bigint | number;
     staff_count: bigint | number;
     visit_count: bigint | number;
+    sms_service_enabled: boolean | number | null;
+    sms_service_status: string | null;
+    sms_credit_total: bigint | number | null;
+    sms_credit_used: bigint | number | null;
+    current_pack_total: bigint | number | null;
+    current_pack_used: bigint | number | null;
 };
 
 const DEFAULT_HOSPITAL_POLICIES = {
@@ -167,6 +174,14 @@ function serializeHospital(row: HospitalListRow) {
             staff: toNumber(row.staff_count),
             visits: toNumber(row.visit_count),
         },
+        sms_service: toHospitalSmsPayload({
+            sms_service_enabled: row.sms_service_enabled,
+            sms_service_status: row.sms_service_status,
+            sms_credit_total: row.sms_credit_total,
+            sms_credit_used: row.sms_credit_used,
+            current_pack_total: row.current_pack_total,
+            current_pack_used: row.current_pack_used,
+        }),
     };
 }
 
@@ -199,7 +214,13 @@ export async function GET(req: Request) {
                 COUNT(DISTINCT hff.id) AS feature_configured,
                 COUNT(DISTINCT hd.doctor_id) AS doctor_count,
                 COUNT(DISTINCT hs.staff_id) AS staff_count,
-                COUNT(DISTINCT v.visit_id) AS visit_count
+                COUNT(DISTINCT v.visit_id) AS visit_count,
+                hss.sms_service_enabled,
+                hss.sms_service_status,
+                hss.sms_credit_total,
+                hss.sms_credit_used,
+                hss.current_pack_total,
+                hss.current_pack_used
             FROM hospitals h
             INNER JOIN admins a
               ON a.admin_id = h.admin_id
@@ -215,6 +236,8 @@ export async function GET(req: Request) {
               ON hs.hospital_id = h.hospital_id
             LEFT JOIN visits v
               ON v.hospital_id = h.hospital_id
+            LEFT JOIN hospital_sms_service hss
+              ON hss.hospital_id = h.hospital_id
             GROUP BY
                 h.hospital_id,
                 h.code,
@@ -225,7 +248,13 @@ export async function GET(req: Request) {
                 h.updated_at,
                 u.user_id,
                 u.name,
-                u.email
+                u.email,
+                hss.sms_service_enabled,
+                hss.sms_service_status,
+                hss.sms_credit_total,
+                hss.sms_credit_used,
+                hss.current_pack_total,
+                hss.current_pack_used
             ORDER BY h.created_at DESC, h.hospital_id DESC
             `
         );
@@ -382,6 +411,11 @@ export async function POST(req: Request) {
             await tx.$executeRaw`
                 INSERT INTO hospital_feature_flags (hospital_id, flags)
                 VALUES (${hospitalId}, ${JSON.stringify(DEFAULT_HOSPITAL_FEATURE_FLAGS)})
+            `;
+
+            await tx.$executeRaw`
+                INSERT INTO hospital_sms_service (hospital_id)
+                VALUES (${hospitalId})
             `;
 
             return { adminId, hospitalId, adminUserId };

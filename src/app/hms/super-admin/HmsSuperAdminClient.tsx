@@ -2,9 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Building2, Copy, LayoutDashboard, Loader2, Plus, Power, PowerOff, RefreshCw, Settings, ShieldCheck, Trash2 } from "lucide-react";
+import { Building2, Copy, LayoutDashboard, Loader2, MessageSquare, Plus, Power, PowerOff, RefreshCw, Settings, ShieldCheck, Trash2 } from "lucide-react";
 import { HmsStatusAlert } from "@/components/hms/HmsStatusAlert";
 import { useHmsAutoDismissMessage } from "@/components/hms/useHmsAutoDismissMessage";
+
+type SmsService = {
+    enabled: boolean;
+    status: "DISABLED" | "ACTIVE" | "EXHAUSTED";
+    totalCredits: number;
+    usedCredits: number;
+    remainingCredits: number;
+    displayText: string;
+};
 
 type Hospital = {
     hospital_id: number;
@@ -28,6 +37,7 @@ type Hospital = {
         staff: number;
         visits: number;
     };
+    sms_service: SmsService;
 };
 
 type Totals = {
@@ -80,6 +90,11 @@ export default function HmsSuperAdminClient() {
     const [creating, setCreating] = useState(false);
     const [busyHospitalId, setBusyHospitalId] = useState<number | null>(null);
     const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+    const [smsHospital, setSmsHospital] = useState<Hospital | null>(null);
+    const [smsEnabled, setSmsEnabled] = useState(false);
+    const [smsRechargeCredits, setSmsRechargeCredits] = useState("");
+    const [smsRechargeRemarks, setSmsRechargeRemarks] = useState("");
+    const [smsSaving, setSmsSaving] = useState(false);
     const [temporaryPassword, setTemporaryPassword] = useState("");
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
@@ -256,10 +271,61 @@ export default function HmsSuperAdminClient() {
         await updateStatus(action.hospital, action.hospital.status === "ACTIVE" ? "INACTIVE" : "ACTIVE");
     };
 
+    const openSmsSettings = (hospital: Hospital) => {
+        setSmsHospital(hospital);
+        setSmsEnabled(Boolean(hospital.sms_service?.enabled));
+        setSmsRechargeCredits("");
+        setSmsRechargeRemarks("");
+        setError("");
+        setSuccess("");
+    };
+
+    const saveSmsSettings = async () => {
+        if (!smsHospital || smsSaving) return;
+        const credits = smsRechargeCredits.trim() ? Number(smsRechargeCredits) : 0;
+        if (!Number.isInteger(credits) || credits < 0) {
+            setError("SMS recharge must be a whole number.");
+            return;
+        }
+
+        setSmsSaving(true);
+        setError("");
+        setSuccess("");
+
+        try {
+            const response = await fetch(`/api/hms/super-admin/hospitals/${smsHospital.hospital_id}/sms`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    sms_service_enabled: smsEnabled,
+                    sms_recharge_credits: credits,
+                    sms_recharge_remarks: smsRechargeRemarks.trim() || null,
+                }),
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                setError(data.error || "Unable to update hospital SMS.");
+                return;
+            }
+
+            setHospitals((prev) => prev.map((item) => item.hospital_id === smsHospital.hospital_id
+                ? { ...item, sms_service: data.sms_service || item.sms_service }
+                : item
+            ));
+            setSmsHospital(null);
+            setSuccess(`${smsHospital.code} SMS updated.`);
+        } catch {
+            setError("Unable to update hospital SMS. Check your connection and try again.");
+        } finally {
+            setSmsSaving(false);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-gray-50">
             <div className="border-b border-gray-200 bg-white">
-                <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+                <div className="mx-auto flex max-w-[1560px] items-center justify-between px-3 py-4 sm:px-4 lg:px-5">
                     <div className="flex items-center gap-3">
                         <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-black text-white">
                             <ShieldCheck size={19} />
@@ -288,7 +354,7 @@ export default function HmsSuperAdminClient() {
                 </div>
             </div>
 
-            <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+            <main className="mx-auto max-w-[1560px] px-3 py-6 sm:px-4 lg:px-5">
                 {error && <HmsStatusAlert tone="error" message={error} onDismiss={clearError} />}
                 {success && <HmsStatusAlert tone="success" message={success} onDismiss={clearSuccess} />}
 
@@ -317,7 +383,7 @@ export default function HmsSuperAdminClient() {
                     <Metric label="Admins" value={totals.admins} />
                 </div>
 
-                <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
+                <div className="mt-6 grid gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
                     <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
                         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                             <h2 className="text-sm font-semibold text-gray-950">Hospitals</h2>
@@ -341,44 +407,65 @@ export default function HmsSuperAdminClient() {
                             <div className="px-4 py-6 text-sm text-gray-500">No HMS hospitals created.</div>
                         ) : (
                             <div className="overflow-x-auto">
-                                <table className="w-full text-left text-sm">
+                                <table className="min-w-[1180px] w-full table-fixed text-left text-sm">
                                     <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                                         <tr>
-                                            <th className="px-4 py-3 font-semibold">Hospital</th>
-                                            <th className="px-4 py-3 font-semibold">Admin</th>
-                                            <th className="px-4 py-3 font-semibold">Config</th>
-                                            <th className="px-4 py-3 font-semibold">Usage</th>
-                                            <th className="px-4 py-3 font-semibold">Status</th>
-                                            <th className="px-4 py-3 font-semibold">Action</th>
+                                            <th className="w-[24%] px-3 py-3 font-semibold">Hospital</th>
+                                            <th className="w-[21%] px-3 py-3 font-semibold">Admin</th>
+                                            <th className="w-[8%] px-2 py-3 font-semibold">Config</th>
+                                            <th className="w-[10%] px-2 py-3 font-semibold">Usage</th>
+                                            <th className="w-[10%] px-2 py-3 font-semibold">SMS</th>
+                                            <th className="w-[12%] px-3 py-3 font-semibold">Status</th>
+                                            <th className="w-[15%] px-3 py-3 text-right font-semibold">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {sortedHospitals.map((hospital) => (
                                             <tr key={hospital.hospital_id} className="border-t border-gray-100">
-                                                <td className="px-4 py-3">
-                                                    <div className="flex items-center gap-3">
-                                                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-black text-white">
-                                                            <Building2 size={16} />
+                                                <td className="px-3 py-3">
+                                                    <div className="flex min-w-0 items-center gap-2">
+                                                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-black text-white">
+                                                            <Building2 size={15} />
                                                         </span>
-                                                        <div>
-                                                            <p className="font-semibold text-gray-950">{hospital.name}</p>
-                                                            <p className="text-xs text-gray-500">{hospital.code} / Admin ID {hospital.admin_id}</p>
+                                                        <div className="min-w-0">
+                                                            <p className="break-words font-semibold leading-snug text-gray-950">{hospital.name}</p>
+                                                            <p className="break-words text-xs leading-snug text-gray-500">
+                                                                {hospital.code} / Admin ID {hospital.admin_id}
+                                                            </p>
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-4 py-3">
-                                                    <p className="font-medium text-gray-800">{hospital.admin_user?.name || "-"}</p>
-                                                    <p className="text-xs text-gray-500">{hospital.admin_user?.email || "No login user"}</p>
+                                                <td className="px-3 py-3">
+                                                    <p className="break-words font-medium leading-snug text-gray-800">{hospital.admin_user?.name || "-"}</p>
+                                                    <p className="break-all text-xs leading-snug text-gray-500">{hospital.admin_user?.email || "No login user"}</p>
                                                 </td>
-                                                <td className="px-4 py-3 text-xs text-gray-600">
-                                                    <ConfigPill label="Policy" enabled={hospital.config.policy_configured} />
-                                                    <ConfigPill label="Flags" enabled={hospital.config.feature_configured} />
+                                                <td className="px-2 py-3 text-xs text-gray-600">
+                                                    <div className="flex flex-wrap gap-1">
+                                                        <ConfigPill label="P" enabled={hospital.config.policy_configured} title="Policy" />
+                                                        <ConfigPill label="F" enabled={hospital.config.feature_configured} title="Feature Flags" />
+                                                    </div>
                                                 </td>
-                                                <td className="px-4 py-3 text-gray-600">
-                                                    {hospital.counts.doctors} doctors / {hospital.counts.staff} staff / {hospital.counts.visits} visits
+                                                <td className="px-2 py-3 text-xs font-medium text-gray-700">
+                                                    <p>{hospital.counts.doctors} Dr</p>
+                                                    <p>{hospital.counts.staff} Staff</p>
+                                                    <p>{hospital.counts.visits} Visits</p>
                                                 </td>
-                                                <td className="px-4 py-3">
-                                                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                                <td className="px-2 py-3">
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="whitespace-nowrap font-semibold text-gray-950">{hospital.sms_service?.displayText || "0/0 left"}</span>
+                                                        <span className={`w-fit rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                                            hospital.sms_service?.status === "ACTIVE"
+                                                                ? "bg-emerald-50 text-emerald-700"
+                                                                : hospital.sms_service?.status === "EXHAUSTED"
+                                                                    ? "bg-red-50 text-red-700"
+                                                                    : "bg-gray-100 text-gray-700"
+                                                        }`}>
+                                                            {hospital.sms_service?.status || "DISABLED"}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-3">
+                                                    <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${
                                                         hospital.status === "ACTIVE"
                                                             ? "bg-emerald-50 text-emerald-700"
                                                             : "bg-gray-100 text-gray-700"
@@ -386,37 +473,48 @@ export default function HmsSuperAdminClient() {
                                                         {hospital.status}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-3">
-                                                    <div className="flex flex-wrap gap-2">
+                                                <td className="px-3 py-3 pl-5">
+                                                    <div className="flex flex-nowrap justify-end gap-2">
                                                         <Link
                                                             href={`/hms/super-admin/hospitals/feature-flags?hospitalId=${hospital.hospital_id}`}
-                                                            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                                                            title="Feature Flags"
+                                                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
                                                         >
-                                                            Flags
+                                                            <Settings size={14} />
                                                         </Link>
                                                         <Link
                                                             href={`/hms/super-admin/hospitals/${hospital.hospital_id}/emr-layout`}
-                                                            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                                                            title="EMR Layout"
+                                                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
                                                         >
-                                                            EMR Layout
+                                                            <LayoutDashboard size={14} />
                                                         </Link>
                                                         <button
                                                             type="button"
                                                             disabled={busyHospitalId === hospital.hospital_id}
+                                                            onClick={() => openSmsSettings(hospital)}
+                                                            title="SMS"
+                                                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                                        >
+                                                            <MessageSquare size={14} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            disabled={busyHospitalId === hospital.hospital_id}
                                                             onClick={() => setConfirmAction({ type: "TOGGLE", hospital })}
-                                                            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                                            title={hospital.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                                                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                                                         >
                                                             {hospital.status === "ACTIVE" ? <PowerOff size={14} /> : <Power size={14} />}
-                                                            {hospital.status === "ACTIVE" ? "Deactivate" : "Activate"}
                                                         </button>
                                                         <button
                                                             type="button"
                                                             disabled={busyHospitalId === hospital.hospital_id}
                                                             onClick={() => setConfirmAction({ type: "DELETE", hospital })}
-                                                            className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                                                            title="Delete"
+                                                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50"
                                                         >
                                                             <Trash2 size={14} />
-                                                            Delete
                                                         </button>
                                                     </div>
                                                 </td>
@@ -428,7 +526,7 @@ export default function HmsSuperAdminClient() {
                         )}
                     </div>
 
-                    <form onSubmit={createHospital} className="rounded-lg border border-gray-200 bg-white p-4">
+                    <form onSubmit={createHospital} className="rounded-lg border border-gray-200 bg-white p-4 2xl:sticky 2xl:top-6 2xl:self-start">
                         <div className="mb-4 flex items-center gap-2">
                             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-black text-white">
                                 <Plus size={16} />
@@ -465,6 +563,20 @@ export default function HmsSuperAdminClient() {
                     onConfirm={() => void runConfirmedAction()}
                 />
             )}
+            {smsHospital && (
+                <SmsSettingsModal
+                    hospital={smsHospital}
+                    enabled={smsEnabled}
+                    credits={smsRechargeCredits}
+                    remarks={smsRechargeRemarks}
+                    saving={smsSaving}
+                    onEnabledChange={setSmsEnabled}
+                    onCreditsChange={setSmsRechargeCredits}
+                    onRemarksChange={setSmsRechargeRemarks}
+                    onCancel={() => setSmsHospital(null)}
+                    onSave={() => void saveSmsSettings()}
+                />
+            )}
         </div>
     );
 }
@@ -478,11 +590,11 @@ function Metric({ label, value }: { label: string; value: number }) {
     );
 }
 
-function ConfigPill({ label, enabled }: { label: string; enabled: boolean }) {
+function ConfigPill({ label, enabled, title }: { label: string; enabled: boolean; title?: string }) {
     return (
         <span className={`mr-1 inline-flex rounded-full px-2 py-1 font-semibold ${
             enabled ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
-        }`}>
+        }`} title={title}>
             {label}
         </span>
     );
@@ -585,6 +697,133 @@ function ConfirmModal({
                     </button>
                 </div>
             </div>
+        </div>
+    );
+}
+
+function SmsSettingsModal({
+    hospital,
+    enabled,
+    credits,
+    remarks,
+    saving,
+    onEnabledChange,
+    onCreditsChange,
+    onRemarksChange,
+    onCancel,
+    onSave,
+}: {
+    hospital: Hospital;
+    enabled: boolean;
+    credits: string;
+    remarks: string;
+    saving: boolean;
+    onEnabledChange: (value: boolean) => void;
+    onCreditsChange: (value: string) => void;
+    onRemarksChange: (value: string) => void;
+    onCancel: () => void;
+    onSave: () => void;
+}) {
+    const rechargeValue = Number(credits || 0);
+    const currentRemaining = hospital.sms_service?.remainingCredits || 0;
+    const currentTotal = hospital.sms_service?.totalCredits || 0;
+    const rechargeAmount = Number.isFinite(rechargeValue) && rechargeValue > 0 ? rechargeValue : 0;
+    const nextRemaining = currentRemaining + rechargeAmount;
+    const nextTotal = rechargeAmount > 0
+        ? currentRemaining > 0
+            ? currentTotal + rechargeAmount
+            : rechargeAmount
+        : currentTotal;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+            <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
+                <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-black text-white">
+                        <MessageSquare size={18} />
+                    </span>
+                    <div>
+                        <h2 className="text-base font-semibold text-gray-950">Hospital SMS</h2>
+                        <p className="text-sm text-gray-600">{hospital.name}</p>
+                    </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-3">
+                    <ProfileMetric label="Current" value={hospital.sms_service?.displayText || "0/0 left"} />
+                    <ProfileMetric label="Status" value={hospital.sms_service?.status || "DISABLED"} />
+                    <ProfileMetric label="After Recharge" value={`${nextRemaining}/${nextTotal} left`} />
+                </div>
+
+                <div className="mt-4 space-y-4">
+                    <label className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-3">
+                        <span>
+                            <span className="block text-sm font-semibold text-gray-950">SMS Enabled</span>
+                            <span className="block text-xs text-gray-600">Allow this hospital to use its SMS credits.</span>
+                        </span>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={enabled}
+                            onClick={() => onEnabledChange(!enabled)}
+                            className={`relative h-6 w-11 rounded-full transition-colors ${enabled ? "bg-black" : "bg-gray-300"}`}
+                        >
+                            <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${enabled ? "left-6" : "left-1"}`} />
+                        </button>
+                    </label>
+
+                    <div>
+                        <label className="mb-1 block text-xs font-medium text-gray-700">Add SMS Credits</label>
+                        <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={credits}
+                            onChange={(event) => onCreditsChange(event.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-black focus:ring-2 focus:ring-black/10"
+                            placeholder="0"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="mb-1 block text-xs font-medium text-gray-700">Remarks</label>
+                        <input
+                            type="text"
+                            value={remarks}
+                            onChange={(event) => onRemarksChange(event.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-black focus:ring-2 focus:ring-black/10"
+                            placeholder="Optional"
+                        />
+                    </div>
+                </div>
+
+                <div className="mt-5 flex justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onSave}
+                        disabled={saving}
+                        className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-gray-900 disabled:opacity-60"
+                    >
+                        {saving && <Loader2 size={15} className="animate-spin" />}
+                        Save SMS
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ProfileMetric({ label, value }: { label: string; value: string }) {
+    return (
+        <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-600">{label}</p>
+            <p className="mt-1 font-semibold text-gray-950">{value}</p>
         </div>
     );
 }

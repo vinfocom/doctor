@@ -63,6 +63,7 @@ model users {
   visit_print_events visit_print_events[]
   created_hospital_wide_ads hospital_wide_ads[]
   reviewed_emr_master_logs  prescription_master_review_logs[]
+  hospital_sms_recharges_performed hospital_sms_recharge_log[] @relation("hospital_sms_recharge_by_user")
 
   @@index([hospital_id], map: "idx_users_hospital_id")
   @@index([force_password_change], map: "idx_users_force_password_change")
@@ -104,6 +105,8 @@ model hospitals {
   visits            visits[]
   hospital_wide_ads hospital_wide_ads[]
   hospital_holidays hospital_holidays[]
+  sms_service       hospital_sms_service?
+  sms_recharge_logs hospital_sms_recharge_log[]
 
   @@index([status], map: "idx_hospitals_status")
 }
@@ -151,6 +154,43 @@ model hospital_sequence_counters {
 
   @@unique([hospital_id, sequence_type, period_key], map: "uq_hospital_sequence_counter_scope")
   @@index([hospital_id, sequence_type], map: "idx_hospital_sequence_counters_hospital_type")
+}
+
+model hospital_sms_service {
+  hospital_sms_service_id Int              @id @default(autoincrement())
+  hospital_id             Int              @unique(map: "uq_hospital_sms_service_hospital_id")
+  sms_service_enabled     Boolean          @default(false)
+  sms_service_status      SmsServiceStatus @default(DISABLED)
+  sms_credit_total        Int              @default(0)
+  sms_credit_used         Int              @default(0)
+  current_pack_total      Int              @default(0)
+  current_pack_used       Int              @default(0)
+  last_recharged_at       DateTime?        @db.Timestamp(0)
+  low_balance_alerted_at  DateTime?        @db.Timestamp(0)
+  exhausted_alerted_at    DateTime?        @db.Timestamp(0)
+  created_at              DateTime?        @default(now()) @db.Timestamp(0)
+  updated_at              DateTime?        @default(now()) @updatedAt @db.Timestamp(0)
+  hospital                hospitals        @relation(fields: [hospital_id], references: [hospital_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_hospital_sms_service_hospital_id")
+
+  @@index([sms_service_status], map: "idx_hospital_sms_service_status")
+}
+
+model hospital_sms_recharge_log {
+  recharge_id             Int       @id @default(autoincrement())
+  hospital_id             Int
+  credits_added           Int
+  previous_total          Int       @default(0)
+  new_total               Int       @default(0)
+  previous_pack_remaining Int       @default(0)
+  new_pack_total          Int       @default(0)
+  remarks                 String?   @db.VarChar(500)
+  recharged_by            Int?
+  created_at              DateTime? @default(now()) @db.Timestamp(0)
+  hospital                hospitals @relation(fields: [hospital_id], references: [hospital_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_hospital_sms_recharge_hospital_id")
+  recharged_by_user       users?    @relation("hospital_sms_recharge_by_user", fields: [recharged_by], references: [user_id], onDelete: SetNull, onUpdate: Cascade, map: "fk_hospital_sms_recharge_by")
+
+  @@index([hospital_id, created_at], map: "idx_hospital_sms_recharge_hospital_date")
+  @@index([recharged_by], map: "idx_hospital_sms_recharge_by")
 }
 
 model hospital_staff {
