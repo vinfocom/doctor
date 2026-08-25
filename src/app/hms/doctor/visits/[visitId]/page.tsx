@@ -24,7 +24,10 @@ import {
 } from "lucide-react";
 import PrintableComplaintGrid from "@/components/emr/PrintableComplaintGrid";
 import PrintableComplaintStack from "@/components/emr/PrintableComplaintStack";
-import VoiceInputMic from "@/components/emr/VoiceInputMic";
+import VoiceInputMic, {
+  isVoiceInputActive,
+  stopActiveVoiceInput,
+} from "@/components/emr/VoiceInputMic";
 import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
 import type {
   EmrComplaintPayload,
@@ -1055,6 +1058,16 @@ function useDebouncedValue<T>(value: T, delay = 350) {
   return debouncedValue;
 }
 
+function stopVoiceWithoutCommitting() {
+  stopActiveVoiceInput({ complete: false });
+}
+
+function hasFocusWithin(element: HTMLElement | null) {
+  if (typeof document === "undefined" || !element) return false;
+  const activeElement = document.activeElement;
+  return activeElement instanceof Node && element.contains(activeElement);
+}
+
 function SuggestionDropdown({
   suggestions,
   typedValue,
@@ -1173,7 +1186,10 @@ function FreeWriteSuggestionInput({
         ref={inputRef}
         type="text"
         value={value}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          stopVoiceWithoutCommitting();
+          setOpen(true);
+        }}
         onBlur={() => {
           commitValue();
           window.setTimeout(() => setOpen(false), 150);
@@ -1694,6 +1710,8 @@ function TagEditorSection({
 
   const addNamedItem = useCallback(
     (item: EmrMasterItem) => {
+      stopVoiceWithoutCommitting();
+      voiceSuggestionRequestRef.current += 1;
       if (hasNamedItem(item.normalized_name || item.name)) {
         setDraftValue("");
         setSuggestions([]);
@@ -1718,6 +1736,8 @@ function TagEditorSection({
   );
 
   const handleAddAction = useCallback(() => {
+    stopVoiceWithoutCommitting();
+    voiceSuggestionRequestRef.current += 1;
     const value = draftValue.trim();
     if (!value) return;
 
@@ -1820,6 +1840,7 @@ function TagEditorSection({
             value={draftValue}
             onFocus={() => setShowDropdown(true)}
             onBlur={() => {
+              stopVoiceWithoutCommitting();
               window.setTimeout(() => setShowDropdown(false), 150);
             }}
             onChange={(event) => {
@@ -1850,7 +1871,10 @@ function TagEditorSection({
         </div>
         <button
           type="button"
-          onClick={handleAddAction}
+          onClick={() => {
+            stopVoiceWithoutCommitting();
+            handleAddAction();
+          }}
           className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
         >
           <Plus size={14} />
@@ -1863,6 +1887,7 @@ function TagEditorSection({
             loading={loading}
             anchorElement={inputAnchorRef.current}
             onSelect={(item) => {
+              stopVoiceWithoutCommitting();
               addNamedItem(item);
             }}
           />
@@ -1917,6 +1942,7 @@ function ClinicalHistorySection({
   const otherItems = items.filter((item) => item.section !== section);
 
   const addItem = useCallback(() => {
+    stopVoiceWithoutCommitting();
     const details = draftValue.trim();
     if (!details) return;
 
@@ -1970,6 +1996,7 @@ function ClinicalHistorySection({
             ref={inputRef}
             type="text"
             value={draftValue}
+            onBlur={stopVoiceWithoutCommitting}
             onChange={(event) => setDraftValue(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
@@ -1991,7 +2018,10 @@ function ClinicalHistorySection({
         </div>
         <button
           type="button"
-          onClick={addItem}
+          onClick={() => {
+            stopVoiceWithoutCommitting();
+            addItem();
+          }}
           className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
         >
           <Plus size={14} />
@@ -2518,6 +2548,7 @@ export default function DoctorAppointmentPadPage() {
   );
 
   const handleComplaintVoiceComplete = useCallback(async (rowIndex: number, transcript: string) => {
+    if (!transcript.trim()) return;
     const requestId = complaintVoiceSuggestionRequestRef.current + 1;
     complaintVoiceSuggestionRequestRef.current = requestId;
     setActiveComplaintSuggestionIndex(rowIndex);
@@ -2538,6 +2569,7 @@ export default function DoctorAppointmentPadPage() {
   }, []);
 
   const handleMedicineVoiceComplete = useCallback(async (rowIndex: number, transcript: string) => {
+    if (!transcript.trim()) return;
     const requestId = medicineVoiceSuggestionRequestRef.current + 1;
     medicineVoiceSuggestionRequestRef.current = requestId;
     setActiveMedicineSuggestionIndex(rowIndex);
@@ -3099,7 +3131,10 @@ export default function DoctorAppointmentPadPage() {
             (item) => normalizeMasterName(item.normalized_name || item.name) === normalizedQuery
           );
 
-          if (exactSuggestion) {
+          if (
+            exactSuggestion &&
+            !isVoiceInputActive(`hms-emr-complaint-${activeComplaintSuggestionIndex}`)
+          ) {
             setEditorState((current) => {
               if (!current) return current;
 
@@ -3167,7 +3202,10 @@ export default function DoctorAppointmentPadPage() {
             (item) => normalizeMasterName(item.normalized_name || item.name) === normalizedQuery
           );
 
-          if (exactSuggestion) {
+          if (
+            exactSuggestion &&
+            !isVoiceInputActive(`hms-emr-medicine-name-${activeMedicineSuggestionIndex}`)
+          ) {
             setEditorState((current) => {
               if (!current) return current;
 
@@ -3914,19 +3952,24 @@ export default function DoctorAppointmentPadPage() {
                               }}
                               type="text"
                               value={complaint.name}
-                              onFocus={() => setActiveComplaintSuggestionIndex(index)}
+                              onFocus={() => {
+                                complaintVoiceSuggestionRequestRef.current += 1;
+                                setComplaintSuggestions([]);
+                                setComplaintSuggestionLoading(false);
+                                setActiveComplaintSuggestionIndex(index);
+                              }}
                               onBlur={() => {
-                                window.setTimeout(
-                                  () =>
-                                    setActiveComplaintSuggestionIndex((current) =>
-                                      current === index ? null : current
-                                    ),
-                                  150
+                                complaintVoiceSuggestionRequestRef.current += 1;
+                                setComplaintSuggestions([]);
+                                setComplaintSuggestionLoading(false);
+                                setActiveComplaintSuggestionIndex((current) =>
+                                  current === index ? null : current
                                 );
                               }}
-                              onChange={(event) =>
-                                updateComplaintField(index, "name", event.target.value)
-                              }
+                              onChange={(event) => {
+                                stopVoiceWithoutCommitting();
+                                updateComplaintField(index, "name", event.target.value);
+                              }}
                               onKeyDown={(event) => {
                                 if (event.key === "Enter") {
                                   event.preventDefault();
@@ -3942,6 +3985,8 @@ export default function DoctorAppointmentPadPage() {
                                 fieldId={`hms-emr-complaint-${index}`}
                                 value={complaint.name}
                                 onBeforeStart={() => complaintNameInputRefs.current[index]?.focus()}
+                                stopOnExternalValueChange={false}
+                                stopOnOutsidePointerDown
                                 onVoiceComplete={(transcript) =>
                                   void handleComplaintVoiceComplete(index, transcript)
                                 }
@@ -3954,7 +3999,13 @@ export default function DoctorAppointmentPadPage() {
                             {complaint.name?.trim() && !complaint.complaint_master_id ? (
                               <button
                                 type="button"
-                                onClick={() => setComplaintAddModalIndex(index)}
+                              onClick={() => {
+                                stopVoiceWithoutCommitting();
+                                complaintVoiceSuggestionRequestRef.current += 1;
+                                setComplaintSuggestions([]);
+                                setComplaintSuggestionLoading(false);
+                                setComplaintAddModalIndex(index);
+                              }}
                                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
                                 aria-label="Add complaint to master"
                                 title="Add complaint"
@@ -3963,13 +4014,19 @@ export default function DoctorAppointmentPadPage() {
                               </button>
                             ) : null}
                           </div>
-                          {activeComplaintSuggestionIndex === index && (
+                          {activeComplaintSuggestionIndex === index &&
+                            hasFocusWithin(complaintAnchorRefs.current[index]) && (
                             <SuggestionDropdown
                               suggestions={complaintSuggestions}
                               typedValue={complaint.name}
                               loading={complaintSuggestionLoading}
                               anchorElement={complaintAnchorRefs.current[index]}
                               onSelect={(item) => {
+                                stopVoiceWithoutCommitting();
+                                complaintVoiceSuggestionRequestRef.current += 1;
+                                setComplaintSuggestions([]);
+                                setComplaintSuggestionLoading(false);
+                                setActiveComplaintSuggestionIndex(null);
                                 setEditorState((current) =>
                                   current
                                     ? {
@@ -3982,8 +4039,6 @@ export default function DoctorAppointmentPadPage() {
                                       }
                                     : current
                                 );
-                                setComplaintSuggestions([]);
-                                setActiveComplaintSuggestionIndex(null);
                                 focusComplaintRowField(index, "severity");
                               }}
                             />
@@ -4038,6 +4093,7 @@ export default function DoctorAppointmentPadPage() {
                             step={1}
                             value={complaint.duration_value ?? ""}
                             onFocus={() => {
+                              stopVoiceWithoutCommitting();
                               if (complaint.duration_value) {
                                 setActiveComplaintDurationSuggestionIndex(index);
                               }
@@ -4139,7 +4195,12 @@ export default function DoctorAppointmentPadPage() {
             </div>
             <button
               type="button"
-              onClick={() =>
+              onClick={() => {
+                stopVoiceWithoutCommitting();
+                complaintVoiceSuggestionRequestRef.current += 1;
+                setComplaintSuggestions([]);
+                setComplaintSuggestionLoading(false);
+                setActiveComplaintSuggestionIndex(null);
                 setEditorState((current) =>
                   current
                     ? {
@@ -4147,8 +4208,8 @@ export default function DoctorAppointmentPadPage() {
                         complaints: [...current.complaints, { ...EMPTY_COMPLAINT_ROW }],
                       }
                     : current
-                )
-              }
+                );
+              }}
               className="mt-4 inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
             >
               <Plus size={14} />
@@ -4350,6 +4411,7 @@ export default function DoctorAppointmentPadPage() {
                               value={medicine.medicine_name}
                               onFocus={() => setActiveMedicineSuggestionIndex(index)}
                               onBlur={() => {
+                                stopVoiceWithoutCommitting();
                                 window.setTimeout(
                                   () => setActiveMedicineSuggestionIndex((current) => (current === index ? null : current)),
                                   150
@@ -4383,7 +4445,10 @@ export default function DoctorAppointmentPadPage() {
                             {isUnresolvedMedicine && !isDuplicateMedicine ? (
                               <button
                                 type="button"
-                                onClick={() => setMedicineAddModalIndex(index)}
+                                onClick={() => {
+                                  stopVoiceWithoutCommitting();
+                                  setMedicineAddModalIndex(index);
+                                }}
                                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
                                 aria-label="Add new medicine details"
                                 title="Add medicine"
@@ -4399,6 +4464,8 @@ export default function DoctorAppointmentPadPage() {
                               loading={medicineSuggestionLoading}
                               anchorElement={medicineAnchorRefs.current[index]}
                               onSelect={(item) => {
+                                stopVoiceWithoutCommitting();
+                                medicineVoiceSuggestionRequestRef.current += 1;
                                 const duplicateSelection =
                                   (editorState?.medicines ?? []).some((row, rowIndex) => {
                                     if (rowIndex === index) return false;
@@ -4522,6 +4589,7 @@ export default function DoctorAppointmentPadPage() {
                             step={1}
                             value={medicine.duration_value ?? ""}
                             onFocus={() => {
+                              stopVoiceWithoutCommitting();
                               if (medicine.duration_value) {
                                 setActiveDurationSuggestionIndex(index);
                               }
@@ -4591,6 +4659,7 @@ export default function DoctorAppointmentPadPage() {
                             }}
                             type="text"
                             value={medicine.notes ?? ""}
+                            onBlur={stopVoiceWithoutCommitting}
                             onChange={(event) => updateMedicineField(index, "notes", event.target.value)}
                             className="w-full rounded-lg border border-slate-200 px-2 py-2 text-xs"
                             placeholder="Notes"
@@ -4636,7 +4705,9 @@ export default function DoctorAppointmentPadPage() {
             </div>
             <button
               type="button"
-              onClick={() =>
+              onClick={() => {
+                stopVoiceWithoutCommitting();
+                setActiveMedicineSuggestionIndex(null);
                 setEditorState((current) =>
                   current
                     ? {
@@ -4644,8 +4715,8 @@ export default function DoctorAppointmentPadPage() {
                         medicines: [...current.medicines, { ...EMPTY_MEDICINE_ROW }],
                       }
                     : current
-                )
-              }
+                );
+              }}
               className="mt-4 inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
             >
               <Plus size={14} />

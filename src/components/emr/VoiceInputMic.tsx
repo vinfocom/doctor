@@ -5,22 +5,44 @@ import { Mic, Square } from "lucide-react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 
 const ACTIVE_VOICE_INPUT_EVENT = "hms-emr-active-voice-input";
-const SILENCE_TIMEOUT_MS = 6500;
+const SILENCE_TIMEOUT_MS = 15000;
 
 let activeVoiceInputId: string | null = null;
 
+type ActiveVoiceInputEventDetail = {
+  id: string | null;
+  complete?: boolean;
+};
+
+function normalizeSpeechValue(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
 function appendSpeechValue(baseValue: string, spokenValue: string) {
-  const normalizedSpeech = spokenValue.replace(/\s+/g, " ").trim();
+  const normalizedSpeech = normalizeSpeechValue(spokenValue);
   if (!normalizedSpeech) return baseValue;
 
   const normalizedBase = baseValue.replace(/\s+$/g, "");
   return normalizedBase ? `${normalizedBase} ${normalizedSpeech}` : normalizedSpeech;
 }
 
-function notifyActiveVoiceInput(id: string | null) {
+function notifyActiveVoiceInput(id: string | null, options: { complete?: boolean } = {}) {
   activeVoiceInputId = id;
   if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(ACTIVE_VOICE_INPUT_EVENT, { detail: id }));
+  window.dispatchEvent(
+    new CustomEvent<ActiveVoiceInputEventDetail>(ACTIVE_VOICE_INPUT_EVENT, {
+      detail: { id, complete: options.complete },
+    })
+  );
+}
+
+export function stopActiveVoiceInput(options: { complete?: boolean } = {}) {
+  notifyActiveVoiceInput(null, options);
+}
+
+export function isVoiceInputActive(fieldId?: string) {
+  if (!fieldId) return activeVoiceInputId !== null;
+  return activeVoiceInputId === fieldId;
 }
 
 type VoiceInputMicProps = {
@@ -29,6 +51,8 @@ type VoiceInputMicProps = {
   onChange: (value: string) => void;
   onBeforeStart?: () => void;
   onVoiceComplete?: (transcript: string) => void;
+  stopOnExternalValueChange?: boolean;
+  stopOnOutsidePointerDown?: boolean;
   disabled?: boolean;
   className?: string;
 };
@@ -39,6 +63,8 @@ export default function VoiceInputMic({
   onChange,
   onBeforeStart,
   onVoiceComplete,
+  stopOnExternalValueChange = true,
+  stopOnOutsidePointerDown = false,
   disabled = false,
   className = "",
 }: VoiceInputMicProps) {
@@ -54,6 +80,7 @@ export default function VoiceInputMic({
   const baseValueRef = useRef("");
   const lastAppliedValueRef = useRef("");
   const lastTranscriptRef = useRef("");
+  const rootRef = useRef<HTMLSpanElement | null>(null);
   const silenceTimerRef = useRef<number | null>(null);
 
   const clearSilenceTimer = useCallback(() => {
@@ -63,7 +90,8 @@ export default function VoiceInputMic({
   }, []);
 
   const stopListening = useCallback(
-    () => {
+    (options: { complete?: boolean } = {}) => {
+      const shouldComplete = options.complete ?? true;
       clearSilenceTimer();
       const completedTranscript = lastTranscriptRef.current.trim();
       void SpeechRecognition.stopListening();
@@ -73,7 +101,7 @@ export default function VoiceInputMic({
       if (activeVoiceInputId === fieldId) {
         notifyActiveVoiceInput(null);
       }
-      if (completedTranscript) {
+      if (shouldComplete && completedTranscript) {
         onVoiceComplete?.(completedTranscript);
       }
     },
@@ -89,18 +117,19 @@ export default function VoiceInputMic({
 
   useEffect(() => {
     const handleActiveChange = (event: Event) => {
-      const nextActiveId = (event as CustomEvent<string | null>).detail;
+      const detail = (event as CustomEvent<ActiveVoiceInputEventDetail | string | null>).detail;
+      const nextActiveId =
+        typeof detail === "object" && detail !== null ? detail.id : detail;
+      const shouldComplete =
+        typeof detail === "object" && detail !== null ? detail.complete : false;
       if (nextActiveId !== fieldId && isActive) {
-        clearSilenceTimer();
-        resetTranscript();
-        lastTranscriptRef.current = "";
-        setIsActive(false);
+        stopListening({ complete: shouldComplete });
       }
     };
 
     window.addEventListener(ACTIVE_VOICE_INPUT_EVENT, handleActiveChange);
     return () => window.removeEventListener(ACTIVE_VOICE_INPUT_EVENT, handleActiveChange);
-  }, [clearSilenceTimer, fieldId, isActive, resetTranscript]);
+  }, [fieldId, isActive, stopListening]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -114,7 +143,7 @@ export default function VoiceInputMic({
 
   useEffect(() => {
     if (!isActive) return;
-    const spokenValue = transcript.trim();
+    const spokenValue = normalizeSpeechValue(transcript);
     if (spokenValue) {
       lastTranscriptRef.current = spokenValue;
       const nextValue = appendSpeechValue(baseValueRef.current, spokenValue);
@@ -126,6 +155,7 @@ export default function VoiceInputMic({
 
   useEffect(() => {
     if (!isActive) return;
+    if (!stopOnExternalValueChange) return;
     const manualValueChanged =
       value !== baseValueRef.current && value !== lastAppliedValueRef.current;
 
@@ -138,7 +168,23 @@ export default function VoiceInputMic({
         stopListening();
       }, 0);
     }
-  }, [isActive, resetTranscript, stopListening, value]);
+  }, [isActive, resetTranscript, stopListening, stopOnExternalValueChange, value]);
+
+  useEffect(() => {
+    if (!isActive || !stopOnOutsidePointerDown) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && rootRef.current?.contains(target)) {
+        return;
+      }
+
+      stopListening({ complete: false });
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    return () => window.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [isActive, stopListening, stopOnOutsidePointerDown]);
 
   useEffect(() => {
     return () => {
@@ -199,7 +245,7 @@ export default function VoiceInputMic({
   };
 
   return (
-    <span className="relative inline-flex shrink-0">
+    <span ref={rootRef} className="relative inline-flex shrink-0">
       <button
         type="button"
         onMouseDown={(event) => event.preventDefault()}
