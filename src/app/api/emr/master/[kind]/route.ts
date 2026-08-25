@@ -12,12 +12,88 @@ import { recordPrescriptionAuditSafe } from "@/lib/emr/auditService";
 import {
   createOrGetMasterItem,
   getDefaultMasterStatus,
+  listVisibleMasterItemsForDoctor,
 } from "@/lib/emr/masterService";
 import { invalidateMasterSuggestionCache } from "@/lib/emr/suggestionService";
 import { getDoctorSafeErrorMessage, logEmrOperationalError } from "@/lib/emr";
 import { resolveMasterKind } from "@/app/api/emr/master/_shared";
 
 export const dynamic = "force-dynamic";
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ kind: string }> }
+) {
+  try {
+    const session = await getSessionFromRequest(req);
+    const doctorScope = await resolveEmrDoctorFeatureScope({ req, legacySession: session });
+    const { kind } = await params;
+    const masterType = resolveMasterKind(kind);
+
+    if (!masterType) {
+      return NextResponse.json(
+        { error: "Unknown master type" },
+        { status: 404 }
+      );
+    }
+
+    const { searchParams } = new URL(req.url);
+    const limit = Number(searchParams.get("limit") || "5000");
+
+    await assertRateLimit({
+      key: buildDoctorRateLimitKey({
+        scope: `master-list:${masterType}`,
+        doctorId: doctorScope.doctorId,
+        ip: getRequestIp(req),
+      }),
+      limit: 12,
+      windowMs: 60 * 1000,
+    });
+
+    const items = await listVisibleMasterItemsForDoctor({
+      type: masterType,
+      doctorId: doctorScope.doctorId,
+      limit,
+    });
+
+    return NextResponse.json({ items });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message.includes("EMR is disabled") ||
+        error.message.includes("Only doctors") ||
+        error.message.includes("HMS doctor profile"))
+    ) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    const rateLimitResponse = getRateLimitErrorResponse(error);
+    if (rateLimitResponse) {
+      return NextResponse.json(rateLimitResponse.body, {
+        status: rateLimitResponse.status,
+        headers: rateLimitResponse.headers,
+      });
+    }
+
+    const accessResponse = getEmrAccessErrorResponse(error);
+    if (accessResponse.status !== 500) {
+      return NextResponse.json(accessResponse.body, {
+        status: accessResponse.status,
+      });
+    }
+
+    logEmrOperationalError("emr-master-list", error, { kind: await params });
+    return NextResponse.json(
+      {
+        error: getDoctorSafeErrorMessage(
+          error,
+          "Failed to load master list. Please try again."
+        ),
+      },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(
   req: NextRequest,

@@ -244,6 +244,7 @@ export default function HmsFullEmrLayoutSettings({
         apiBasePath={settingsEndpoint}
         theme="hms"
         hideClinicSelector
+        showVoiceInputToggle
         uploadPathOverride="/api/upload"
         headerAddon={headerAddon}
         extraSavePayload={{

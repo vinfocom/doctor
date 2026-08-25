@@ -51,6 +51,7 @@ type Props = {
   uploadTypeOverride?: string;
   theme?: "legacy" | "hms";
   hideClinicSelector?: boolean;
+  showVoiceInputToggle?: boolean;
   headerAddon?: React.ReactNode;
   extraSavePayload?: Record<string, unknown>;
 };
@@ -923,6 +924,7 @@ export default function EmrLayoutSettingsForm({
   uploadTypeOverride,
   theme = "legacy",
   hideClinicSelector = false,
+  showVoiceInputToggle = false,
   headerAddon,
   extraSavePayload,
 }: Props) {
@@ -1214,6 +1216,7 @@ export default function EmrLayoutSettingsForm({
                         doctor_signature_url: settings.doctor_signature_url,
                         header_height: settings.header_height,
                         footer_height: settings.footer_height,
+                        voice_input_enabled: settings.voice_input_enabled === true,
                         custom_fields: customFieldDrafts,
                         ...(extraSavePayload || {}),
                       }),
@@ -1255,6 +1258,49 @@ export default function EmrLayoutSettingsForm({
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-6">
+          {showVoiceInputToggle ? (
+            <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                    Voice Input
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Show mic buttons in the HMS doctor EMR writing fields.
+                  </p>
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-3 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900">
+                  <span>{settings.voice_input_enabled ? "Enabled" : "Disabled"}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSettings((current) =>
+                        current
+                          ? {
+                              ...current,
+                              voice_input_enabled: !current.voice_input_enabled,
+                            }
+                          : current
+                      )
+                    }
+                    className={`relative h-6 w-11 rounded-full border transition ${
+                      settings.voice_input_enabled
+                        ? "border-black bg-black"
+                        : "border-gray-300 bg-white"
+                    }`}
+                    aria-label="Toggle HMS EMR voice input"
+                  >
+                    <span
+                      className={`absolute top-0.5 h-5 w-5 rounded-full border border-black bg-white transition ${
+                        settings.voice_input_enabled ? "left-5" : "left-0.5"
+                      }`}
+                    />
+                  </button>
+                </label>
+              </div>
+            </section>
+          ) : null}
+
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
               Section Order And Visibility

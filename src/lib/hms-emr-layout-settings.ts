@@ -66,6 +66,7 @@ function mergeMissingLayoutSections(settings: EmrLayoutSettings, defaults: EmrLa
       ...defaults.print_visibility_json,
       ...(settings.print_visibility_json || {}),
     },
+    voice_input_enabled: settings.voice_input_enabled === true,
   };
 }
 
@@ -147,6 +148,7 @@ export async function saveHmsEmrLayoutSettings(input: {
     doctor_signature_url: input.body.doctor_signature_url,
     header_height: input.body.header_height,
     footer_height: input.body.footer_height,
+    voice_input_enabled: input.body.voice_input_enabled === true,
     custom_fields: input.body.custom_fields,
   } as EmrLayoutSettings, defaults);
 

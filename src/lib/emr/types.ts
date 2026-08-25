@@ -272,6 +272,7 @@ export type EmrLayoutSettings = {
   doctor_signature_url: string | null;
   header_height: string | null;
   footer_height: string | null;
+  voice_input_enabled: boolean;
   created_at: string;
   updated_at: string;
   custom_fields: EmrLayoutCustomField[];

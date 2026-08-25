@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import PrintableComplaintGrid from "@/components/emr/PrintableComplaintGrid";
 import PrintableComplaintStack from "@/components/emr/PrintableComplaintStack";
+import VoiceInputMic from "@/components/emr/VoiceInputMic";
 import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
 import type {
   EmrComplaintPayload,
@@ -45,6 +46,10 @@ import type {
 } from "@/lib/emr/types";
 import { normalizeMasterName } from "@/lib/emr/normalization";
 import { useStableDocumentTitle } from "@/lib/useStableDocumentTitle";
+import {
+  getVoiceFuzzySuggestions,
+  invalidateVoiceFuzzyMasterCache,
+} from "@/lib/emr/voiceFuzzySuggestions";
 
 type DraftContextResponse = {
   context: {
@@ -1654,12 +1659,14 @@ function TagEditorSection({
   onChange,
   placeholder,
   kind,
+  voiceInputEnabled = false,
 }: {
   title: string;
   items: EmrNamedItemPayload[];
   onChange: (items: EmrNamedItemPayload[]) => void;
   placeholder: string;
   kind: MasterKindRoute;
+  voiceInputEnabled?: boolean;
 }) {
   const [draftValue, setDraftValue] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
@@ -1667,6 +1674,8 @@ function TagEditorSection({
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const inputAnchorRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const voiceSuggestionRequestRef = useRef(0);
   const debouncedValue = useDebouncedValue(draftValue, 350);
   const hasNamedItem = useCallback(
     (value: string | null | undefined) => {
@@ -1733,6 +1742,29 @@ function TagEditorSection({
     setShowAddModal(true);
   }, [addNamedItem, draftValue, hasNamedItem, suggestions]);
 
+  const handleVoiceComplete = useCallback(
+    async (transcript: string) => {
+      const requestId = voiceSuggestionRequestRef.current + 1;
+      voiceSuggestionRequestRef.current = requestId;
+      setShowDropdown(true);
+      setLoading(true);
+
+      try {
+        const voiceSuggestions = await getVoiceFuzzySuggestions({
+          kind,
+          transcript,
+        });
+        if (voiceSuggestionRequestRef.current !== requestId) return;
+        setSuggestions(voiceSuggestions);
+      } finally {
+        if (voiceSuggestionRequestRef.current === requestId) {
+          setLoading(false);
+        }
+      }
+    },
+    [kind]
+  );
+
   useEffect(() => {
     let active = true;
     const loadSuggestions = async () => {
@@ -1781,26 +1813,41 @@ function TagEditorSection({
         ))}
       </div>
       <div ref={inputAnchorRef} className="relative mt-4 flex gap-2">
-        <input
-          type="text"
-          value={draftValue}
-          onFocus={() => setShowDropdown(true)}
-          onBlur={() => {
-            window.setTimeout(() => setShowDropdown(false), 150);
-          }}
-          onChange={(event) => {
-            setDraftValue(event.target.value);
-            setShowDropdown(true);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              handleAddAction();
-            }
-          }}
-          placeholder={placeholder}
-          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm uppercase outline-none focus:border-indigo-400"
-        />
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={draftValue}
+            onFocus={() => setShowDropdown(true)}
+            onBlur={() => {
+              window.setTimeout(() => setShowDropdown(false), 150);
+            }}
+            onChange={(event) => {
+              setDraftValue(event.target.value);
+              setShowDropdown(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                handleAddAction();
+              }
+            }}
+            placeholder={placeholder}
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm uppercase outline-none focus:border-indigo-400"
+          />
+          {voiceInputEnabled ? (
+            <VoiceInputMic
+              fieldId={`hms-emr-${kind}`}
+              value={draftValue}
+              onBeforeStart={() => inputRef.current?.focus()}
+              onVoiceComplete={handleVoiceComplete}
+              onChange={(nextValue) => {
+                setDraftValue(nextValue);
+                setShowDropdown(true);
+              }}
+            />
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={handleAddAction}
@@ -1827,6 +1874,7 @@ function TagEditorSection({
         initialName={draftValue.trim()}
         onClose={() => setShowAddModal(false)}
         onCreated={(item) => {
+          invalidateVoiceFuzzyMasterCache(kind);
           if (hasNamedItem(item.normalized_name || item.name)) {
             setDraftValue("");
             return;
@@ -1854,14 +1902,17 @@ function ClinicalHistorySection({
   onChange,
   compact = false,
   onCollapse,
+  voiceInputEnabled = false,
 }: {
   section: EmrClinicalHistorySection;
   items: EmrClinicalHistoryPayload[];
   onChange: (items: EmrClinicalHistoryPayload[]) => void;
   compact?: boolean;
   onCollapse?: () => void;
+  voiceInputEnabled?: boolean;
 }) {
   const [draftValue, setDraftValue] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const sectionItems = items.filter((item) => item.section === section);
   const otherItems = items.filter((item) => item.section !== section);
 
@@ -1914,19 +1965,30 @@ function ClinicalHistorySection({
         ))}
       </div>
       <div className="mt-4 flex gap-2">
-        <input
-          type="text"
-          value={draftValue}
-          onChange={(event) => setDraftValue(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              addItem();
-            }
-          }}
-          placeholder={`Add ${CLINICAL_HISTORY_LABELS[section].toLowerCase()} and press Enter`}
-          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm uppercase outline-none focus:border-indigo-400"
-        />
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={draftValue}
+            onChange={(event) => setDraftValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addItem();
+              }
+            }}
+            placeholder={`Add ${CLINICAL_HISTORY_LABELS[section].toLowerCase()} and press Enter`}
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm uppercase outline-none focus:border-indigo-400"
+          />
+          {voiceInputEnabled ? (
+            <VoiceInputMic
+              fieldId={`hms-emr-clinical-history-${section}`}
+              value={draftValue}
+              onBeforeStart={() => inputRef.current?.focus()}
+              onChange={setDraftValue}
+            />
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={addItem}
@@ -2094,6 +2156,7 @@ export default function DoctorAppointmentPadPage() {
   const [complaintSuggestions, setComplaintSuggestions] = useState<EmrMasterItem[]>([]);
   const [complaintSuggestionLoading, setComplaintSuggestionLoading] = useState(false);
   const [complaintAddModalIndex, setComplaintAddModalIndex] = useState<number | null>(null);
+  const complaintVoiceSuggestionRequestRef = useRef(0);
   const [activeMedicineSuggestionIndex, setActiveMedicineSuggestionIndex] =
     useState<number | null>(null);
   const [activeDurationSuggestionIndex, setActiveDurationSuggestionIndex] =
@@ -2102,6 +2165,7 @@ export default function DoctorAppointmentPadPage() {
   const [medicineSuggestions, setMedicineSuggestions] = useState<EmrMasterItem[]>([]);
   const [medicineSuggestionLoading, setMedicineSuggestionLoading] = useState(false);
   const [medicineAddModalIndex, setMedicineAddModalIndex] = useState<number | null>(null);
+  const medicineVoiceSuggestionRequestRef = useRef(0);
   const complaintTypedValue =
     activeComplaintSuggestionIndex === null || !editorState
       ? ""
@@ -2120,6 +2184,7 @@ export default function DoctorAppointmentPadPage() {
   const complaintDurationAnchorRefs = useRef<(HTMLDivElement | null)[]>([]);
   const medicineAnchorRefs = useRef<(HTMLDivElement | null)[]>([]);
   const medicineNameInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const medicineNotesInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const doseInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const timingInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const frequencyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -2275,6 +2340,7 @@ export default function DoctorAppointmentPadPage() {
     () => [...warnings, ...allergyWarnings],
     [allergyWarnings, warnings]
   );
+  const voiceInputEnabled = layoutSettings?.voice_input_enabled === true;
 
   const isDuplicateMedicineInDraft = useCallback(
     (rowIndex: number, medicine: EmrMedicinePayload) => {
@@ -2450,6 +2516,46 @@ export default function DoctorAppointmentPadPage() {
     },
     []
   );
+
+  const handleComplaintVoiceComplete = useCallback(async (rowIndex: number, transcript: string) => {
+    const requestId = complaintVoiceSuggestionRequestRef.current + 1;
+    complaintVoiceSuggestionRequestRef.current = requestId;
+    setActiveComplaintSuggestionIndex(rowIndex);
+    setComplaintSuggestionLoading(true);
+
+    try {
+      const voiceSuggestions = await getVoiceFuzzySuggestions({
+        kind: "complaints",
+        transcript,
+      });
+      if (complaintVoiceSuggestionRequestRef.current !== requestId) return;
+      setComplaintSuggestions(voiceSuggestions);
+    } finally {
+      if (complaintVoiceSuggestionRequestRef.current === requestId) {
+        setComplaintSuggestionLoading(false);
+      }
+    }
+  }, []);
+
+  const handleMedicineVoiceComplete = useCallback(async (rowIndex: number, transcript: string) => {
+    const requestId = medicineVoiceSuggestionRequestRef.current + 1;
+    medicineVoiceSuggestionRequestRef.current = requestId;
+    setActiveMedicineSuggestionIndex(rowIndex);
+    setMedicineSuggestionLoading(true);
+
+    try {
+      const voiceSuggestions = await getVoiceFuzzySuggestions({
+        kind: "medicines",
+        transcript,
+      });
+      if (medicineVoiceSuggestionRequestRef.current !== requestId) return;
+      setMedicineSuggestions(voiceSuggestions);
+    } finally {
+      if (medicineVoiceSuggestionRequestRef.current === requestId) {
+        setMedicineSuggestionLoading(false);
+      }
+    }
+  }, []);
 
   const updateVitalField = useCallback(
     (field: keyof DraftEditorState["vitals"], value: string) => {
@@ -3831,6 +3937,20 @@ export default function DoctorAppointmentPadPage() {
                               className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs uppercase"
                               placeholder="Type complaint name to search"
                             />
+                            {voiceInputEnabled ? (
+                              <VoiceInputMic
+                                fieldId={`hms-emr-complaint-${index}`}
+                                value={complaint.name}
+                                onBeforeStart={() => complaintNameInputRefs.current[index]?.focus()}
+                                onVoiceComplete={(transcript) =>
+                                  void handleComplaintVoiceComplete(index, transcript)
+                                }
+                                onChange={(nextValue) => {
+                                  updateComplaintField(index, "name", nextValue);
+                                  setActiveComplaintSuggestionIndex(index);
+                                }}
+                              />
+                            ) : null}
                             {complaint.name?.trim() && !complaint.complaint_master_id ? (
                               <button
                                 type="button"
@@ -4044,6 +4164,7 @@ export default function DoctorAppointmentPadPage() {
               }
               onClose={() => setComplaintAddModalIndex(null)}
               onCreated={(item) => {
+                invalidateVoiceFuzzyMasterCache("complaints");
                 if (complaintAddModalIndex === null) return;
                 setEditorState((current) =>
                   current
@@ -4073,6 +4194,7 @@ export default function DoctorAppointmentPadPage() {
             }
             placeholder="Add diagnosis and press Enter"
             kind="diagnosis"
+            voiceInputEnabled={voiceInputEnabled}
           />
         );
       case "referral":
@@ -4156,6 +4278,7 @@ export default function DoctorAppointmentPadPage() {
                 current ? { ...current, clinical_history: items } : current
               )
             }
+            voiceInputEnabled={voiceInputEnabled}
           />
         );
       case "medicines":
@@ -4243,6 +4366,20 @@ export default function DoctorAppointmentPadPage() {
                               className="w-full rounded-lg border border-slate-200 px-2 py-2 text-xs uppercase"
                               placeholder="Type medicine name to search"
                             />
+                            {voiceInputEnabled ? (
+                              <VoiceInputMic
+                                fieldId={`hms-emr-medicine-name-${index}`}
+                                value={medicine.medicine_name}
+                                onBeforeStart={() => medicineNameInputRefs.current[index]?.focus()}
+                                onVoiceComplete={(transcript) =>
+                                  void handleMedicineVoiceComplete(index, transcript)
+                                }
+                                onChange={(nextValue) => {
+                                  updateMedicineField(index, "medicine_name", nextValue);
+                                  setActiveMedicineSuggestionIndex(index);
+                                }}
+                              />
+                            ) : null}
                             {isUnresolvedMedicine && !isDuplicateMedicine ? (
                               <button
                                 type="button"
@@ -4447,13 +4584,26 @@ export default function DoctorAppointmentPadPage() {
                         ) : null}
                       </td>
                       <td className="px-2 py-3">
-                        <input
-                          type="text"
-                          value={medicine.notes ?? ""}
-                          onChange={(event) => updateMedicineField(index, "notes", event.target.value)}
-                          className="w-full rounded-lg border border-slate-200 px-2 py-2 text-xs"
-                          placeholder="Notes"
-                        />
+                        <div className="flex items-center gap-2">
+                          <input
+                            ref={(element) => {
+                              medicineNotesInputRefs.current[index] = element;
+                            }}
+                            type="text"
+                            value={medicine.notes ?? ""}
+                            onChange={(event) => updateMedicineField(index, "notes", event.target.value)}
+                            className="w-full rounded-lg border border-slate-200 px-2 py-2 text-xs"
+                            placeholder="Notes"
+                          />
+                          {voiceInputEnabled ? (
+                            <VoiceInputMic
+                              fieldId={`hms-emr-medicine-notes-${index}`}
+                              value={medicine.notes ?? ""}
+                              onBeforeStart={() => medicineNotesInputRefs.current[index]?.focus()}
+                              onChange={(nextValue) => updateMedicineField(index, "notes", nextValue)}
+                            />
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-2 py-3 text-center">
                         <button
@@ -4514,6 +4664,7 @@ export default function DoctorAppointmentPadPage() {
             }
             placeholder="Add advice and press Enter"
             kind="advice"
+            voiceInputEnabled={voiceInputEnabled}
           />
         );
       case "tests":
@@ -4527,6 +4678,7 @@ export default function DoctorAppointmentPadPage() {
               }
               placeholder="Add test and press Enter"
               kind="tests"
+              voiceInputEnabled={voiceInputEnabled}
             />
             {hasActiveDraft && !isReadOnly ? (
               <div className="flex justify-end">
@@ -5379,6 +5531,7 @@ export default function DoctorAppointmentPadPage() {
                     initialName={medicineAddModalIndex === null ? "" : editorState?.medicines[medicineAddModalIndex]?.medicine_name || ""}
                     onClose={() => setMedicineAddModalIndex(null)}
                     onCreated={(item) => {
+                      invalidateVoiceFuzzyMasterCache("medicines");
                       if (medicineAddModalIndex === null) return;
                             setEditorState((current) =>
                               current
