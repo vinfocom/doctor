@@ -417,7 +417,11 @@ export default function HmsDoctorsClient() {
             const res = await fetch(`/api/hms/hospital-admin/doctors/${doctor.doctor_id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: active ? "DEACTIVATE" : "ACTIVATE", active_to: active ? null : reactivateActiveTo || null }),
+                body: JSON.stringify({
+                    action: active ? "DEACTIVATE" : "ACTIVATE",
+                    active_from: active ? null : toInputDate(doctor.active_from) || null,
+                    active_to: active ? null : reactivateActiveTo || null,
+                }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {

@@ -12,6 +12,8 @@ const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 type ScopeRow = {
     doctor_id: number;
     user_id: number | null;
+    active_from: Date | string | null;
+    active_to: Date | string | null;
 };
 
 type CountRow = {
@@ -141,7 +143,7 @@ async function requireHospitalAdmin(req: Request) {
 async function getDoctorScope(hospital: NonNullable<Awaited<ReturnType<typeof requireHospitalAdmin>>>, doctorId: number) {
     const rows = await prisma.$queryRawUnsafe<ScopeRow[]>(
         `
-        SELECT d.doctor_id, d.user_id
+        SELECT d.doctor_id, d.user_id, d.active_from, d.active_to
         FROM hospital_doctors hd
         INNER JOIN doctors d
           ON d.doctor_id = hd.doctor_id
@@ -250,23 +252,56 @@ export async function PUT(req: Request, { params }: { params: Promise<{ doctorId
         const action = normalizeText(body?.action).toUpperCase();
 
         if (action === "ACTIVATE" || action === "DEACTIVATE") {
-            const activeFrom = action === "ACTIVATE" ? normalizeDate(body?.active_from) || new Date().toISOString().slice(0, 10) : normalizeDate(body?.active_from);
-            const activeTo = action === "ACTIVATE" ? normalizeDate(body?.active_to) || FAR_FUTURE_DATE : normalizeDate(body?.active_to);
-            await prisma.$executeRawUnsafe(
-                `
-                UPDATE doctors
-                SET status = ?,
-                    active_from = COALESCE(?, active_from),
-                    active_to = COALESCE(?, active_to)
-                WHERE doctor_id = ?
-                  AND admin_id = ?
-                `,
-                action === "ACTIVATE" ? "ACTIVE" : "INACTIVE",
-                activeFrom,
-                activeTo,
-                doctorId,
-                hospital.adminId
-            );
+            const today = new Date().toISOString().slice(0, 10);
+            const requestedActiveFrom = normalizeDate(body?.active_from);
+            const requestedActiveTo = normalizeDate(body?.active_to);
+            const activeFrom = action === "ACTIVATE"
+                ? requestedActiveFrom || dateOnly(scope.active_from) || today
+                : requestedActiveFrom;
+            const activeTo = action === "ACTIVATE"
+                ? requestedActiveTo || dateOnly(scope.active_to) || FAR_FUTURE_DATE
+                : requestedActiveTo;
+
+            if (action === "ACTIVATE" && activeFrom && activeTo && activeFrom > activeTo) {
+                return NextResponse.json({ error: "Active to must be on or after active from." }, { status: 400 });
+            }
+
+            await prisma.$transaction(async (tx) => {
+                await tx.$executeRawUnsafe(
+                    `
+                    UPDATE doctors
+                    SET status = ?,
+                        active_from = COALESCE(?, active_from),
+                        active_to = COALESCE(?, active_to)
+                    WHERE doctor_id = ?
+                      AND admin_id = ?
+                    `,
+                    action === "ACTIVATE" ? "ACTIVE" : "INACTIVE",
+                    activeFrom,
+                    activeTo,
+                    doctorId,
+                    hospital.adminId
+                );
+
+                if (action === "ACTIVATE") {
+                    await tx.$executeRawUnsafe(
+                        `
+                        UPDATE doctor_clinic_schedule
+                        SET effective_from = ?,
+                            effective_to = ?
+                        WHERE doctor_id = ?
+                          AND admin_id = ?
+                          AND clinic_id IS NULL
+                          AND scheduling_type = 'TOKEN_CAPACITY'
+                        `,
+                        activeFrom,
+                        activeTo,
+                        doctorId,
+                        hospital.adminId
+                    );
+                }
+            });
+
             const updated = await fetchDoctor(hospital.hospitalId, hospital.adminId, doctorId);
             return NextResponse.json({ doctor: updated ? serializeDoctor(updated) : null }, { status: 200 });
         }
