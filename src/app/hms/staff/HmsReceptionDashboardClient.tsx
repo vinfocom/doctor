@@ -210,6 +210,21 @@ function normalizeText(value: unknown) {
     return String(value || "").trim();
 }
 
+function patientMatchesOpdSearch(patient: Patient, search: string) {
+    const query = normalizeText(search).toLowerCase();
+    if (!query) return true;
+
+    const digitQuery = query.replace(/\D/g, "");
+    const values = [
+        patient.uhid,
+        patient.full_name,
+        patient.phone,
+    ].map((value) => String(value || "").toLowerCase());
+
+    if (values.some((value) => value.includes(query))) return true;
+    return Boolean(digitQuery && String(patient.phone || "").replace(/\D/g, "").includes(digitQuery));
+}
+
 function patientLabel(patient: { full_name: string | null; age?: number | null; gender?: string | null }) {
     const ageSex = [patient.age ?? null, patient.gender ? patient.gender.slice(0, 1).toUpperCase() : null].filter(Boolean).join("/");
     return `${patient.full_name || "Unnamed"}${ageSex ? ` (${ageSex})` : ""}`;
@@ -341,6 +356,12 @@ export default function HmsReceptionDashboardClient({
         listed: patients.length,
     }), [patientPagination.total, patients]);
     const title = mode === "patients" ? "Patients" : mode === "visits" ? "Today's OPD Visits" : "New OPD Registration";
+    const registrationPatientResults = useMemo(
+        () => mode === "registration" && patientSearch.trim()
+            ? patients.filter((patient) => patientMatchesOpdSearch(patient, patientSearch))
+            : patients,
+        [mode, patientSearch, patients]
+    );
     const visitPagination = visitsData?.pagination || {
         page: visitPage,
         page_size: VISIT_PAGE_SIZE,
@@ -1287,11 +1308,20 @@ export default function HmsReceptionDashboardClient({
                         ) : null}
 
                             <PatientSearch
-                                patients={patients}
+                                patients={registrationPatientResults}
                                 loading={loadingPatients}
                                 search={patientSearch}
                                 selectedPatientId={visitForm.patient_id}
-                                onSearchChange={setPatientSearch}
+                                onSearchChange={(value) => {
+                                    setPatientSearch(value);
+                                    setPatients([]);
+                                    setPatientPagination({
+                                        page: 1,
+                                        page_size: PATIENT_PAGE_SIZE,
+                                        total: 0,
+                                        total_pages: 1,
+                                    });
+                                }}
                                 onSearch={() => void loadPatients()}
                                 onSelect={selectPatient}
                                 onClearSelected={clearSelectedPatient}
