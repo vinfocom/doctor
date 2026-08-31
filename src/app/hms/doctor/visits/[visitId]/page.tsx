@@ -1860,6 +1860,7 @@ function TagEditorSection({
             <VoiceInputMic
               fieldId={`hms-emr-${kind}`}
               value={draftValue}
+              isShortcutTarget={() => document.activeElement === inputRef.current}
               onBeforeStart={() => inputRef.current?.focus()}
               onVoiceComplete={handleVoiceComplete}
               onChange={(nextValue) => {
@@ -2011,6 +2012,7 @@ function ClinicalHistorySection({
             <VoiceInputMic
               fieldId={`hms-emr-clinical-history-${section}`}
               value={draftValue}
+              isShortcutTarget={() => document.activeElement === inputRef.current}
               onBeforeStart={() => inputRef.current?.focus()}
               onChange={setDraftValue}
             />
@@ -3984,6 +3986,7 @@ export default function DoctorAppointmentPadPage() {
                               <VoiceInputMic
                                 fieldId={`hms-emr-complaint-${index}`}
                                 value={complaint.name}
+                                isShortcutTarget={() => document.activeElement === complaintNameInputRefs.current[index]}
                                 onBeforeStart={() => complaintNameInputRefs.current[index]?.focus()}
                                 stopOnExternalValueChange={false}
                                 stopOnOutsidePointerDown
@@ -4432,6 +4435,7 @@ export default function DoctorAppointmentPadPage() {
                               <VoiceInputMic
                                 fieldId={`hms-emr-medicine-name-${index}`}
                                 value={medicine.medicine_name}
+                                isShortcutTarget={() => document.activeElement === medicineNameInputRefs.current[index]}
                                 onBeforeStart={() => medicineNameInputRefs.current[index]?.focus()}
                                 onVoiceComplete={(transcript) =>
                                   void handleMedicineVoiceComplete(index, transcript)
@@ -4668,6 +4672,7 @@ export default function DoctorAppointmentPadPage() {
                             <VoiceInputMic
                               fieldId={`hms-emr-medicine-notes-${index}`}
                               value={medicine.notes ?? ""}
+                              isShortcutTarget={() => document.activeElement === medicineNotesInputRefs.current[index]}
                               onBeforeStart={() => medicineNotesInputRefs.current[index]?.focus()}
                               onChange={(nextValue) => updateMedicineField(index, "notes", nextValue)}
                             />

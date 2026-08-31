@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Mic, Square } from "lucide-react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 
@@ -45,10 +45,21 @@ export function isVoiceInputActive(fieldId?: string) {
   return activeVoiceInputId === fieldId;
 }
 
+export function browserSupportsVoiceInput() {
+  if (typeof window === "undefined") return false;
+  const speechWindow = window as typeof window & {
+    SpeechRecognition?: unknown;
+    webkitSpeechRecognition?: unknown;
+  };
+  return Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition);
+}
+
 type VoiceInputMicProps = {
   fieldId: string;
   value: string;
   onChange: (value: string) => void;
+  shortcutTargetRef?: RefObject<HTMLElement | null>;
+  isShortcutTarget?: () => boolean;
   onBeforeStart?: () => void;
   onVoiceComplete?: (transcript: string) => void;
   stopOnExternalValueChange?: boolean;
@@ -61,6 +72,8 @@ export default function VoiceInputMic({
   fieldId,
   value,
   onChange,
+  shortcutTargetRef,
+  isShortcutTarget,
   onBeforeStart,
   onVoiceComplete,
   stopOnExternalValueChange = true,
@@ -196,22 +209,9 @@ export default function VoiceInputMic({
     };
   }, [clearSilenceTimer, fieldId]);
 
-  if (!browserSupportsSpeechRecognition) {
-    return (
-      <button
-        type="button"
-        disabled
-        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-black bg-white text-black opacity-40 ${className}`}
-        title="Voice input is not supported in this browser."
-        aria-label="Voice input is not supported in this browser"
-      >
-        <Mic size={15} />
-      </button>
-    );
-  }
-
-  const toggleListening = async () => {
+  const toggleListening = useCallback(async () => {
     if (disabled) return;
+    if (!browserSupportsSpeechRecognition) return;
     setError("");
 
     if (isActive || (listening && activeVoiceInputId === fieldId)) {
@@ -242,7 +242,62 @@ export default function VoiceInputMic({
       setError("Voice input could not start. Check microphone permission and try again.");
       stopListening();
     }
-  };
+  }, [
+    browserSupportsSpeechRecognition,
+    disabled,
+    fieldId,
+    isActive,
+    listening,
+    onBeforeStart,
+    resetTranscript,
+    startSilenceTimer,
+    stopListening,
+    value,
+  ]);
+
+  useEffect(() => {
+    if (disabled || !browserSupportsSpeechRecognition) return;
+
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.repeat) return;
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (event.key.toLowerCase() !== "m") return;
+
+      const shortcutTargetIsFocused =
+        Boolean(shortcutTargetRef?.current && document.activeElement === shortcutTargetRef.current) ||
+        Boolean(isShortcutTarget?.());
+
+      if (!isActive && !shortcutTargetIsFocused) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      void toggleListening();
+    };
+
+    window.addEventListener("keydown", handleShortcut, true);
+    return () => window.removeEventListener("keydown", handleShortcut, true);
+  }, [
+    browserSupportsSpeechRecognition,
+    disabled,
+    isActive,
+    isShortcutTarget,
+    shortcutTargetRef,
+    toggleListening,
+  ]);
+
+  if (!browserSupportsSpeechRecognition) {
+    return (
+      <button
+        type="button"
+        disabled
+        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-black bg-white text-black opacity-40 ${className}`}
+        title="Voice input is not supported in this browser."
+        aria-label="Voice input is not supported in this browser"
+      >
+        <Mic size={15} />
+      </button>
+    );
+  }
 
   return (
     <span ref={rootRef} className="relative inline-flex shrink-0">
@@ -259,7 +314,7 @@ export default function VoiceInputMic({
         className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border disabled:cursor-not-allowed disabled:opacity-40 ${
           isActive ? "ring-2 ring-black ring-offset-2" : ""
         } ${className}`}
-        title={isActive ? "Stop voice input" : "Start voice input"}
+        title={isActive ? "Stop voice input (Alt+M)" : "Start voice input (Alt+M)"}
         aria-label={isActive ? "Stop voice input" : "Start voice input"}
       >
         {isActive ? (
