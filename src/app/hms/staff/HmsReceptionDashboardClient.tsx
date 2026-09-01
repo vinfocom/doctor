@@ -111,6 +111,8 @@ type VisitsResponse = {
     feePolicy?: {
         registrationFee: number;
         consultationFee: number;
+        feeWaiverAllowed?: boolean;
+        feeWaiverReasonRequired?: boolean;
         surchargeEnabled: boolean;
         surchargeAmount: number;
     };
@@ -356,6 +358,7 @@ export default function HmsReceptionDashboardClient({
         listed: patients.length,
     }), [patientPagination.total, patients]);
     const title = mode === "patients" ? "Patients" : mode === "visits" ? "Today's OPD Visits" : "New OPD Registration";
+    const feeWaiverReasonRequired = visitsData?.feePolicy?.feeWaiverReasonRequired !== false;
     const registrationPatientResults = useMemo(
         () => mode === "registration" && patientSearch.trim()
             ? patients.filter((patient) => patientMatchesOpdSearch(patient, patientSearch))
@@ -877,7 +880,7 @@ export default function HmsReceptionDashboardClient({
             nextErrors.referred_by_doctor_id = "Referring doctor must be different from consulting doctor.";
         }
         if (!visitForm.visit_date) nextErrors.visit_date = "Visit date is required.";
-        if (visitForm.payment_mode === "FREE" && !visitForm.fee_waived_reason.trim()) {
+        if (visitForm.payment_mode === "FREE" && feeWaiverReasonRequired && !visitForm.fee_waived_reason.trim()) {
             nextErrors.fee_waived_reason = "Reason is required for FREE.";
         }
         return nextErrors;
@@ -1503,7 +1506,7 @@ export default function HmsReceptionDashboardClient({
                                 <Select label="Payment" value={visitForm.payment_mode} error={visitErrors.payment_mode} onChange={(value) => updateVisitForm("payment_mode", value)} options={["CASH", "UPI", "CARD", "FREE"]} />
                                 <Select label="Payment Status" value={visitForm.payment_status} error={visitErrors.payment_status} onChange={(value) => updateVisitForm("payment_status", value)} options={paymentStatusOptions} />
                                 {visitForm.payment_mode === "FREE" && (
-                                    <Field label="Waiver Reason" value={visitForm.fee_waived_reason} error={visitErrors.fee_waived_reason} onChange={(value) => updateVisitForm("fee_waived_reason", value)} required />
+                                    <Field label="Waiver Reason" value={visitForm.fee_waived_reason} error={visitErrors.fee_waived_reason} onChange={(value) => updateVisitForm("fee_waived_reason", value)} required={feeWaiverReasonRequired} />
                                 )}
                             </div>
 

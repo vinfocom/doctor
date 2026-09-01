@@ -836,6 +836,8 @@ export async function GET(req: Request) {
             feePolicy: {
                 registrationFee: policies.registrationFee,
                 consultationFee: policies.consultationFee,
+                feeWaiverAllowed: policies.feeWaiverAllowed,
+                feeWaiverReasonRequired: policies.feeWaiverReasonRequired,
                 surchargeEnabled: policies.surchargeEnabled,
                 surchargeAmount: policies.surchargeAmount,
             },
