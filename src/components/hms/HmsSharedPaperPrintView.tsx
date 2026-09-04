@@ -102,10 +102,10 @@ function formatFee(value: string | number | null | undefined) {
     if (value === null || value === undefined || value === "") return "-";
     const amount = Number(value);
     if (!Number.isFinite(amount)) return String(value);
-    return amount.toLocaleString("en-IN", {
+    return `\u20B9${amount.toLocaleString("en-IN", {
         minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
         maximumFractionDigits: 2,
-    });
+    })}`;
 }
 
 function getPrintedOnLabel() {

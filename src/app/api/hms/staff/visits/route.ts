@@ -885,6 +885,8 @@ export async function POST(req: Request) {
         const visitType = normalizeEnum(body?.visit_type, VISIT_TYPES);
         const paymentMode = normalizeEnum(body?.payment_mode, PAYMENT_MODES);
         const requestedPaymentStatus = normalizeEnum(body?.payment_status || "PENDING", PAYMENT_STATUSES);
+        const feeChargedProvided = body?.fee_charged !== null && body?.fee_charged !== undefined && String(body.fee_charged).trim() !== "";
+        const requestedFeeCharged = feeChargedProvided ? parsePositiveNumber(body.fee_charged) : null;
         const feeWaivedReason = normalizeOptionalText(body?.fee_waived_reason);
         const overrideReason = normalizeOptionalText(body?.override_reason);
         const tempTokenRegistrationId = body?.temp_token_registration_id === null || body?.temp_token_registration_id === undefined
@@ -900,6 +902,7 @@ export async function POST(req: Request) {
         if (!visitType) fieldErrors.visit_type = "Visit type is required.";
         if (!paymentMode) fieldErrors.payment_mode = "Payment mode must be CASH, UPI, CARD, or FREE.";
         if (!requestedPaymentStatus) fieldErrors.payment_status = "Payment status must be PENDING or PAID.";
+        if (feeChargedProvided && requestedFeeCharged === null) fieldErrors.fee_charged = "Fee must be zero or more.";
         if (tempTokenRegistrationId === null && body?.temp_token_registration_id !== null && body?.temp_token_registration_id !== undefined) {
             fieldErrors.temp_token_registration_id = "Temp token id must be valid.";
         }
@@ -1199,9 +1202,10 @@ export async function POST(req: Request) {
                 registrationFee: policies.registrationFee,
                 consultationFee: policies.consultationFee,
             });
-            const feeCharged = effectivePaymentMode === "FREE"
+            const calculatedFeeCharged = effectivePaymentMode === "FREE"
                 ? 0
                 : baseFee + (surchargeApplied ? policies.surchargeAmount : 0);
+            const feeCharged = requestedFeeCharged ?? calculatedFeeCharged;
             const paymentStatus: PaymentStatus = effectivePaymentMode === "FREE" ? "PAID" : requestedPaymentStatus as PaymentStatus;
             const formatKey = resolveVisitNumberFormatKey(visitType as VisitType);
             const visitNumber = formatKey

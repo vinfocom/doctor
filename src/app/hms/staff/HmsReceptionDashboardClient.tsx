@@ -153,6 +153,7 @@ type VisitForm = {
     visit_type: string;
     payment_mode: string;
     payment_status: string;
+    fee_charged: string;
     fee_waived_reason: string;
     override_reason: string;
 };
@@ -194,6 +195,18 @@ function formatCurrency(value: number) {
         currency: "INR",
         maximumFractionDigits: 0,
     }).format(value);
+}
+
+function formatFeeInput(value: number | null) {
+    if (value === null || !Number.isFinite(value)) return "";
+    return value % 1 === 0 ? String(value) : value.toFixed(2);
+}
+
+function sanitizeFeeInput(value: string) {
+    const cleaned = value.replace(/[^\d.]/g, "");
+    const [whole, ...decimalParts] = cleaned.split(".");
+    const decimal = decimalParts.join("").slice(0, 2);
+    return decimalParts.length > 0 ? `${whole}.${decimal}` : whole;
 }
 
 function statusClass(status: string) {
@@ -312,9 +325,11 @@ export default function HmsReceptionDashboardClient({
         visit_type: "OPD_NEW",
         payment_mode: "CASH",
         payment_status: "PAID",
+        fee_charged: "",
         fee_waived_reason: "",
         override_reason: "",
     });
+    const [feeManuallyEdited, setFeeManuallyEdited] = useState(false);
     const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
     const [exactUhid, setExactUhid] = useState("");
     const [showOverride, setShowOverride] = useState(false);
@@ -647,6 +662,7 @@ export default function HmsReceptionDashboardClient({
             })
             .then((data) => {
                 setFollowupEligibility(data);
+                setFeeManuallyEdited(false);
                 if (data.eligible) {
                     setVisitForm((prev) => ({
                         ...prev,
@@ -683,13 +699,17 @@ export default function HmsReceptionDashboardClient({
             : 0;
         return baseFee + surcharge;
     }, [selectedDoctor, visitForm.payment_mode, visitForm.visit_type, visitsData?.feePolicy]);
-    const paymentStatusOptions = useMemo(() => {
-        const suffix = estimatedFee === null ? "" : ` - ${formatCurrency(estimatedFee)}`;
-        return [
-            { value: "PENDING", label: `Pending${suffix}` },
-            { value: "PAID", label: `Paid${suffix}` },
-        ];
-    }, [estimatedFee]);
+    const paymentStatusOptions = useMemo(() => [
+        { value: "PENDING", label: "Pending" },
+        { value: "PAID", label: "Paid" },
+    ], []);
+
+    useEffect(() => {
+        if (feeManuallyEdited) return;
+        const nextFee = formatFeeInput(estimatedFee);
+        setVisitForm((prev) => prev.fee_charged === nextFee ? prev : { ...prev, fee_charged: nextFee });
+    }, [estimatedFee, feeManuallyEdited]);
+
     const updatePatientForm = (field: keyof PatientForm, value: string) => {
         const nextValue = field === "phone" ? value.replace(/\D/g, "").slice(0, 10) : value;
         setPatientForm((prev) => ({ ...prev, [field]: nextValue }));
@@ -699,7 +719,12 @@ export default function HmsReceptionDashboardClient({
     };
 
     const updateVisitForm = (field: keyof VisitForm, value: string) => {
-        setVisitForm((prev) => ({ ...prev, [field]: value }));
+        const nextValue = field === "fee_charged" ? sanitizeFeeInput(value) : value;
+        if (field === "fee_charged") setFeeManuallyEdited(true);
+        if (field === "doctor_id" || field === "visit_date" || field === "visit_type" || field === "payment_mode") {
+            setFeeManuallyEdited(false);
+        }
+        setVisitForm((prev) => ({ ...prev, [field]: nextValue }));
         setVisitErrors((prev) => ({ ...prev, [field]: undefined }));
         setSuccess("");
     };
@@ -720,9 +745,11 @@ export default function HmsReceptionDashboardClient({
             visit_type: "OPD_NEW",
             payment_mode: "CASH",
             payment_status: "PAID",
+            fee_charged: "",
             fee_waived_reason: "",
             override_reason: "",
         });
+        setFeeManuallyEdited(false);
         setSelectedPatient(null);
         setExactUhid("");
         setShowOverride(false);
@@ -880,6 +907,12 @@ export default function HmsReceptionDashboardClient({
             nextErrors.referred_by_doctor_id = "Referring doctor must be different from consulting doctor.";
         }
         if (!visitForm.visit_date) nextErrors.visit_date = "Visit date is required.";
+        const feeText = visitForm.fee_charged.trim();
+        const feeValue = Number(feeText);
+        if (!feeText) nextErrors.fee_charged = "Enter the fee amount.";
+        else if (!/^\d+(\.\d{1,2})?$/.test(feeText) || !Number.isFinite(feeValue) || feeValue < 0) {
+            nextErrors.fee_charged = "Enter a valid fee amount.";
+        }
         if (visitForm.payment_mode === "FREE" && feeWaiverReasonRequired && !visitForm.fee_waived_reason.trim()) {
             nextErrors.fee_waived_reason = "Reason is required for FREE.";
         }
@@ -1032,6 +1065,7 @@ export default function HmsReceptionDashboardClient({
                 visit_type: visitForm.visit_type,
                 payment_mode: visitForm.payment_mode,
                 payment_status: visitForm.payment_status,
+                fee_charged: Number(visitForm.fee_charged),
                 fee_waived_reason: visitForm.fee_waived_reason.trim() || null,
                 override_reason: showOverride ? visitForm.override_reason.trim() : null,
                 temp_token_registration_id: selectedTempToken?.registration_id ?? null,
@@ -1108,7 +1142,9 @@ export default function HmsReceptionDashboardClient({
                 override_reason: "",
                 payment_mode: "CASH",
                 payment_status: "PAID",
+                fee_charged: formatFeeInput(estimatedFee),
             }));
+            setFeeManuallyEdited(false);
             await loadPatients();
             await loadVisits();
             await loadTempTokens();
@@ -1504,7 +1540,10 @@ export default function HmsReceptionDashboardClient({
                                 />
                                 <Field label="Date" type="date" value={visitForm.visit_date} error={visitErrors.visit_date} onChange={(value) => updateVisitForm("visit_date", value)} required />
                                 <Select label="Payment" value={visitForm.payment_mode} error={visitErrors.payment_mode} onChange={(value) => updateVisitForm("payment_mode", value)} options={["CASH", "UPI", "CARD", "FREE"]} />
-                                <Select label="Payment Status" value={visitForm.payment_status} error={visitErrors.payment_status} onChange={(value) => updateVisitForm("payment_status", value)} options={paymentStatusOptions} />
+                                <div className="grid grid-cols-2 gap-3">
+                                    <Select label="Payment Status" value={visitForm.payment_status} error={visitErrors.payment_status} onChange={(value) => updateVisitForm("payment_status", value)} options={paymentStatusOptions} />
+                                    <Field label="Fee (Rs.)" inputMode="decimal" value={visitForm.fee_charged} error={visitErrors.fee_charged} onChange={(value) => updateVisitForm("fee_charged", value)} required />
+                                </div>
                                 {visitForm.payment_mode === "FREE" && (
                                     <Field label="Waiver Reason" value={visitForm.fee_waived_reason} error={visitErrors.fee_waived_reason} onChange={(value) => updateVisitForm("fee_waived_reason", value)} required={feeWaiverReasonRequired} />
                                 )}
@@ -1663,6 +1702,7 @@ function Field({
     clearable = false,
     onClear,
     onEnter,
+    inputMode,
 }: {
     label: string;
     value: string;
@@ -1673,6 +1713,7 @@ function Field({
     clearable?: boolean;
     onClear?: () => void;
     onEnter?: () => void;
+    inputMode?: "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search";
 }) {
     return (
         <div>
@@ -1680,6 +1721,7 @@ function Field({
             <div className="relative">
                 <input
                     type={type}
+                    inputMode={inputMode}
                     value={value}
                     onChange={(event) => onChange(event.target.value)}
                     onKeyDown={(event) => {
