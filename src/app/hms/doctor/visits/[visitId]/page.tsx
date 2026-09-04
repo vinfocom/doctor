@@ -1075,6 +1075,8 @@ function SuggestionDropdown({
   onSelect,
   onAdd,
   anchorElement,
+  highlightedIndex = -1,
+  onHighlight,
 }: {
   suggestions: EmrMasterItem[];
   typedValue: string;
@@ -1082,9 +1084,17 @@ function SuggestionDropdown({
   onSelect: (item: EmrMasterItem) => void;
   onAdd?: () => void;
   anchorElement: HTMLElement | null;
+  highlightedIndex?: number;
+  onHighlight?: (index: number) => void;
 }) {
   const showAdd = Boolean(onAdd) && typedValue.trim().length >= 1;
   const panelStyle = useFloatingPanelStyle(anchorElement, true);
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  useEffect(() => {
+    if (highlightedIndex < 0) return;
+    optionRefs.current[highlightedIndex]?.scrollIntoView({ block: "nearest" });
+  }, [highlightedIndex, suggestions.length]);
 
   if (typeof document === "undefined") {
     return null;
@@ -1102,13 +1112,17 @@ function SuggestionDropdown({
         </div>
       ) : (
         <>
-          {suggestions.map((item) => (
+          {suggestions.map((item, index) => (
             <button
               key={item.id}
+              ref={(element) => {
+                optionRefs.current[index] = element;
+              }}
               type="button"
               onMouseDown={(event) => event.preventDefault()}
+              onMouseEnter={() => onHighlight?.(index)}
               onClick={() => onSelect(item)}
-              className="flex w-full items-start justify-between gap-3 border-b border-gray-100 px-3 py-3 text-left text-sm hover:bg-indigo-50"
+              className={`flex w-full items-start justify-between gap-3 border-b border-gray-100 px-3 py-3 text-left text-sm hover:bg-indigo-50 ${highlightedIndex === index ? "bg-indigo-50" : ""}`}
             >
               <span className="min-w-0">
                 <span className="block font-medium uppercase text-gray-900">{item.name}</span>
@@ -1164,13 +1178,30 @@ function FreeWriteSuggestionInput({
   onAdvance?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [showAllOptions, setShowAllOptions] = useState(false);
   const [anchorElement, setAnchorElement] = useState<HTMLDivElement | null>(null);
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const panelStyle = useFloatingPanelStyle(anchorElement, open);
   const normalizedValue = value.trim().toLowerCase();
   const filteredSuggestions = suggestions.filter((suggestion) => {
-    if (!normalizedValue) return true;
+    if (showAllOptions || !normalizedValue) return true;
     return suggestion.toLowerCase().includes(normalizedValue);
   });
+
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    optionRefs.current = [];
+  }, [open, suggestions.length]);
+
+  useEffect(() => {
+    if (highlightedIndex < 0) return;
+    optionRefs.current[highlightedIndex]?.scrollIntoView({ block: "nearest" });
+  }, [highlightedIndex, filteredSuggestions.length]);
 
   const commitValue = useCallback(() => {
     if (!onCommit) return;
@@ -1189,17 +1220,45 @@ function FreeWriteSuggestionInput({
         onFocus={() => {
           stopVoiceWithoutCommitting();
           setOpen(true);
+          setShowAllOptions(true);
+          setHighlightedIndex(-1);
         }}
         onBlur={() => {
           commitValue();
           window.setTimeout(() => setOpen(false), 150);
         }}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          setShowAllOptions(false);
+          setHighlightedIndex(-1);
+          onChange(event.target.value);
+        }}
         onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            if (open) event.preventDefault();
+            if (filteredSuggestions.length === 0) return;
+            event.preventDefault();
+            setOpen(true);
+            setShowAllOptions(true);
+            const nextIndex = event.key === "ArrowDown"
+              ? highlightedIndex < filteredSuggestions.length - 1 ? highlightedIndex + 1 : 0
+              : highlightedIndex > 0 ? highlightedIndex - 1 : filteredSuggestions.length - 1;
+            setHighlightedIndex(nextIndex);
+            onChange(filteredSuggestions[nextIndex]);
+            setShowAllOptions(true);
+            return;
+          }
           if (event.key === "Enter") {
             event.preventDefault();
+            if (open && highlightedIndex >= 0 && filteredSuggestions[highlightedIndex]) {
+              onChange(filteredSuggestions[highlightedIndex]);
+              setOpen(false);
+              setShowAllOptions(false);
+              onAdvance?.();
+              return;
+            }
             commitValue();
             setOpen(false);
+            setShowAllOptions(false);
             onAdvance?.();
           }
         }}
@@ -1211,7 +1270,16 @@ function FreeWriteSuggestionInput({
       <button
         type="button"
         onMouseDown={(event) => event.preventDefault()}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          setOpen((current) => {
+            const nextOpen = !current;
+            if (nextOpen) {
+              setShowAllOptions(true);
+              setHighlightedIndex(-1);
+            }
+            return nextOpen;
+          });
+        }}
         className="absolute inset-y-0 right-0 flex w-8 items-center justify-center text-slate-400 hover:text-slate-600"
         aria-label={`Toggle ${ariaLabel} suggestions`}
         title={`Toggle ${ariaLabel} suggestions`}
@@ -1224,20 +1292,25 @@ function FreeWriteSuggestionInput({
       {open && filteredSuggestions.length > 0 && typeof document !== "undefined"
         ? createPortal(
             <div
-              style={panelStyle}
+              style={{ ...panelStyle, zIndex: 100 }}
               className="max-h-56 overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white shadow-lg"
             >
-              {filteredSuggestions.map((suggestion) => (
+              {filteredSuggestions.map((suggestion, index) => (
                 <button
                   key={suggestion}
+                  ref={(element) => {
+                    optionRefs.current[index] = element;
+                  }}
                   type="button"
                   onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setHighlightedIndex(index)}
                   onClick={() => {
                     onChange(suggestion);
                     setOpen(false);
+                    setShowAllOptions(false);
                     onAdvance?.();
                   }}
-                  className="flex w-full items-center border-b border-slate-100 px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700 hover:bg-indigo-50 last:border-b-0"
+                  className={`flex w-full items-center border-b border-slate-100 px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700 hover:bg-indigo-50 last:border-b-0 ${highlightedIndex === index ? "bg-indigo-50" : ""}`}
                 >
                   {suggestion}
                 </button>
@@ -1268,7 +1341,7 @@ function AddMasterItemModal({
   const [strengthValue, setStrengthValue] = useState("");
   const [strengthUnit, setStrengthUnit] = useState("mg");
   const [saltCompositionParts, setSaltCompositionParts] = useState<SaltCompositionPart[]>([
-    { name: "", value: "", unit: "mg" },
+    { name: "", value: "", unit: "" },
   ]);
   const [company, setCompany] = useState("");
   const [saving, setSaving] = useState(false);
@@ -1279,6 +1352,7 @@ function AddMasterItemModal({
     spellSuggestion: null,
   });
   const [dismissedSuggestionSignature, setDismissedSuggestionSignature] = useState("");
+
   const correctionQuery = useDebouncedValue(name, 250);
 
   useEffect(() => {
@@ -1287,7 +1361,7 @@ function AddMasterItemModal({
     setType(MEDICINE_TYPE_OPTIONS[0]);
     setStrengthValue("");
     setStrengthUnit("mg");
-    setSaltCompositionParts([{ name: "", value: "", unit: "mg" }]);
+    setSaltCompositionParts([{ name: "", value: "", unit: "" }]);
     setCompany("");
     setSaving(false);
     setError("");
@@ -1298,6 +1372,15 @@ function AddMasterItemModal({
     });
     setDismissedSuggestionSignature("");
   }, [initialName, open]);
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
 
   const isMedicine = kind === "medicines";
 
@@ -1381,7 +1464,7 @@ function AddMasterItemModal({
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 px-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
         <h3 className="text-lg font-bold text-gray-900">
           Add {isMedicine ? "Medicine" : "Master Item"}
         </h3>
@@ -1459,19 +1542,13 @@ function AddMasterItemModal({
             <>
               <label className="space-y-1">
                 <span className="text-xs font-medium text-gray-500">Type</span>
-                <input
-                  type="text"
-                  list="medicine-type-options"
+                <FreeWriteSuggestionInput
                   value={type}
-                  onChange={(event) => setType(event.target.value)}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm uppercase"
+                  suggestions={MEDICINE_TYPE_OPTIONS}
                   placeholder="TAB"
+                  ariaLabel="Medicine type"
+                  onChange={setType}
                 />
-                <datalist id="medicine-type-options">
-                  {MEDICINE_TYPE_OPTIONS.map((option) => (
-                    <option key={option} value={option} />
-                  ))}
-                </datalist>
               </label>
               <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_140px]">
                 <label className="space-y-1">
@@ -1482,24 +1559,17 @@ function AddMasterItemModal({
                     value={strengthValue}
                     onChange={(event) => setStrengthValue(event.target.value)}
                     className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm uppercase"
-                    placeholder="500"
                   />
                 </label>
                 <label className="space-y-1">
                   <span className="text-xs font-medium text-gray-500">Strength unit</span>
-                  <input
-                    type="text"
-                    list="medicine-strength-unit-options"
+                  <FreeWriteSuggestionInput
                     value={strengthUnit}
-                    onChange={(event) => setStrengthUnit(event.target.value)}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm uppercase"
+                    suggestions={MEDICINE_UNIT_OPTIONS}
                     placeholder="MG"
+                    ariaLabel="Medicine strength unit"
+                    onChange={setStrengthUnit}
                   />
-                  <datalist id="medicine-strength-unit-options">
-                    {MEDICINE_UNIT_OPTIONS.map((option) => (
-                      <option key={option} value={option} />
-                    ))}
-                  </datalist>
                 </label>
               </div>
               <div className="space-y-3">
@@ -1510,7 +1580,7 @@ function AddMasterItemModal({
                     onClick={() =>
                       setSaltCompositionParts((current) => [
                         ...current,
-                        { name: "", value: "", unit: "mg" },
+                        { name: "", value: "", unit: "" },
                       ])
                     }
                     className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
@@ -1584,7 +1654,7 @@ function AddMasterItemModal({
                         onClick={() =>
                           setSaltCompositionParts((current) =>
                             current.length === 1
-                              ? [{ name: "", value: "", unit: current[0]?.unit || "mg" }]
+                              ? [{ name: "", value: "", unit: "" }]
                               : current.filter((_, entryIndex) => entryIndex !== partIndex)
                           )
                         }
@@ -1686,12 +1756,14 @@ function TagEditorSection({
 }) {
   const [draftValue, setDraftValue] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
+  const [highlightedSuggestionIndex, setHighlightedSuggestionIndex] = useState(-1);
   const [suggestions, setSuggestions] = useState<EmrMasterItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const inputAnchorRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const voiceSuggestionRequestRef = useRef(0);
+  const keyboardBrowsingRef = useRef(false);
   const debouncedValue = useDebouncedValue(draftValue, 350);
   const hasNamedItem = useCallback(
     (value: string | null | undefined) => {
@@ -1731,6 +1803,7 @@ function TagEditorSection({
       setDraftValue("");
       setSuggestions([]);
       setShowDropdown(false);
+      setHighlightedSuggestionIndex(-1);
     },
     [hasNamedItem, items, onChange]
   );
@@ -1788,6 +1861,7 @@ function TagEditorSection({
   useEffect(() => {
     let active = true;
     const loadSuggestions = async () => {
+      if (keyboardBrowsingRef.current) return;
       if (debouncedValue.trim().length < 1) {
         setSuggestions([]);
         return;
@@ -1838,18 +1912,43 @@ function TagEditorSection({
             ref={inputRef}
             type="text"
             value={draftValue}
-            onFocus={() => setShowDropdown(true)}
+            onFocus={() => {
+              keyboardBrowsingRef.current = false;
+              setShowDropdown(true);
+              setHighlightedSuggestionIndex(-1);
+            }}
             onBlur={() => {
               stopVoiceWithoutCommitting();
               window.setTimeout(() => setShowDropdown(false), 150);
             }}
             onChange={(event) => {
+              keyboardBrowsingRef.current = false;
               setDraftValue(event.target.value);
               setShowDropdown(true);
+              setHighlightedSuggestionIndex(-1);
             }}
             onKeyDown={(event) => {
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                if (suggestions.length === 0) return;
+                event.preventDefault();
+                setShowDropdown(true);
+                const nextIndex = event.key === "ArrowDown"
+                  ? highlightedSuggestionIndex < suggestions.length - 1 ? highlightedSuggestionIndex + 1 : 0
+                  : highlightedSuggestionIndex > 0 ? highlightedSuggestionIndex - 1 : suggestions.length - 1;
+                setHighlightedSuggestionIndex(nextIndex);
+                setDraftValue(suggestions[nextIndex]?.name ?? draftValue);
+                keyboardBrowsingRef.current = true;
+                return;
+              }
               if (event.key === "Enter") {
                 event.preventDefault();
+                const selectedSuggestion = suggestions[highlightedSuggestionIndex];
+                if (selectedSuggestion) {
+                  keyboardBrowsingRef.current = false;
+                  addNamedItem(selectedSuggestion);
+                  return;
+                }
+                keyboardBrowsingRef.current = false;
                 handleAddAction();
               }
             }}
@@ -1887,6 +1986,8 @@ function TagEditorSection({
             typedValue={draftValue}
             loading={loading}
             anchorElement={inputAnchorRef.current}
+            highlightedIndex={highlightedSuggestionIndex}
+            onHighlight={setHighlightedSuggestionIndex}
             onSelect={(item) => {
               stopVoiceWithoutCommitting();
               addNamedItem(item);
@@ -2183,14 +2284,19 @@ export default function DoctorAppointmentPadPage() {
   const clinicalHistoryDefaultsAppliedRef = useRef(false);
   const [activeComplaintSuggestionIndex, setActiveComplaintSuggestionIndex] =
     useState<number | null>(null);
+  const [activeComplaintSuggestionOptionIndex, setActiveComplaintSuggestionOptionIndex] =
+    useState(-1);
   const [activeComplaintDurationSuggestionIndex, setActiveComplaintDurationSuggestionIndex] =
     useState<number | null>(null);
   const [complaintSuggestions, setComplaintSuggestions] = useState<EmrMasterItem[]>([]);
   const [complaintSuggestionLoading, setComplaintSuggestionLoading] = useState(false);
   const [complaintAddModalIndex, setComplaintAddModalIndex] = useState<number | null>(null);
   const complaintVoiceSuggestionRequestRef = useRef(0);
+  const complaintKeyboardBrowsingRef = useRef(false);
   const [activeMedicineSuggestionIndex, setActiveMedicineSuggestionIndex] =
     useState<number | null>(null);
+  const [activeMedicineSuggestionOptionIndex, setActiveMedicineSuggestionOptionIndex] =
+    useState(-1);
   const [activeDurationSuggestionIndex, setActiveDurationSuggestionIndex] =
     useState<number | null>(null);
   const [doseModes, setDoseModes] = useState<Record<number, DoseMode>>({});
@@ -2198,6 +2304,7 @@ export default function DoctorAppointmentPadPage() {
   const [medicineSuggestionLoading, setMedicineSuggestionLoading] = useState(false);
   const [medicineAddModalIndex, setMedicineAddModalIndex] = useState<number | null>(null);
   const medicineVoiceSuggestionRequestRef = useRef(0);
+  const medicineKeyboardBrowsingRef = useRef(false);
   const complaintTypedValue =
     activeComplaintSuggestionIndex === null || !editorState
       ? ""
@@ -3106,6 +3213,7 @@ export default function DoctorAppointmentPadPage() {
   useEffect(() => {
     let active = true;
     const loadComplaintSuggestions = async () => {
+      if (complaintKeyboardBrowsingRef.current) return;
       if (
         activeComplaintSuggestionIndex === null ||
         debouncedComplaintQuery.trim().length < 1
@@ -3177,6 +3285,7 @@ export default function DoctorAppointmentPadPage() {
   useEffect(() => {
     let active = true;
     const loadMedicineSuggestions = async () => {
+      if (medicineKeyboardBrowsingRef.current) return;
       if (
         activeMedicineSuggestionIndex === null ||
         debouncedMedicineQuery.trim().length < 1
@@ -3792,7 +3901,6 @@ export default function DoctorAppointmentPadPage() {
                         focusNextVitalInput("bp_systolic");
                       }}
                       className="h-9 w-14 rounded-md border border-slate-200 bg-white px-2 text-center font-semibold text-slate-900 outline-none focus:border-indigo-400"
-                      placeholder="120"
                     />
                     <span className="font-semibold text-slate-400">/</span>
                     <input
@@ -3812,7 +3920,6 @@ export default function DoctorAppointmentPadPage() {
                         focusNextVitalInput("bp_diastolic");
                       }}
                       className="h-9 w-14 rounded-md border border-slate-200 bg-white px-2 text-center font-semibold text-slate-900 outline-none focus:border-indigo-400"
-                      placeholder="80"
                     />
                     <span className="whitespace-nowrap text-xs text-slate-500">
                       mmHg
@@ -3955,10 +4062,12 @@ export default function DoctorAppointmentPadPage() {
                               type="text"
                               value={complaint.name}
                               onFocus={() => {
+                                complaintKeyboardBrowsingRef.current = false;
                                 complaintVoiceSuggestionRequestRef.current += 1;
                                 setComplaintSuggestions([]);
                                 setComplaintSuggestionLoading(false);
                                 setActiveComplaintSuggestionIndex(index);
+                                setActiveComplaintSuggestionOptionIndex(-1);
                               }}
                               onBlur={() => {
                                 complaintVoiceSuggestionRequestRef.current += 1;
@@ -3969,12 +4078,57 @@ export default function DoctorAppointmentPadPage() {
                                 );
                               }}
                               onChange={(event) => {
+                                complaintKeyboardBrowsingRef.current = false;
                                 stopVoiceWithoutCommitting();
                                 updateComplaintField(index, "name", event.target.value);
+                                setActiveComplaintSuggestionOptionIndex(-1);
                               }}
                               onKeyDown={(event) => {
+                                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                                  if (complaintSuggestions.length === 0) return;
+                                  event.preventDefault();
+                                  const nextIndex = event.key === "ArrowDown"
+                                    ? activeComplaintSuggestionOptionIndex < complaintSuggestions.length - 1
+                                      ? activeComplaintSuggestionOptionIndex + 1
+                                      : 0
+                                    : activeComplaintSuggestionOptionIndex > 0
+                                      ? activeComplaintSuggestionOptionIndex - 1
+                                      : complaintSuggestions.length - 1;
+                                  const nextSuggestion = complaintSuggestions[nextIndex];
+                                  setActiveComplaintSuggestionOptionIndex(nextIndex);
+                                  if (nextSuggestion) {
+                                    updateComplaintField(index, "name", nextSuggestion.name);
+                                    complaintKeyboardBrowsingRef.current = true;
+                                  }
+                                  return;
+                                }
                                 if (event.key === "Enter") {
                                   event.preventDefault();
+                                  const selectedSuggestion = complaintSuggestions[activeComplaintSuggestionOptionIndex];
+                                  if (selectedSuggestion) {
+                                    complaintKeyboardBrowsingRef.current = false;
+                                    setActiveComplaintSuggestionOptionIndex(-1);
+                                    setActiveComplaintSuggestionIndex(null);
+                                    setEditorState((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            complaints: current.complaints.map((row, rowIndex) =>
+                                              rowIndex === index
+                                                ? applyComplaintSuggestionToRow(row, selectedSuggestion)
+                                                : row
+                                            ),
+                                          }
+                                        : current
+                                    );
+                                    focusComplaintRowField(index, "severity");
+                                    return;
+                                  }
+                                  if (complaint.name.trim() && complaintSuggestions.length === 0) {
+                                    complaintKeyboardBrowsingRef.current = false;
+                                    setComplaintAddModalIndex(index);
+                                    return;
+                                  }
                                   setActiveComplaintSuggestionIndex(null);
                                   focusComplaintRowField(index, "severity");
                                 }
@@ -3994,6 +4148,7 @@ export default function DoctorAppointmentPadPage() {
                                   void handleComplaintVoiceComplete(index, transcript)
                                 }
                                 onChange={(nextValue) => {
+                                  complaintKeyboardBrowsingRef.current = false;
                                   updateComplaintField(index, "name", nextValue);
                                   setActiveComplaintSuggestionIndex(index);
                                 }}
@@ -4024,12 +4179,16 @@ export default function DoctorAppointmentPadPage() {
                               typedValue={complaint.name}
                               loading={complaintSuggestionLoading}
                               anchorElement={complaintAnchorRefs.current[index]}
+                              highlightedIndex={activeComplaintSuggestionOptionIndex}
+                              onHighlight={setActiveComplaintSuggestionOptionIndex}
                               onSelect={(item) => {
                                 stopVoiceWithoutCommitting();
+                                complaintKeyboardBrowsingRef.current = false;
                                 complaintVoiceSuggestionRequestRef.current += 1;
                                 setComplaintSuggestions([]);
                                 setComplaintSuggestionLoading(false);
                                 setActiveComplaintSuggestionIndex(null);
+                                setActiveComplaintSuggestionOptionIndex(-1);
                                 setEditorState((current) =>
                                   current
                                     ? {
@@ -4412,7 +4571,11 @@ export default function DoctorAppointmentPadPage() {
                               }}
                               type="text"
                               value={medicine.medicine_name}
-                              onFocus={() => setActiveMedicineSuggestionIndex(index)}
+                              onFocus={() => {
+                                medicineKeyboardBrowsingRef.current = false;
+                                setActiveMedicineSuggestionIndex(index);
+                                setActiveMedicineSuggestionOptionIndex(-1);
+                              }}
                               onBlur={() => {
                                 stopVoiceWithoutCommitting();
                                 window.setTimeout(
@@ -4420,10 +4583,57 @@ export default function DoctorAppointmentPadPage() {
                                   150
                                 );
                               }}
-                              onChange={(event) => updateMedicineField(index, "medicine_name", event.target.value)}
+                              onChange={(event) => {
+                                medicineKeyboardBrowsingRef.current = false;
+                                updateMedicineField(index, "medicine_name", event.target.value);
+                                setActiveMedicineSuggestionOptionIndex(-1);
+                              }}
                               onKeyDown={(event) => {
+                                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                                  if (filteredMedicineSuggestions.length === 0) return;
+                                  event.preventDefault();
+                                  const nextIndex = event.key === "ArrowDown"
+                                    ? activeMedicineSuggestionOptionIndex < filteredMedicineSuggestions.length - 1
+                                      ? activeMedicineSuggestionOptionIndex + 1
+                                      : 0
+                                    : activeMedicineSuggestionOptionIndex > 0
+                                      ? activeMedicineSuggestionOptionIndex - 1
+                                      : filteredMedicineSuggestions.length - 1;
+                                  const nextSuggestion = filteredMedicineSuggestions[nextIndex];
+                                  setActiveMedicineSuggestionOptionIndex(nextIndex);
+                                  if (nextSuggestion) {
+                                    updateMedicineField(index, "medicine_name", nextSuggestion.name);
+                                    medicineKeyboardBrowsingRef.current = true;
+                                  }
+                                  return;
+                                }
                                 if (event.key === "Enter") {
                                   event.preventDefault();
+                                  const selectedSuggestion = filteredMedicineSuggestions[activeMedicineSuggestionOptionIndex];
+                                  if (selectedSuggestion) {
+                                    medicineKeyboardBrowsingRef.current = false;
+                                    setActiveMedicineSuggestionOptionIndex(-1);
+                                    setActiveMedicineSuggestionIndex(null);
+                                    setEditorState((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            medicines: current.medicines.map((row, rowIndex) =>
+                                              rowIndex === index
+                                                ? applyMedicineSuggestionToRow(row, selectedSuggestion)
+                                                : row
+                                            ),
+                                          }
+                                        : current
+                                    );
+                                    focusMedicineRowField(index, "dose");
+                                    return;
+                                  }
+                                  if (medicine.medicine_name.trim() && filteredMedicineSuggestions.length === 0) {
+                                    medicineKeyboardBrowsingRef.current = false;
+                                    setMedicineAddModalIndex(index);
+                                    return;
+                                  }
                                   setActiveMedicineSuggestionIndex(null);
                                   focusMedicineRowField(index, "dose");
                                 }
@@ -4441,6 +4651,7 @@ export default function DoctorAppointmentPadPage() {
                                   void handleMedicineVoiceComplete(index, transcript)
                                 }
                                 onChange={(nextValue) => {
+                                  medicineKeyboardBrowsingRef.current = false;
                                   updateMedicineField(index, "medicine_name", nextValue);
                                   setActiveMedicineSuggestionIndex(index);
                                 }}
@@ -4467,8 +4678,11 @@ export default function DoctorAppointmentPadPage() {
                               typedValue={medicine.medicine_name}
                               loading={medicineSuggestionLoading}
                               anchorElement={medicineAnchorRefs.current[index]}
+                              highlightedIndex={activeMedicineSuggestionOptionIndex}
+                              onHighlight={setActiveMedicineSuggestionOptionIndex}
                               onSelect={(item) => {
                                 stopVoiceWithoutCommitting();
+                                medicineKeyboardBrowsingRef.current = false;
                                 medicineVoiceSuggestionRequestRef.current += 1;
                                 const duplicateSelection =
                                   (editorState?.medicines ?? []).some((row, rowIndex) => {
@@ -5597,8 +5811,8 @@ export default function DoctorAppointmentPadPage() {
                               }
                             : current
                         )
-                      }
-                    />
+                                  }
+                              />
                   ))}
 
                   <AddMasterItemModal
