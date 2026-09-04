@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from "react-dom";
 import {
   AlertTriangle,
+  CalendarDays,
   Check,
   ChevronUp,
   ChevronDown,
@@ -261,6 +262,7 @@ const MEDICINE_UNIT_OPTIONS = ["mg", "mcg", "g", "ml", "IU", "%"];
 const QUICK_FOLLOW_UP_OPTIONS = [
   { label: "After 5 days", days: 5 },
   { label: "After 7 days", days: 7 },
+  { label: "After 10 days", days: 10 },
   { label: "After 15 days", days: 15 },
   { label: "After 1 month", days: 30 },
   { label: "After 2 months", days: 60 },
@@ -558,18 +560,6 @@ function normalizePatientGender(value: string | null | undefined): PatientGender
   if (normalized === "other") return "Other";
   if (normalized === "prefer not to say") return "Prefer not to say";
   return "";
-}
-
-function buildQuickFollowUpBaseDate(input?: {
-  visitDate?: string | null;
-  appointmentDate?: string | null;
-}) {
-  const baseDateValue =
-    toDateInputValue(input?.visitDate) ||
-    toDateInputValue(input?.appointmentDate) ||
-    new Date().toISOString().slice(0, 10);
-
-  return new Date(`${baseDateValue}T12:00:00`);
 }
 
 function getPatientGenderShortLabel(value: string | null | undefined) {
@@ -2277,6 +2267,7 @@ export default function DoctorAppointmentPadPage() {
   const [creatingDraft, setCreatingDraft] = useState(false);
   const [layoutSettings, setLayoutSettings] = useState<EmrLayoutSettings | null>(null);
   const [quickFollowUpDays, setQuickFollowUpDays] = useState("");
+  const [quickFollowUpLoading, setQuickFollowUpLoading] = useState(false);
   const [nextVisitInputValue, setNextVisitInputValue] = useState("");
   const [expandedClinicalHistorySections, setExpandedClinicalHistorySections] = useState<
     Partial<Record<EmrClinicalHistorySection, boolean>>
@@ -4992,41 +4983,57 @@ export default function DoctorAppointmentPadPage() {
               <div className="grid gap-4 md:grid-cols-[220px_220px] md:items-start">
                 <label className="space-y-1">
                   <span className="text-xs font-medium text-gray-500">Follow-up date</span>
-                  <input
-                    ref={nextVisitInputRef}
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="DD/MM/YYYY"
-                    maxLength={10}
-                    value={nextVisitInputValue}
-                    onChange={(event) => {
-                      const selectionStart =
-                        event.target.selectionStart ?? event.target.value.length;
-                      const nextDigitIndex = countDigitsBeforeCursor(
-                        event.target.value,
-                        selectionStart
-                      );
-                      const formattedValue = formatDateInputDraft(event.target.value);
-                      pendingNextVisitCursorRef.current =
-                        getCursorPositionForDigitIndex(formattedValue, nextDigitIndex);
-                      setNextVisitInputValue(formattedValue);
-                    }}
-                    onBlur={() => {
-                      const normalizedDate = normalizeFollowUpDateInput(nextVisitInputValue);
-                      if (!nextVisitInputValue.trim()) {
-                        applyFollowUpDate("", { clearQuickSelection: true });
-                        return;
-                      }
+                  <div className="relative">
+                    <input
+                      ref={nextVisitInputRef}
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="DD/MM/YYYY"
+                      maxLength={10}
+                      value={nextVisitInputValue}
+                      onChange={(event) => {
+                        const selectionStart =
+                          event.target.selectionStart ?? event.target.value.length;
+                        const nextDigitIndex = countDigitsBeforeCursor(
+                          event.target.value,
+                          selectionStart
+                        );
+                        const formattedValue = formatDateInputDraft(event.target.value);
+                        pendingNextVisitCursorRef.current =
+                          getCursorPositionForDigitIndex(formattedValue, nextDigitIndex);
+                        setNextVisitInputValue(formattedValue);
+                      }}
+                      onBlur={() => {
+                        const normalizedDate = normalizeFollowUpDateInput(nextVisitInputValue);
+                        if (!nextVisitInputValue.trim()) {
+                          applyFollowUpDate("", { clearQuickSelection: true });
+                          return;
+                        }
 
-                      if (!normalizedDate) {
-                        setNextVisitInputValue(formatDateDdMmYyyy(editorState?.next_visit_date));
-                        return;
-                      }
+                        if (!normalizedDate) {
+                          setNextVisitInputValue(formatDateDdMmYyyy(editorState?.next_visit_date));
+                          return;
+                        }
 
-                      applyFollowUpDate(normalizedDate, { clearQuickSelection: true });
-                    }}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-indigo-400"
-                  />
+                        applyFollowUpDate(normalizedDate, { clearQuickSelection: true });
+                      }}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 pr-10 text-sm outline-none focus:border-indigo-400"
+                    />
+                    <span className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-gray-700">
+                      <CalendarDays size={16} aria-hidden="true" />
+                      <input
+                        type="date"
+                        aria-label="Select follow-up date"
+                        value={toDateInputValue(editorState?.next_visit_date)}
+                        onChange={(event) => {
+                          if (event.target.value) {
+                            applyFollowUpDate(event.target.value, { clearQuickSelection: true });
+                          }
+                        }}
+                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                      />
+                    </span>
+                  </div>
                 </label>
                 <div className="space-y-1">
                   <span className="text-xs font-medium text-gray-500">Quick follow-up</span>
@@ -5040,18 +5047,30 @@ export default function DoctorAppointmentPadPage() {
                         return;
                       }
 
-                      const baseDate = buildQuickFollowUpBaseDate({
-                        visitDate: contextData?.draft?.visit_date,
-                        appointmentDate:
-                          contextData?.context.appointment.appointment_date,
-                      });
-                      baseDate.setUTCDate(baseDate.getUTCDate() + selectedDays);
-                      const computedDate = baseDate.toISOString().slice(0, 10);
-                      applyFollowUpDate(computedDate);
+                      setQuickFollowUpLoading(true);
+                      void (async () => {
+                        try {
+                          const res = await fetch(
+                            `/api/hms/emr/visits/${appointmentId}/next-visit-date?days=${selectedDays}`,
+                            { cache: "no-store" }
+                          );
+                          const data = (await res.json()) as { date?: string; error?: string };
+                          if (!res.ok || !data.date) {
+                            throw new Error(data.error || "Unable to calculate follow-up date.");
+                          }
+                          applyFollowUpDate(data.date);
+                        } catch (error) {
+                          setSaveMessage(toSafeUiErrorMessage(error, "Unable to calculate follow-up date."));
+                          setQuickFollowUpDays("");
+                        } finally {
+                          setQuickFollowUpLoading(false);
+                        }
+                      })();
                     }}
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                    disabled={quickFollowUpLoading}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 disabled:cursor-wait disabled:opacity-70"
                   >
-                    <option value="">Select quick follow-up</option>
+                    <option value="">{quickFollowUpLoading ? "Calculating..." : "Select quick follow-up"}</option>
                     {QUICK_FOLLOW_UP_OPTIONS.map((option) => (
                       <option key={option.label} value={option.days}>
                         {option.label}
