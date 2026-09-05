@@ -17,16 +17,33 @@ type SpellChecker = {
 };
 
 let spellCheckerPromise: Promise<SpellChecker> | null = null;
+const SPELL_CHECKER_TIMEOUT_MS = 5000;
 
 function getSpellChecker() {
   if (!spellCheckerPromise) {
-    spellCheckerPromise = Promise.all([
+    const loadPromise = Promise.all([
       import("nspell"),
       import("dictionary-en"),
     ]).then(([nspellModule, dictionaryModule]) => {
       const createSpellChecker = nspellModule.default;
       return createSpellChecker(dictionaryModule.default);
     });
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<SpellChecker>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error("Spell checker initialization timed out."));
+      }, SPELL_CHECKER_TIMEOUT_MS);
+    });
+
+    spellCheckerPromise = Promise.race([loadPromise, timeoutPromise])
+      .finally(() => {
+        if (timeoutId) clearTimeout(timeoutId);
+      })
+      .catch((error) => {
+        spellCheckerPromise = null;
+        throw error;
+      });
   }
 
   return spellCheckerPromise;
@@ -183,7 +200,16 @@ export async function getMasterCorrectionSuggestion(input: {
     };
   }
 
-  const spellChecker = await getSpellChecker();
+  let spellChecker: SpellChecker;
+  try {
+    spellChecker = await getSpellChecker();
+  } catch (error) {
+    console.warn("Spell checker unavailable; skipping master correction.", error);
+    return {
+      masterSuggestion: null,
+      spellSuggestion: null,
+    };
+  }
   const spellSuggestion = buildDictionarySuggestion(rawName, spellChecker);
   if (!spellSuggestion) {
     return {

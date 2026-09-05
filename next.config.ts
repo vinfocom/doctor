@@ -24,6 +24,8 @@ const nextConfig: NextConfig = {
   /* config options here */
   devIndicators: false,
   reactCompiler: true,
+  // Keep these native so dictionary-en can resolve its .aff/.dic files via import.meta.url.
+  serverExternalPackages: ["dictionary-en", "nspell"],
   images: {
     remotePatterns,
   },
