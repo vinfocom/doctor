@@ -6044,7 +6044,7 @@ export default function DoctorAppointmentPadPage() {
               The finalized prescription will remain unchanged. A new draft revision will be created and linked through version history.
             </p>
             <label className="mt-5 block space-y-2">
-              <span className="text-sm font-medium text-gray-700">Edit reason</span>
+              <span className="text-sm font-medium text-gray-700">Edit reason (optional)</span>
               <textarea
                 value={revisionReason}
                 onChange={(event) => setRevisionReason(event.target.value)}
@@ -6073,9 +6073,9 @@ export default function DoctorAppointmentPadPage() {
               </button>
               <button
                 type="button"
-                disabled={revisionSubmitting || !revisionReason.trim()}
+                disabled={revisionSubmitting}
                 onClick={() => void handleCreateRevisionDraft(revisionSourceId, revisionReason)}
-                className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {revisionSubmitting ? (
                   <Loader2 className="animate-spin" size={14} />

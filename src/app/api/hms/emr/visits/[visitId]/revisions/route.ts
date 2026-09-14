@@ -25,15 +25,11 @@ export async function POST(req: NextRequest, context: RouteContext) {
       editReason?: string | null;
     };
     const sourcePrescriptionId = Number(body.sourcePrescriptionId);
-    const editReason = body.editReason?.trim() ?? "";
+    const editReason = body.editReason?.trim() || null;
 
     if (!Number.isInteger(sourcePrescriptionId) || sourcePrescriptionId <= 0) {
       return NextResponse.json({ error: "A valid source prescription id is required." }, { status: 400 });
     }
-    if (!editReason) {
-      return NextResponse.json({ error: "Edit reason is required." }, { status: 400 });
-    }
-
     const source = await getPrescriptionRecord(sourcePrescriptionId, scope.visit.doctor_id);
     if (!source || source.patient_id !== scope.visit.patient_id || source.status !== "final") {
       return NextResponse.json({ error: "Only finalized prescriptions for this patient can be revised." }, { status: 400 });

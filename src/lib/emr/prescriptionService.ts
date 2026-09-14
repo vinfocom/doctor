@@ -1630,12 +1630,9 @@ export async function createPrescriptionRevisionDraft(input: {
   clinicId?: number | null;
   visitDate?: string | Date | null;
   timezone?: string | null;
-  editReason: string;
+  editReason?: string | null;
 }) {
-  const trimmedReason = input.editReason.trim();
-  if (!trimmedReason) {
-    throw new Error("Edit reason is required to revise a finalized prescription");
-  }
+  const trimmedReason = input.editReason?.trim() || null;
 
   const source = await getPrescriptionRecord(
     input.sourcePrescriptionId,
