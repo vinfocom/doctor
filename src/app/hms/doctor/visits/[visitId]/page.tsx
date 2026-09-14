@@ -3628,6 +3628,8 @@ export default function DoctorAppointmentPadPage() {
           prescriptionId: savedData.draft.id,
           resetSheet: options.resetSheet,
         });
+      } else {
+        router.replace("/hms/doctor/visits", { scroll: false });
       }
     } catch (err) {
       setSaveState("error");
@@ -3647,6 +3649,7 @@ export default function DoctorAppointmentPadPage() {
     isReadOnly,
     isSendingToLab,
     openSharedPaperPrint,
+    router,
   ]);
 
   const handleCopyPreviousPrescription = useCallback(
