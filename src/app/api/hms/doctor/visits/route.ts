@@ -242,6 +242,7 @@ export async function GET(req: Request) {
                 total_pages: totalPages,
             },
             totals: {
+                total: fullDayTotal,
                 waiting: toNumber(totals.waiting),
                 inConsult: toNumber(totals.in_consult),
                 lab: toNumber(totals.lab),

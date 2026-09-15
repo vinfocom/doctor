@@ -71,6 +71,7 @@ type VisitsResponse = {
         total_pages: number;
     };
     totals?: {
+        total: number;
         waiting: number;
         inConsult: number;
         lab: number;
@@ -142,7 +143,7 @@ export default function HmsDoctorQueueClient({
     const [searchInput, setSearchInput] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
     const [pagination, setPagination] = useState({ page: 1, page_size: 25, total: 0, total_pages: 1 });
-    const [totals, setTotals] = useState({ waiting: 0, inConsult: 0, lab: 0 });
+    const [totals, setTotals] = useState({ total: 0, waiting: 0, inConsult: 0, lab: 0 });
     const [selectedVisitId, setSelectedVisitId] = useState<number | null>(null);
     const [detail, setDetail] = useState<DetailResponse | null>(null);
     const [loading, setLoading] = useState(false);
@@ -339,7 +340,8 @@ export default function HmsDoctorQueueClient({
             {error && <HmsStatusAlert tone="error" message={error} onDismiss={clearError} />}
             {success && <HmsStatusAlert tone="success" message={success} onDismiss={clearSuccess} />}
 
-            <div className="mb-5 grid gap-3 sm:grid-cols-3">
+            <div className="mb-5 grid gap-3 sm:grid-cols-4">
+                <Metric label="Total" value={counts.total} />
                 <Metric label="Waiting" value={counts.waiting} />
                 <Metric label="In Consult" value={counts.inConsult} />
                 <Metric label="Lab" value={counts.lab} />
