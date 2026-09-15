@@ -1009,6 +1009,25 @@ function useFloatingPanelStyle(anchorElement: HTMLElement | null, open: boolean,
     getFloatingPanelStyle(anchorElement, width)
   );
 
+  // Autosave can change content above the anchor without a scroll/resize event.
+  // Re-measure after committed renders so the portaled panel stays attached.
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    setStyle((current) => {
+      const next = getFloatingPanelStyle(anchorElement, width);
+      if (
+        current.top === next.top &&
+        current.left === next.left &&
+        current.width === next.width &&
+        current.visibility === next.visibility
+      ) {
+        return current;
+      }
+      return next;
+    });
+  });
+
   useEffect(() => {
     if (!open) return;
 
