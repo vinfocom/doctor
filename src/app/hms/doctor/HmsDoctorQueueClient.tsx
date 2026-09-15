@@ -155,7 +155,17 @@ export default function HmsDoctorQueueClient({
 
     const printEnabled = detail?.featureFlags?.shared_paper_print_mode ?? defaultPrintEnabled;
     const emrEnabled = detail?.featureFlags?.emr_module ?? defaultEmrEnabled;
-    const activeVisit = detail?.visit || visits.find((visit) => visit.visit_id === selectedVisitId) || null;
+    const selectedVisit = selectedVisitId === null
+        ? null
+        : visits.find((visit) => visit.visit_id === selectedVisitId) || null;
+    const activeVisit = selectedVisitId === null
+        ? null
+        : detail?.visit?.visit_id === selectedVisitId
+            ? detail.visit
+            : selectedVisit;
+    const selectedDetail = selectedVisitId !== null && detail?.visit?.visit_id === selectedVisitId
+        ? detail
+        : null;
     const visibleVisits = useMemo(
         () => mode === "queue" ? visits.filter((visit) => visit.status === "WAITING" || visit.status === "IN_CONSULT") : visits,
         [mode, visits]
@@ -403,7 +413,7 @@ export default function HmsDoctorQueueClient({
 
                 {mode === "queue" && (
                     <VisitDetailPanel
-                        detail={detail}
+                        detail={selectedDetail}
                         activeVisit={activeVisit}
                         loading={detailLoading}
                     />
