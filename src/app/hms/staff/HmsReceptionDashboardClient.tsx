@@ -745,7 +745,9 @@ export default function HmsReceptionDashboardClient({
             visit_type: "OPD_NEW",
             payment_mode: "CASH",
             payment_status: "PAID",
-            fee_charged: "",
+            // Reset starts a fresh OPD_NEW registration, so show its policy fee immediately.
+            // The derived-fee effect will still recalculate once policy/doctor data is available.
+            fee_charged: formatFeeInput(visitsData?.feePolicy?.registrationFee ?? null),
             fee_waived_reason: "",
             override_reason: "",
         });
