@@ -43,6 +43,9 @@ type Visit = {
         phone: string | null;
         age: number | null;
         gender: string | null;
+        city: string | null;
+        location: string | null;
+        address: string | null;
     };
     doctor: {
         doctor_id: number;
@@ -344,6 +347,7 @@ export default function HmsReceptionDashboardClient({
     const [actingVisitId, setActingVisitId] = useState<number | null>(null);
     const [cancelVisit, setCancelVisit] = useState<Visit | null>(null);
     const [createdVisit, setCreatedVisit] = useState<Visit | null>(null);
+    const [editingVisit, setEditingVisit] = useState<Visit | null>(null);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const clearError = useCallback(() => setError(""), []);
@@ -693,12 +697,13 @@ export default function HmsReceptionDashboardClient({
             ? visitsData.feePolicy.registrationFee
             : visitsData.feePolicy.consultationFee;
         const threshold = selectedDoctor?.daily_capacity || null;
-        const projectedCount = selectedDoctor ? countedDoctorVisits(selectedDoctor) + 1 : 0;
+        const currentVisitIsInSelectedQueue = editingVisit && selectedDoctor?.doctor_id === editingVisit.doctor_id ? 1 : 0;
+        const projectedCount = selectedDoctor ? countedDoctorVisits(selectedDoctor) - currentVisitIsInSelectedQueue + 1 : 0;
         const surcharge = selectedDoctor && threshold && visitsData.feePolicy.surchargeEnabled && projectedCount > threshold
             ? visitsData.feePolicy.surchargeAmount
             : 0;
         return baseFee + surcharge;
-    }, [selectedDoctor, visitForm.payment_mode, visitForm.visit_type, visitsData?.feePolicy]);
+    }, [editingVisit, selectedDoctor, visitForm.payment_mode, visitForm.visit_type, visitsData?.feePolicy]);
     const paymentStatusOptions = useMemo(() => [
         { value: "PENDING", label: "Pending" },
         { value: "PAID", label: "Paid" },
@@ -760,8 +765,51 @@ export default function HmsReceptionDashboardClient({
         setVisitErrors({});
         setFollowupEligibility(null);
         setCreatedVisit(null);
+        setEditingVisit(null);
         setError("");
         setSuccess("");
+    };
+
+    const openEditVisit = (visit: Visit) => {
+        if (visit.status !== "WAITING") return;
+        setEditingVisit(visit);
+        setSelectedTempToken(null);
+        setSelectedPatient(visit.patient);
+        setPatientForm({
+            full_name: visit.patient.full_name || "",
+            age: visit.patient.age === null || visit.patient.age === undefined ? "" : String(visit.patient.age),
+            gender: visit.patient.gender || "",
+            phone: visit.patient.phone || "",
+            city: visit.patient.city || "",
+            location: visit.patient.location || "",
+            address: visit.patient.address || "",
+        });
+        setVisitForm((prev) => ({
+            ...prev,
+            patient_id: String(visit.patient_id),
+            doctor_id: String(visit.doctor_id),
+            visit_date: visit.visit_date,
+            visit_type: visit.visit_type,
+            payment_mode: visit.payment_mode,
+            payment_status: visit.payment_status,
+            fee_charged: formatFeeInput(visit.fee_charged),
+            fee_waived_reason: "",
+            override_reason: "",
+        }));
+        setFeeManuallyEdited(false);
+        setPatientErrors({});
+        setVisitErrors({});
+        setError("");
+        setSuccess("");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const cancelEditVisit = () => {
+        setEditingVisit(null);
+        setSelectedPatient(null);
+        setPatientForm(emptyPatientForm);
+        setVisitForm((prev) => ({ ...prev, patient_id: "", doctor_id: "", fee_charged: "" }));
+        setFeeManuallyEdited(false);
     };
 
     const selectPatient = (patient: Patient) => {
@@ -881,7 +929,7 @@ export default function HmsReceptionDashboardClient({
 
     const validatePatientIfNeeded = () => {
         const nextErrors: Partial<Record<keyof PatientForm, string>> = {};
-        if (selectedPatient) return nextErrors;
+        if (selectedPatient && !editingVisit) return nextErrors;
         if (requiresExistingPatient && !showOverride) return nextErrors;
 
         const age = Number(patientForm.age);
@@ -1081,6 +1129,33 @@ export default function HmsReceptionDashboardClient({
         return data.visit as Visit;
     };
 
+    const updateWaitingVisit = async (patientId: number) => {
+        if (!editingVisit) throw new Error("No waiting visit is selected for editing.");
+        const response = await fetch(`/api/hms/staff/visits/${editingVisit.visit_id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                patient_id: patientId,
+                doctor_id: Number(visitForm.doctor_id),
+                full_name: patientForm.full_name.trim(),
+                age: Number(patientForm.age),
+                gender: patientForm.gender,
+                phone: patientForm.phone.trim() || null,
+                city: patientForm.city.trim() || null,
+                location: patientForm.location.trim() || null,
+                address: patientForm.address.trim() || null,
+                fee_charged: Number(visitForm.fee_charged),
+            }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            setPatientErrors(data.fieldErrors || {});
+            setVisitErrors(data.fieldErrors || {});
+            throw new Error(data.error || "Unable to update waiting visit.");
+        }
+        return data.visit as Visit;
+    };
+
     const saveRegistration = async (event: React.FormEvent) => {
         event.preventDefault();
         setError("");
@@ -1099,14 +1174,18 @@ export default function HmsReceptionDashboardClient({
         setSubmittingRegistration(true);
 
         try {
-            const patient = selectedPatient
+            const patient = editingVisit
+                ? selectedPatient
+                : selectedPatient
                 ? await updateSelectedPatientContact(selectedPatient)
                 : canCreateNewPatient
                     ? await createPatientRecord()
                     : null;
             if (!patient) throw new Error("Select an existing patient for this OPD type.");
 
-            const visit = await createVisitRecord(patient.patient_id);
+            const visit = editingVisit
+                ? await updateWaitingVisit(patient.patient_id)
+                : await createVisitRecord(patient.patient_id);
             const selectedDoctorForVisit = doctors.find((doctor) => String(doctor.doctor_id) === visitForm.doctor_id);
             const visitWithDetails: Visit = {
                 ...visit,
@@ -1125,13 +1204,16 @@ export default function HmsReceptionDashboardClient({
                 },
             };
             setCreatedVisit(visitWithDetails);
-            setSuccess(`OPD ${visitWithDetails.visit_number || visitWithDetails.visit_id} saved. Fee ${formatCurrency(visitWithDetails.fee_charged)}.`);
+            setSuccess(editingVisit
+                ? `OPD ${visitWithDetails.visit_number || visitWithDetails.visit_id} updated. Fee ${formatCurrency(visitWithDetails.fee_charged)}.`
+                : `OPD ${visitWithDetails.visit_number || visitWithDetails.visit_id} saved. Fee ${formatCurrency(visitWithDetails.fee_charged)}.`);
             if (!visitForm.patient_id) {
                 setPatients((prev) => [patient, ...prev]);
             }
             setPatientForm(emptyPatientForm);
             setSelectedPatient(null);
             setSelectedTempToken(null);
+            setEditingVisit(null);
             setExactUhid("");
             setShowOverride(false);
             setDuplicateWarningDismissed(false);
@@ -1348,45 +1430,49 @@ export default function HmsReceptionDashboardClient({
                             </div>
                         ) : null}
 
-                            <PatientSearch
-                                patients={registrationPatientResults}
-                                loading={loadingPatients}
-                                search={patientSearch}
-                                selectedPatientId={visitForm.patient_id}
-                                onSearchChange={(value) => {
-                                    setPatientSearch(value);
-                                    setPatients([]);
-                                    setPatientPagination({
-                                        page: 1,
-                                        page_size: PATIENT_PAGE_SIZE,
-                                        total: 0,
-                                        total_pages: 1,
-                                    });
-                                }}
-                                onSearch={() => void loadPatients()}
-                                onSelect={selectPatient}
-                                onClearSelected={clearSelectedPatient}
-                                compact
-                            />
+                            {!editingVisit && (
+                                <>
+                                    <PatientSearch
+                                        patients={registrationPatientResults}
+                                        loading={loadingPatients}
+                                        search={patientSearch}
+                                        selectedPatientId={visitForm.patient_id}
+                                        onSearchChange={(value) => {
+                                            setPatientSearch(value);
+                                            setPatients([]);
+                                            setPatientPagination({
+                                                page: 1,
+                                                page_size: PATIENT_PAGE_SIZE,
+                                                total: 0,
+                                                total_pages: 1,
+                                            });
+                                        }}
+                                        onSearch={() => void loadPatients()}
+                                        onSelect={selectPatient}
+                                        onClearSelected={clearSelectedPatient}
+                                        compact
+                                    />
 
-                            {likelyDuplicateWarning && (
-                                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                                    Similar patients are listed above. Select the existing patient if this is not a new UHID.
-                                    <button type="button" onClick={() => setDuplicateWarningDismissed(true)} className="ml-2 font-semibold underline">
-                                        Dismiss
-                                    </button>
-                                </div>
+                                    {likelyDuplicateWarning && (
+                                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                                            Similar patients are listed above. Select the existing patient if this is not a new UHID.
+                                            <button type="button" onClick={() => setDuplicateWarningDismissed(true)} className="ml-2 font-semibold underline">
+                                                Dismiss
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
                             )}
 
                             <div>
                                 <div className="mb-3 flex items-center gap-2">
                                     <UserRound size={17} />
                                     <h3 className="text-sm font-semibold text-black">
-                                        {selectedPatient ? "Selected Patient" : canCreateNewPatient ? "New Patient Details" : "Patient Selection Required"}
+                                        {editingVisit ? "Edit Patient Details" : selectedPatient ? "Selected Patient" : canCreateNewPatient ? "New Patient Details" : "Patient Selection Required"}
                                     </h3>
                                 </div>
-                                {selectedPatient ? (
-                                    <div className="space-y-3">
+                                        {selectedPatient && !editingVisit ? (
+                                            <div className="space-y-3">
                                         <div className="rounded-lg border border-black bg-white px-3 py-3 text-sm">
                                             <div className="grid gap-2 md:grid-cols-4">
                                                 <div>
@@ -1416,9 +1502,9 @@ export default function HmsReceptionDashboardClient({
                                             </div>
                                         </div>
                                     </div>
-                                ) : canCreateNewPatient ? (
-                                    <div className="grid gap-3 md:grid-cols-2">
-                                        {showOverride && (
+                                        ) : canCreateNewPatient || editingVisit ? (
+                                            <div className="grid gap-3 md:grid-cols-2">
+                                        {showOverride && !editingVisit && (
                                             <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                                                 Exact UHID was not found in this hospital. Create a new UHID only if the patient cannot be matched.
                                             </div>
@@ -1438,7 +1524,7 @@ export default function HmsReceptionDashboardClient({
                                         <div className="md:col-span-2">
                                             <Field label="Address" value={patientForm.address} error={patientErrors.address} onChange={(value) => updatePatientForm("address", value)} />
                                         </div>
-                                        {showOverride && (
+                                {showOverride && !editingVisit && (
                                             <div className="md:col-span-2">
                                                 <Field label="Override Reason" value={visitForm.override_reason} error={visitErrors.override_reason} onChange={(value) => updateVisitForm("override_reason", value)} required />
                                             </div>
@@ -1551,10 +1637,12 @@ export default function HmsReceptionDashboardClient({
                                 )}
                             </div>
 
+                            {editingVisit && <p className="mt-4 border border-black px-3 py-2 text-xs font-semibold text-black">Editing waiting visit {editingVisit.visit_number || editingVisit.visit_id}</p>}
                             <button type="submit" disabled={submittingRegistration} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:opacity-60">
                                 {submittingRegistration ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                                {selectedPatient ? "Save OPD for selected patient" : "Save OPD Registration"}
+                                {editingVisit ? "Update Waiting Visit" : selectedPatient ? "Save OPD for selected patient" : "Save OPD Registration"}
                             </button>
+                            {editingVisit && <button type="button" onClick={cancelEditVisit} disabled={submittingRegistration} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-black px-4 py-2.5 text-sm font-semibold text-black hover:bg-black hover:text-white disabled:opacity-60">Cancel Edit</button>}
 
                             {createdVisit && (
                                 <a href={`/hms/staff/visits/${createdVisit.visit_id}/print?printType=HEADER`} target={opdSlipWindowName(createdVisit)} rel="noopener,noreferrer" className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-black px-4 py-2.5 text-sm font-semibold text-black hover:bg-black hover:text-white">
@@ -1566,7 +1654,7 @@ export default function HmsReceptionDashboardClient({
                     </div>
                 </form>
                 <div className="mt-5">
-                    <VisitsTable visits={latestVisitsFirst(visitsData?.visits || []).slice(0, 25)} loading={loadingVisits} actingVisitId={actingVisitId} onCancel={(visit) => setCancelVisit(visit)} compact />
+                <VisitsTable visits={latestVisitsFirst(visitsData?.visits || []).slice(0, 25)} loading={loadingVisits} actingVisitId={actingVisitId} onCancel={(visit) => setCancelVisit(visit)} onEdit={openEditVisit} compact />
                 </div>
                 </>
             )}
@@ -1600,7 +1688,7 @@ export default function HmsReceptionDashboardClient({
 
             {mode === "visits" && (
                 <div className="space-y-5">
-                    <VisitsTable visits={visitsData?.visits || []} loading={loadingVisits} actingVisitId={actingVisitId} onCancel={(visit) => setCancelVisit(visit)} />
+                    <VisitsTable visits={visitsData?.visits || []} loading={loadingVisits} actingVisitId={actingVisitId} onCancel={(visit) => setCancelVisit(visit)} onEdit={openEditVisit} />
                     <PaginationControls
                         page={visitPage}
                         totalPages={visitTotalPages}
@@ -1918,7 +2006,7 @@ function PatientTable({ patients, loading, onSelect, onEdit, fullHeight = false,
     );
 }
 
-function VisitsTable({ visits, loading, actingVisitId, onCancel, compact = false }: { visits: Visit[]; loading: boolean; actingVisitId: number | null; onCancel: (visit: Visit) => void; compact?: boolean }) {
+function VisitsTable({ visits, loading, actingVisitId, onCancel, onEdit, compact = false }: { visits: Visit[]; loading: boolean; actingVisitId: number | null; onCancel: (visit: Visit) => void; onEdit: (visit: Visit) => void; compact?: boolean }) {
     const showTable = visits.length > 0;
     return (
         <div className="rounded-lg border border-black bg-white">
@@ -1969,7 +2057,12 @@ function VisitsTable({ visits, loading, actingVisitId, onCancel, compact = false
                                         <div className="flex flex-wrap gap-2">
                                             <a href={`/hms/staff/visits/${visit.visit_id}/print?printType=HEADER`} target={opdSlipWindowName(visit)} rel="noopener,noreferrer" className="rounded-lg bg-black px-2 py-1 text-xs font-semibold text-white hover:bg-black">Print</a>
                                             {visit.status === "WAITING" && (
-                                                <button type="button" onClick={() => onCancel(visit)} disabled={actingVisitId === visit.visit_id} className="rounded-lg border border-red-600 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">Cancel</button>
+                                                <>
+                                                    <button type="button" onClick={() => onEdit(visit)} disabled={actingVisitId === visit.visit_id} className="inline-flex items-center gap-1 rounded-lg border border-black px-2 py-1 text-xs font-semibold text-black hover:bg-black hover:text-white disabled:opacity-50" aria-label="Edit waiting visit">
+                                                        <Pencil size={13} /> Edit
+                                                    </button>
+                                                    <button type="button" onClick={() => onCancel(visit)} disabled={actingVisitId === visit.visit_id} className="rounded-lg border border-red-600 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">Cancel</button>
+                                                </>
                                             )}
                                         </div>
                                     </td>

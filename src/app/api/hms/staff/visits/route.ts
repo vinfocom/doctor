@@ -101,6 +101,9 @@ type VisitListRow = CreatedVisitRow & {
     patient_phone: string | null;
     patient_age: number | null;
     patient_gender: string | null;
+    patient_city: string | null;
+    patient_location: string | null;
+    patient_address: string | null;
     doctor_name: string | null;
     room_no: string | null;
 };
@@ -282,6 +285,9 @@ function serializeVisitList(row: VisitListRow) {
             phone: row.patient_phone,
             age: row.patient_age,
             gender: row.patient_gender,
+            city: row.patient_city,
+            location: row.patient_location,
+            address: row.patient_address,
         },
         doctor: {
             doctor_id: Number(row.doctor_id),
@@ -714,6 +720,9 @@ export async function GET(req: Request) {
                 p.phone AS patient_phone,
                 p.age AS patient_age,
                 p.gender AS patient_gender,
+                p.city AS patient_city,
+                p.location AS patient_location,
+                p.address AS patient_address,
                 d.doctor_name,
                 hd.room_no
             FROM visits v
