@@ -58,6 +58,10 @@ function optionalText(value: unknown) {
     return valueText || null;
 }
 
+function hasOwn(value: Record<string, unknown>, key: string) {
+    return Object.prototype.hasOwnProperty.call(value, key);
+}
+
 function numberOrNull(value: unknown) {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
@@ -178,25 +182,14 @@ export async function PATCH(req: Request, context: { params: Promise<{ visitId: 
         const body = await req.json();
         const patientId = positiveInt(body?.patient_id);
         const doctorId = positiveInt(body?.doctor_id);
-        const fullName = text(body?.full_name);
-        const age = Number(body?.age);
-        const gender = normalizeGender(body?.gender);
-        const phone = optionalText(body?.phone)?.replace(/\D/g, "") || null;
-        const city = optionalText(body?.city);
-        const location = optionalText(body?.location);
-        const address = optionalText(body?.address);
+        const patientChanges = body?.patient_changes && typeof body.patient_changes === "object" && !Array.isArray(body.patient_changes)
+            ? body.patient_changes as Record<string, unknown>
+            : null;
         const requestedFee = numberOrNull(body?.fee_charged);
         const errors: Record<string, string> = {};
 
         if (!patientId) errors.patient_id = "Valid patient is required.";
         if (!doctorId) errors.doctor_id = "Select a doctor.";
-        if (!fullName || fullName.length > 255) errors.full_name = "Enter a valid patient name.";
-        if (!Number.isInteger(age) || age < 0 || age > 150) errors.age = "Age must be a whole number from 0 to 150.";
-        if (!gender) errors.gender = "Gender is required.";
-        if (phone && !/^\d{10}$/.test(phone)) errors.phone = "Enter a 10 digit phone number.";
-        if (city && city.length > 100) errors.city = "City must be 100 characters or fewer.";
-        if (location && location.length > 255) errors.location = "Location must be 255 characters or fewer.";
-        if (address && address.length > 500) errors.address = "Address must be 500 characters or fewer.";
         if (requestedFee === null) errors.fee_charged = "Enter a valid fee amount.";
         if (Object.keys(errors).length > 0) return NextResponse.json({ error: "Please correct the highlighted fields.", fieldErrors: errors }, { status: 400 });
         if (patientId === null || doctorId === null || requestedFee === null) {
@@ -224,12 +217,31 @@ export async function PATCH(req: Request, context: { params: Promise<{ visitId: 
             if (prescriptionRows[0]) return { error: "This visit already has EMR activity and cannot be edited.", status: 409 };
 
             const patientRows = await tx.$queryRawUnsafe<PatientRow[]>(
-                `SELECT patient_id FROM patients WHERE patient_id = ? AND admin_id = ? AND hospital_group_code = ? LIMIT 1 FOR UPDATE`,
+                `SELECT patient_id, full_name, phone, age, gender, city, location, address
+                 FROM patients WHERE patient_id = ? AND admin_id = ? AND hospital_group_code = ? LIMIT 1 FOR UPDATE`,
                 patientId,
                 access.hospital.adminId,
                 access.hospital.hospitalCode
             );
             if (!patientRows[0] || Number(patientId) !== Number(visit.patient_id)) return { error: "Patient does not match this visit.", status: 400 };
+            const currentPatient = patientRows[0];
+            const fullName = patientChanges && hasOwn(patientChanges, "full_name") ? text(patientChanges.full_name) : text(currentPatient.full_name);
+            const age = patientChanges && hasOwn(patientChanges, "age") ? Number(patientChanges.age) : currentPatient.age;
+            const patientAge = age === null ? NaN : age;
+            const gender = patientChanges && hasOwn(patientChanges, "gender") ? normalizeGender(patientChanges.gender) : normalizeGender(currentPatient.gender);
+            const phone = patientChanges && hasOwn(patientChanges, "phone") ? optionalText(patientChanges.phone)?.replace(/\D/g, "") || null : currentPatient.phone;
+            const city = patientChanges && hasOwn(patientChanges, "city") ? optionalText(patientChanges.city) : currentPatient.city;
+            const location = patientChanges && hasOwn(patientChanges, "location") ? optionalText(patientChanges.location) : currentPatient.location;
+            const address = patientChanges && hasOwn(patientChanges, "address") ? optionalText(patientChanges.address) : currentPatient.address;
+            const patientErrors: Record<string, string> = {};
+            if (!fullName || fullName.length > 255) patientErrors.full_name = "Enter a valid patient name.";
+            if (!Number.isInteger(patientAge) || patientAge < 0 || patientAge > 150) patientErrors.age = "Age must be a whole number from 0 to 150.";
+            if (!gender) patientErrors.gender = "Gender is required.";
+            if (phone && !/^\d{10}$/.test(phone)) patientErrors.phone = "Enter a 10 digit phone number.";
+            if (city && city.length > 100) patientErrors.city = "City must be 100 characters or fewer.";
+            if (location && location.length > 255) patientErrors.location = "Location must be 255 characters or fewer.";
+            if (address && address.length > 500) patientErrors.address = "Address must be 500 characters or fewer.";
+            if (Object.keys(patientErrors).length > 0) return { error: "Please correct the highlighted patient fields.", status: 400, fieldErrors: patientErrors };
 
             const doctorRows = await tx.$queryRawUnsafe<DoctorRow[]>(
                 `SELECT d.doctor_id
@@ -299,20 +311,19 @@ export async function PATCH(req: Request, context: { params: Promise<{ visitId: 
                     periodKey: getDailyTokenPeriodKey(doctorId, visitDate),
                 });
 
-            await tx.$executeRawUnsafe(
-                `UPDATE patients SET full_name = ?, phone = ?, age = ?, gender = ?, city = ?, location = ?, address = ?
-                 WHERE patient_id = ? AND admin_id = ? AND hospital_group_code = ?`,
-                fullName,
-                phone,
-                age,
-                gender,
-                city,
-                location,
-                address,
-                patientId,
-                access.hospital.adminId,
-                access.hospital.hospitalCode
-            );
+            if (patientChanges && Object.keys(patientChanges).some((key) => ["full_name", "phone", "age", "gender", "city", "location", "address"].includes(key))) {
+                const changedFields = ["full_name", "phone", "age", "gender", "city", "location", "address"].filter((field) => hasOwn(patientChanges, field));
+                const assignments = changedFields.map((field) => `${field} = ?`).join(", ");
+                const patientUpdateValues = { full_name: fullName, phone, age: patientAge, gender, city, location, address };
+                const values = changedFields.map((field) => patientUpdateValues[field as keyof typeof patientUpdateValues]);
+                await tx.$executeRawUnsafe(
+                    `UPDATE patients SET ${assignments} WHERE patient_id = ? AND admin_id = ? AND hospital_group_code = ?`,
+                    ...values,
+                    patientId,
+                    access.hospital.adminId,
+                    access.hospital.hospitalCode
+                );
+            }
             await tx.$executeRawUnsafe(
                 `UPDATE visits SET doctor_id = ?, daily_token_number = ?, fee_charged = ? WHERE visit_id = ? AND status = 'WAITING'`,
                 doctorId,

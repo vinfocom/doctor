@@ -1131,19 +1131,37 @@ export default function HmsReceptionDashboardClient({
 
     const updateWaitingVisit = async (patientId: number) => {
         if (!editingVisit) throw new Error("No waiting visit is selected for editing.");
+        const originalPatient = editingVisit.patient;
+        const originalValues = {
+            full_name: originalPatient.full_name || "",
+            age: originalPatient.age === null || originalPatient.age === undefined ? "" : String(originalPatient.age),
+            gender: originalPatient.gender || "",
+            phone: originalPatient.phone || "",
+            city: originalPatient.city || "",
+            location: originalPatient.location || "",
+            address: originalPatient.address || "",
+        };
+        const currentValues = {
+            full_name: patientForm.full_name,
+            age: patientForm.age,
+            gender: patientForm.gender,
+            phone: patientForm.phone,
+            city: patientForm.city,
+            location: patientForm.location,
+            address: patientForm.address,
+        };
+        const patientChanges = Object.fromEntries(
+            (Object.keys(currentValues) as Array<keyof typeof currentValues>)
+                .filter((field) => currentValues[field] !== originalValues[field])
+                .map((field) => [field, currentValues[field]])
+        );
         const response = await fetch(`/api/hms/staff/visits/${editingVisit.visit_id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 patient_id: patientId,
                 doctor_id: Number(visitForm.doctor_id),
-                full_name: patientForm.full_name.trim(),
-                age: Number(patientForm.age),
-                gender: patientForm.gender,
-                phone: patientForm.phone.trim() || null,
-                city: patientForm.city.trim() || null,
-                location: patientForm.location.trim() || null,
-                address: patientForm.address.trim() || null,
+                patient_changes: patientChanges,
                 fee_charged: Number(visitForm.fee_charged),
             }),
         });
