@@ -14,6 +14,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import { HMS_MEDICINE_FREQUENCY_OPTIONS } from "@/lib/emr/types";
 import type {
   EmrLayoutCustomField,
   EmrLayoutMarginConfig,
@@ -52,6 +53,7 @@ type Props = {
   theme?: "legacy" | "hms";
   hideClinicSelector?: boolean;
   showVoiceInputToggle?: boolean;
+  showMedicineFrequencyOptionsToggle?: boolean;
   headerAddon?: React.ReactNode;
   extraSavePayload?: Record<string, unknown>;
 };
@@ -925,6 +927,7 @@ export default function EmrLayoutSettingsForm({
   theme = "legacy",
   hideClinicSelector = false,
   showVoiceInputToggle = false,
+  showMedicineFrequencyOptionsToggle = false,
   headerAddon,
   extraSavePayload,
 }: Props) {
@@ -1217,6 +1220,7 @@ export default function EmrLayoutSettingsForm({
                         header_height: settings.header_height,
                         footer_height: settings.footer_height,
                         voice_input_enabled: settings.voice_input_enabled === true,
+                        medicine_frequency_options: settings.medicine_frequency_options ?? [],
                         custom_fields: customFieldDrafts,
                         ...(extraSavePayload || {}),
                       }),
@@ -1297,6 +1301,49 @@ export default function EmrLayoutSettingsForm({
                     />
                   </button>
                 </label>
+              </div>
+            </section>
+          ) : null}
+
+          {showMedicineFrequencyOptionsToggle ? (
+            <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Medicine Frequency Shortcuts
+                </h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  Choose the quick frequency options shown to HMS doctors. Dose remains editable.
+                </p>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-4">
+                {HMS_MEDICINE_FREQUENCY_OPTIONS.map((option) => {
+                  const enabled = settings.medicine_frequency_options?.includes(option) ?? false;
+                  return (
+                    <label
+                      key={option}
+                      className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={() =>
+                          setSettings((current) => {
+                            if (!current) return current;
+                            const currentOptions = current.medicine_frequency_options ?? [];
+                            return {
+                              ...current,
+                              medicine_frequency_options: enabled
+                                ? currentOptions.filter((item) => item !== option)
+                                : [...currentOptions, option],
+                            };
+                          })
+                        }
+                        className="h-4 w-4 accent-black"
+                      />
+                      {option}
+                    </label>
+                  );
+                })}
               </div>
             </section>
           ) : null}

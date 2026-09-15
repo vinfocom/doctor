@@ -273,10 +273,22 @@ export type EmrLayoutSettings = {
   header_height: string | null;
   footer_height: string | null;
   voice_input_enabled: boolean;
+  medicine_frequency_options?: string[];
   created_at: string;
   updated_at: string;
   custom_fields: EmrLayoutCustomField[];
 };
+
+export const HMS_MEDICINE_FREQUENCY_OPTIONS = [
+  "OD",
+  "BD",
+  "TDS",
+  "QID",
+  "Q4H",
+  "Q6H",
+  "Q8H",
+  "HS",
+] as const;
 
 export type EmrPrintablePrescription = {
   prescription: EmrPrescriptionRecord;

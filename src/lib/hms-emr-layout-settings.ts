@@ -1,7 +1,10 @@
 import {
   getDefaultPrescriptionLayoutSettings,
 } from "@/lib/emr/layoutService";
-import type { EmrLayoutSettings } from "@/lib/emr/types";
+import {
+  HMS_MEDICINE_FREQUENCY_OPTIONS,
+  type EmrLayoutSettings,
+} from "@/lib/emr/types";
 import {
   createHmsPrintLayout,
   listHmsPrintLayoutDoctors,
@@ -48,6 +51,19 @@ function normalizeNumber(value: unknown, fallback: number, min: number, max: num
   return Math.min(max, Math.max(min, Math.round(parsed)));
 }
 
+function normalizeMedicineFrequencyOptions(value: unknown) {
+  const allowed = new Set<string>(HMS_MEDICINE_FREQUENCY_OPTIONS);
+  if (!Array.isArray(value)) return [...HMS_MEDICINE_FREQUENCY_OPTIONS];
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => String(item || "").trim().toUpperCase())
+        .filter((item) => allowed.has(item))
+    )
+  );
+}
+
 function mergeMissingLayoutSections(settings: EmrLayoutSettings, defaults: EmrLayoutSettings): EmrLayoutSettings {
   const sectionOrder = Array.isArray(settings.section_order_json) ? settings.section_order_json : [];
   const mergedOrder = [
@@ -67,6 +83,9 @@ function mergeMissingLayoutSections(settings: EmrLayoutSettings, defaults: EmrLa
       ...(settings.print_visibility_json || {}),
     },
     voice_input_enabled: settings.voice_input_enabled === true,
+    medicine_frequency_options: normalizeMedicineFrequencyOptions(
+      settings.medicine_frequency_options
+    ),
   };
 }
 
@@ -149,6 +168,9 @@ export async function saveHmsEmrLayoutSettings(input: {
     header_height: input.body.header_height,
     footer_height: input.body.footer_height,
     voice_input_enabled: input.body.voice_input_enabled === true,
+    medicine_frequency_options: normalizeMedicineFrequencyOptions(
+      input.body.medicine_frequency_options
+    ),
     custom_fields: input.body.custom_fields,
   } as EmrLayoutSettings, defaults);
 
