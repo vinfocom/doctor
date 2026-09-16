@@ -107,7 +107,7 @@ export default function HmsSidebar({ context, featureFlags, staffType, accountLa
 
     const handleLogout = async () => {
         await fetch("/api/hms/auth/logout", { method: "POST" });
-        router.push("/login");
+        router.push("/hms/login");
     };
 
     const sidebarContent = (
