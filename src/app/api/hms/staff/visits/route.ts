@@ -91,6 +91,7 @@ type CreatedVisitRow = {
     payment_mode: string;
     payment_status: string;
     fee_waived_reason: string | null;
+    fee_waiver_reason_source: string | null;
     override_reason: string | null;
     created_at: Date | string | null;
 };
@@ -131,6 +132,7 @@ type HospitalPolicies = {
     free_payment?: {
         enabled?: unknown;
         require_waiver_reason?: unknown;
+        waiver_reason_options?: unknown;
     };
     capacity_surcharge?: {
         enabled?: unknown;
@@ -156,6 +158,16 @@ function normalizeText(value: unknown) {
 function normalizeOptionalText(value: unknown) {
     const text = normalizeText(value);
     return text || null;
+}
+
+function normalizeWaiverReasonSource(value: unknown) {
+    const source = normalizeText(value).toUpperCase();
+    return source === "PRESET" || source === "CUSTOM" ? source : null;
+}
+
+function normalizeWaiverReasonOptions(value: unknown) {
+    const raw = parseJsonArray(value) || [];
+    return Array.from(new Set(raw.map((item) => normalizeText(item)).filter((item) => item.length > 0 && item.length <= 80))).slice(0, 20);
 }
 
 function parseJsonObject(value: unknown): Record<string, unknown> | null {
@@ -263,6 +275,7 @@ function serializeVisit(row: CreatedVisitRow, counter: { countedVisitsBeforeCrea
         payment_mode: row.payment_mode,
         payment_status: row.payment_status,
         fee_waived_reason: row.fee_waived_reason,
+        fee_waiver_reason_source: row.fee_waiver_reason_source,
         override_reason: row.override_reason,
         created_at: row.created_at,
         counter,
@@ -322,6 +335,7 @@ function readPolicies(value: unknown) {
         consultationFee,
         feeWaiverAllowed: freePayment.enabled === true || policies.fee_waiver_allowed === true,
         feeWaiverReasonRequired: freePayment.require_waiver_reason !== false,
+        waiverReasonOptions: normalizeWaiverReasonOptions(freePayment.waiver_reason_options),
         surchargeEnabled: surcharge.enabled === true,
         surchargeAmount: surchargeAmount || 0,
         defaultCapacityCountCategories: normalizeCapacityCategories(
@@ -713,6 +727,7 @@ export async function GET(req: Request) {
                 v.payment_mode,
                 v.payment_status,
                 v.fee_waived_reason,
+                v.fee_waiver_reason_source,
                 v.override_reason,
                 v.created_at,
                 p.full_name AS patient_name,
@@ -847,6 +862,7 @@ export async function GET(req: Request) {
                 consultationFee: policies.consultationFee,
                 feeWaiverAllowed: policies.feeWaiverAllowed,
                 feeWaiverReasonRequired: policies.feeWaiverReasonRequired,
+                waiverReasonOptions: policies.waiverReasonOptions,
                 surchargeEnabled: policies.surchargeEnabled,
                 surchargeAmount: policies.surchargeAmount,
             },
@@ -897,6 +913,7 @@ export async function POST(req: Request) {
         const feeChargedProvided = body?.fee_charged !== null && body?.fee_charged !== undefined && String(body.fee_charged).trim() !== "";
         const requestedFeeCharged = feeChargedProvided ? parsePositiveNumber(body.fee_charged) : null;
         const feeWaivedReason = normalizeOptionalText(body?.fee_waived_reason);
+        const requestedWaiverReasonSource = normalizeWaiverReasonSource(body?.fee_waiver_reason_source);
         const overrideReason = normalizeOptionalText(body?.override_reason);
         const tempTokenRegistrationId = body?.temp_token_registration_id === null || body?.temp_token_registration_id === undefined
             ? null
@@ -1148,6 +1165,11 @@ export async function POST(req: Request) {
             const effectiveFeeWaivedReason = effectivePaymentMode === "FREE"
                 ? feeWaivedReason || (visitType === "REFERRAL" ? "Referred doctor follow-up" : "Same doctor follow-up")
                 : null;
+            const effectiveWaiverReasonSource = effectivePaymentMode === "FREE" && feeWaivedReason
+                ? requestedWaiverReasonSource === "PRESET" && policies.waiverReasonOptions.includes(feeWaivedReason)
+                    ? "PRESET"
+                    : requestedWaiverReasonSource === "CUSTOM" ? "CUSTOM" : null
+                : null;
 
             if (effectivePaymentMode === "FREE") {
                 if (!policies.feeWaiverAllowed) {
@@ -1256,10 +1278,11 @@ export async function POST(req: Request) {
                     payment_mode,
                     payment_status,
                     fee_waived_reason,
+                    fee_waiver_reason_source,
                     override_reason,
                     created_by_user_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'WAITING', ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'WAITING', ?, ?, ?, ?, ?, ?, ?)
                 `,
                 hospital.hospitalId,
                 hospital.hospitalCode,
@@ -1276,6 +1299,7 @@ export async function POST(req: Request) {
                 effectivePaymentMode,
                 paymentStatus,
                 effectiveFeeWaivedReason,
+                effectiveWaiverReasonSource,
                 overrideReason,
                 hospital.userId
             );
@@ -1326,6 +1350,7 @@ export async function POST(req: Request) {
                     payment_mode,
                     payment_status,
                     fee_waived_reason,
+                    fee_waiver_reason_source,
                     override_reason,
                     created_at
                 FROM visits

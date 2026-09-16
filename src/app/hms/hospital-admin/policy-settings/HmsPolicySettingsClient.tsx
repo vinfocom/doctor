@@ -54,6 +54,7 @@ type PolicyForm = {
     consultation_fee: string;
     free_payment_enabled: boolean;
     fee_waiver_reason_required: boolean;
+    waiver_reason_options: string[];
     surcharge_enabled: boolean;
     doctor_token_enabled: boolean;
     surcharge_amount: string;
@@ -92,6 +93,7 @@ const emptyPolicyForm: PolicyForm = {
     consultation_fee: "",
     free_payment_enabled: true,
     fee_waiver_reason_required: true,
+    waiver_reason_options: [],
     surcharge_enabled: true,
     doctor_token_enabled: false,
     surcharge_amount: "",
@@ -187,6 +189,7 @@ function toForm(data: Partial<PolicyForm> & Record<string, unknown>): PolicyForm
         consultation_fee: String(data.consultation_fee ?? ""),
         free_payment_enabled: data.free_payment_enabled === true,
         fee_waiver_reason_required: data.fee_waiver_reason_required !== false,
+        waiver_reason_options: Array.isArray(data.waiver_reason_options) ? data.waiver_reason_options.map(String) : [],
         surcharge_enabled: data.surcharge_enabled === true,
         doctor_token_enabled: data.doctor_token_enabled === true,
         surcharge_amount: String(data.surcharge_amount ?? ""),
@@ -616,6 +619,7 @@ export default function HmsPolicySettingsClient() {
                     consultation_fee: Number(form.consultation_fee),
                     free_payment_enabled: form.free_payment_enabled,
                     fee_waiver_reason_required: form.fee_waiver_reason_required,
+                    waiver_reason_options: form.waiver_reason_options,
                     surcharge_enabled: form.surcharge_enabled,
                     doctor_token_enabled: form.doctor_token_enabled,
                     surcharge_amount: Number(form.surcharge_amount),
@@ -901,6 +905,46 @@ export default function HmsPolicySettingsClient() {
                             checked={form.doctor_token_enabled}
                             onChange={(checked) => updateField("doctor_token_enabled", checked)}
                         />
+                    </div>
+
+                    <div className="border-b border-gray-100 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <h2 className="text-sm font-bold text-gray-950">Waiver Reason Options</h2>
+                                <p className="mt-1 text-xs text-gray-500">Optional choices shown to Registration Desk staff when payment is FREE.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => form.waiver_reason_options.length < 20 && updateField("waiver_reason_options", [...form.waiver_reason_options, ""])}
+                                disabled={form.waiver_reason_options.length >= 20}
+                                className="inline-flex items-center gap-1 rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                            >
+                                <Plus size={14} /> Add option
+                            </button>
+                        </div>
+                        {form.waiver_reason_options.length > 0 && (
+                            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                {form.waiver_reason_options.map((option, index) => (
+                                    <div key={index} className="flex items-center gap-2">
+                                        <input
+                                            value={option}
+                                            maxLength={80}
+                                            onChange={(event) => updateField("waiver_reason_options", form.waiver_reason_options.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
+                                            placeholder="e.g. STAFF"
+                                            className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-black focus:ring-2 focus:ring-black/10"
+                                        />
+                                        <button
+                                            type="button"
+                                            aria-label="Remove waiver reason option"
+                                            onClick={() => updateField("waiver_reason_options", form.waiver_reason_options.filter((_, itemIndex) => itemIndex !== index))}
+                                            className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
+                                        >
+                                            <Trash2 size={15} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className="p-4">

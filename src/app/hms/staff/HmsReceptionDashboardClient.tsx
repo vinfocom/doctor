@@ -116,6 +116,7 @@ type VisitsResponse = {
         consultationFee: number;
         feeWaiverAllowed?: boolean;
         feeWaiverReasonRequired?: boolean;
+        waiverReasonOptions?: string[];
         surchargeEnabled: boolean;
         surchargeAmount: number;
     };
@@ -158,6 +159,7 @@ type VisitForm = {
     payment_status: string;
     fee_charged: string;
     fee_waived_reason: string;
+    fee_waiver_reason_source: "" | "PRESET" | "CUSTOM";
     override_reason: string;
 };
 
@@ -330,9 +332,11 @@ export default function HmsReceptionDashboardClient({
         payment_status: "PAID",
         fee_charged: "",
         fee_waived_reason: "",
+        fee_waiver_reason_source: "",
         override_reason: "",
     });
     const [feeManuallyEdited, setFeeManuallyEdited] = useState(false);
+    const [waiverReasonOpen, setWaiverReasonOpen] = useState(false);
     const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
     const [exactUhid, setExactUhid] = useState("");
     const [showOverride, setShowOverride] = useState(false);
@@ -673,10 +677,11 @@ export default function HmsReceptionDashboardClient({
                         payment_mode: "FREE",
                         payment_status: "PAID",
                         fee_waived_reason: prev.fee_waived_reason || (visitForm.visit_type === "REFERRAL" ? "Referred doctor follow-up" : "Same doctor follow-up"),
+                        fee_waiver_reason_source: "",
                     }));
                 } else {
                     setVisitForm((prev) => prev.payment_mode === "FREE"
-                        ? { ...prev, payment_mode: "CASH", payment_status: "PAID", fee_waived_reason: "" }
+                        ? { ...prev, payment_mode: "CASH", payment_status: "PAID", fee_waived_reason: "", fee_waiver_reason_source: "" }
                         : prev);
                 }
             })
@@ -734,6 +739,12 @@ export default function HmsReceptionDashboardClient({
         setSuccess("");
     };
 
+    const updateWaiverReason = (value: string, source: "" | "PRESET" | "CUSTOM") => {
+        setVisitForm((prev) => ({ ...prev, fee_waived_reason: value, fee_waiver_reason_source: source }));
+        setVisitErrors((prev) => ({ ...prev, fee_waived_reason: undefined }));
+        setSuccess("");
+    };
+
     const resetRegistrationForm = () => {
         setPatientSearch("");
         setPatients([]);
@@ -754,6 +765,7 @@ export default function HmsReceptionDashboardClient({
             // The derived-fee effect will still recalculate once policy/doctor data is available.
             fee_charged: formatFeeInput(visitsData?.feePolicy?.registrationFee ?? null),
             fee_waived_reason: "",
+            fee_waiver_reason_source: "",
             override_reason: "",
         });
         setFeeManuallyEdited(false);
@@ -794,6 +806,7 @@ export default function HmsReceptionDashboardClient({
             payment_status: visit.payment_status,
             fee_charged: formatFeeInput(visit.fee_charged),
             fee_waived_reason: "",
+            fee_waiver_reason_source: "",
             override_reason: "",
         }));
         setFeeManuallyEdited(false);
@@ -1117,6 +1130,7 @@ export default function HmsReceptionDashboardClient({
                 payment_status: visitForm.payment_status,
                 fee_charged: Number(visitForm.fee_charged),
                 fee_waived_reason: visitForm.fee_waived_reason.trim() || null,
+                fee_waiver_reason_source: visitForm.fee_waiver_reason_source || null,
                 override_reason: showOverride ? visitForm.override_reason.trim() : null,
                 temp_token_registration_id: selectedTempToken?.registration_id ?? null,
             }),
@@ -1241,6 +1255,7 @@ export default function HmsReceptionDashboardClient({
                 referred_by_doctor_id: "",
                 referring_prescription_id: "",
                 fee_waived_reason: "",
+                fee_waiver_reason_source: "",
                 override_reason: "",
                 payment_mode: "CASH",
                 payment_status: "PAID",
@@ -1651,7 +1666,51 @@ export default function HmsReceptionDashboardClient({
                                     <Field label="Fee (Rs.)" inputMode="decimal" value={visitForm.fee_charged} error={visitErrors.fee_charged} onChange={(value) => updateVisitForm("fee_charged", value)} required />
                                 </div>
                                 {visitForm.payment_mode === "FREE" && (
-                                    <Field label="Waiver Reason" value={visitForm.fee_waived_reason} error={visitErrors.fee_waived_reason} onChange={(value) => updateVisitForm("fee_waived_reason", value)} required={feeWaiverReasonRequired} />
+                                    <div>
+                                        <label className="mb-1 block text-xs font-medium text-gray-600">Waiver Reason{feeWaiverReasonRequired ? " *" : ""}</label>
+                                        <div className="relative">
+                                            <input
+                                                value={visitForm.fee_waived_reason}
+                                                onFocus={() => setWaiverReasonOpen(true)}
+                                                onChange={(event) => {
+                                                    const value = event.target.value;
+                                                    const isPreset = (visitsData?.feePolicy?.waiverReasonOptions || []).includes(value);
+                                                    updateWaiverReason(value, value ? (isPreset ? "PRESET" : "CUSTOM") : "");
+                                                }}
+                                                onBlur={() => window.setTimeout(() => setWaiverReasonOpen(false), 120)}
+                                                placeholder="Waiver reason (optional)"
+                                                className={`w-full rounded-lg border px-3 py-2 pr-10 text-sm text-black outline-none focus:border-black focus:ring-2 focus:ring-black/10 ${visitErrors.fee_waived_reason ? "border-red-600" : "border-black"}`}
+                                            />
+                                            <button
+                                                type="button"
+                                                aria-label="Show saved waiver reasons"
+                                                onMouseDown={(event) => event.preventDefault()}
+                                                onClick={() => setWaiverReasonOpen((open) => !open)}
+                                                className="absolute inset-y-0 right-0 inline-flex w-9 items-center justify-center text-gray-600 hover:text-black"
+                                            >
+                                                <ChevronDown size={16} />
+                                            </button>
+                                            {waiverReasonOpen && (visitsData?.feePolicy?.waiverReasonOptions || []).length > 0 && (
+                                                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-y-auto rounded-lg border border-black bg-white py-1 shadow-lg">
+                                                    {(visitsData?.feePolicy?.waiverReasonOptions || []).map((option) => (
+                                                        <button
+                                                            key={option}
+                                                            type="button"
+                                                            onMouseDown={(event) => event.preventDefault()}
+                                                            onClick={() => {
+                                                                updateWaiverReason(option, "PRESET");
+                                                                setWaiverReasonOpen(false);
+                                                            }}
+                                                            className="block w-full px-3 py-2 text-left text-sm text-black hover:bg-gray-100"
+                                                        >
+                                                            {option}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                        {visitErrors.fee_waived_reason && <p className="mt-1 text-xs text-red-600">{visitErrors.fee_waived_reason}</p>}
+                                    </div>
                                 )}
                             </div>
 

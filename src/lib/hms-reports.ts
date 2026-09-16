@@ -146,6 +146,7 @@ type VisitReportRow = {
     payment_mode: string;
     payment_status: string;
     fee_waived_reason: string | null;
+    fee_waiver_reason_source: string | null;
     override_reason: string | null;
     patient_uhid: string | null;
     patient_name: string | null;
@@ -275,7 +276,7 @@ function addVisitToSummary(summary: HmsReportSummary, visit: HmsRegistrationRepo
     if (visit.payment_mode === "CARD" && visit.payment_status === "PAID") summary.card_amount = toMoney(summary.card_amount + fee);
 }
 
-function serializeRegistration(row: VisitReportRow, registrationFee: number, consultationFee: number): HmsRegistrationReportRow {
+function serializeRegistration(row: VisitReportRow, registrationFee: number, consultationFee: number, includeAllWaiverReasons = false): HmsRegistrationReportRow {
     const fee = toMoney(row.fee_charged);
     const baseFee = baseFeeForVisit(row.visit_type, registrationFee, consultationFee);
 
@@ -304,7 +305,7 @@ function serializeRegistration(row: VisitReportRow, registrationFee: number, con
         estimated_surcharge: row.payment_mode === "FREE" ? 0 : Math.max(0, toMoney(fee - baseFee)),
         payment_mode: row.payment_mode,
         payment_status: row.payment_status,
-        fee_waived_reason: row.fee_waived_reason,
+        fee_waived_reason: includeAllWaiverReasons || row.fee_waiver_reason_source === "PRESET" ? row.fee_waived_reason : null,
         override_reason: row.override_reason,
         registered_by: row.registered_by,
         cancelled_by: row.cancelled_by,
@@ -315,6 +316,7 @@ export async function buildHmsReports(input: {
     hospitalId: number;
     fromDate?: string | null;
     toDate?: string | null;
+    includeAllWaiverReasons?: boolean;
 }): Promise<HmsReports> {
     const today = todayYmdInIst();
     const fromDate = normalizeDateInput(input.fromDate || null, today);
@@ -363,6 +365,7 @@ export async function buildHmsReports(input: {
             v.payment_mode,
             v.payment_status,
             v.fee_waived_reason,
+            v.fee_waiver_reason_source,
             v.override_reason,
             p.uhid AS patient_uhid,
             p.full_name AS patient_name,
@@ -447,7 +450,7 @@ export async function buildHmsReports(input: {
     };
 
     const rowsByVisitId = new Map(rows.map((row) => [Number(row.visit_id), row]));
-    const registrations = rows.map((row) => serializeRegistration(row, registrationFee, consultationFee));
+    const registrations = rows.map((row) => serializeRegistration(row, registrationFee, consultationFee, input.includeAllWaiverReasons === true));
     const summary = emptySummary();
     const dailyMap = new Map<string, HmsDailyReportRow>();
     const doctorMap = new Map<number, HmsDoctorReportRow>();

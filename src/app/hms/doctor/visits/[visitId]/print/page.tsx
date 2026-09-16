@@ -126,6 +126,8 @@ export default async function HmsDoctorVisitPrintPage({ params, searchParams }: 
                 visit_type: context.visit.visit_type,
                 status: context.visit.status,
                 fee_charged: context.visit.fee_charged,
+                fee_waived_reason: context.visit.fee_waived_reason,
+                fee_waiver_reason_source: context.visit.fee_waiver_reason_source,
                 patient_name: context.visit.patient_name,
                 patient_uhid: context.visit.patient_uhid,
                 patient_phone: context.visit.patient_phone,

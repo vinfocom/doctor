@@ -58,6 +58,7 @@ export async function GET(req: Request) {
             hospitalId: session.hospitalContext.hospitalId,
             fromDate,
             toDate,
+            includeAllWaiverReasons: true,
         });
 
         const workbook = new ExcelJS.Workbook();

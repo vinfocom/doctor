@@ -62,6 +62,7 @@ const DEFAULT_POLICY_PATCH = {
     free_payment: {
         enabled: true,
         require_waiver_reason: true,
+        waiver_reason_options: [],
     },
     capacity_surcharge: {
         enabled: true,
@@ -116,6 +117,14 @@ function normalizeWorkingDays(value: unknown) {
     if (!Array.isArray(value)) return DEFAULT_POLICY_PATCH.working_days;
     const days = Array.from(new Set(value.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item >= 0 && item <= 6)));
     return days.length > 0 ? days.sort((left, right) => left - right) : DEFAULT_POLICY_PATCH.working_days;
+}
+
+function normalizeWaiverReasonOptions(value: unknown) {
+    const raw = Array.isArray(value) ? value : [];
+    return Array.from(new Set(raw
+        .map((item) => String(item || "").trim())
+        .filter((item) => item.length > 0 && item.length <= 80)))
+        .slice(0, 20);
 }
 
 function normalizeWindowUnit(value: unknown): WindowUnit {
@@ -230,6 +239,7 @@ function mergeDefaultPolicies(policies: Record<string, unknown>) {
             ...freePayment,
             enabled: typeof freePayment.enabled === "boolean" ? freePayment.enabled : policies.fee_waiver_allowed ?? DEFAULT_POLICY_PATCH.free_payment.enabled,
             require_waiver_reason: typeof freePayment.require_waiver_reason === "boolean" ? freePayment.require_waiver_reason : DEFAULT_POLICY_PATCH.free_payment.require_waiver_reason,
+            waiver_reason_options: normalizeWaiverReasonOptions(freePayment.waiver_reason_options),
         },
         capacity_surcharge: {
             ...capacitySurcharge,
@@ -256,6 +266,7 @@ function serializeEditablePolicy(policies: Record<string, unknown>) {
         consultation_fee: merged.consultation_fee,
         free_payment_enabled: freePayment.enabled === true,
         fee_waiver_reason_required: freePayment.require_waiver_reason === true,
+        waiver_reason_options: normalizeWaiverReasonOptions(freePayment.waiver_reason_options),
         surcharge_enabled: surcharge.enabled === true,
         doctor_token_enabled: merged.doctor_token_enabled === true,
         surcharge_amount: surcharge.surcharge_amount,
@@ -351,6 +362,7 @@ export async function PATCH(req: Request) {
         const current = mergeDefaultPolicies(parseJsonObject(rows[0]?.policies));
         const currentSurcharge = parseJsonObject(current.capacity_surcharge);
         const currentFreePayment = parseJsonObject(current.free_payment);
+        const waiverReasonOptions = normalizeWaiverReasonOptions(body?.waiver_reason_options);
 
         const nextPolicies = {
             ...current,
@@ -361,6 +373,7 @@ export async function PATCH(req: Request) {
                 ...currentFreePayment,
                 enabled: parseBoolean(body?.free_payment_enabled),
                 require_waiver_reason: parseBoolean(body?.fee_waiver_reason_required),
+                waiver_reason_options: waiverReasonOptions,
             },
             doctor_token_enabled: parseBoolean(body?.doctor_token_enabled),
             capacity_surcharge: {

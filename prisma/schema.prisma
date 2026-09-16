@@ -496,6 +496,7 @@ model visits {
   payment_mode         String    @db.VarChar(20)
   payment_status       String    @default("PENDING") @db.VarChar(20)
   fee_waived_reason    String?   @db.VarChar(500)
+  fee_waiver_reason_source String? @db.VarChar(10)
   override_reason      String?   @db.VarChar(500)
   created_by_user_id   Int?
   cancelled_by_user_id Int?

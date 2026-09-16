@@ -23,6 +23,8 @@ type HmsSharedPaperPrintViewProps = {
         visit_type: string;
         status: string;
         fee_charged: string | number | null;
+        fee_waived_reason?: string | null;
+        fee_waiver_reason_source?: string | null;
         patient_name: string | null;
         patient_uhid: string | null;
         patient_phone: string | null;
@@ -106,6 +108,13 @@ function formatFee(value: string | number | null | undefined) {
         minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
         maximumFractionDigits: 2,
     })}`;
+}
+
+function formatPrintedFee(visit: HmsSharedPaperPrintViewProps["visit"]) {
+    if (visit.fee_waiver_reason_source === "PRESET" && visit.fee_waived_reason) {
+        return visit.fee_waived_reason;
+    }
+    return formatFee(visit.fee_charged);
 }
 
 function getPrintedOnLabel() {
@@ -557,7 +566,7 @@ function HeaderContent({
                 {showMobileNo ? <HeaderField label="Mob. No." value={visit.patient_phone || "-"} align="right" /> : <div />}
             </div>
             <div className="grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(120px,0.85fr)] items-baseline gap-x-3 gap-y-1 uppercase">
-                {showFee ? <HeaderField label="Fee" value={formatFee(visit.fee_charged)} /> : <div />}
+                {showFee ? <HeaderField label="Fee" value={formatPrintedFee(visit)} /> : <div />}
                 {showVisitedOn ? <HeaderField label="Visited On" value={toDateLabel(visit.visit_date)} /> : <div />}
                 {showPrintedOn ? <HeaderField label="Printed On" value={getPrintedOnLabel()} align="right" /> : <div />}
             </div>

@@ -25,6 +25,8 @@ type VisitScopeRow = {
     daily_token_number: number | null;
     status: string;
     fee_charged: string | number | null;
+    fee_waived_reason: string | null;
+    fee_waiver_reason_source: string | null;
     patient_name: string | null;
     patient_uhid: string | null;
     patient_phone: string | null;
@@ -174,6 +176,8 @@ export async function getScopedHmsVisit(input: {
             v.daily_token_number,
             v.status,
             v.fee_charged,
+            v.fee_waived_reason,
+            v.fee_waiver_reason_source,
             p.full_name AS patient_name,
             p.uhid AS patient_uhid,
             p.phone AS patient_phone,
