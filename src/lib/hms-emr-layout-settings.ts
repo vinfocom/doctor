@@ -53,7 +53,8 @@ function normalizeNumber(value: unknown, fallback: number, min: number, max: num
 
 function normalizeMedicineFrequencyOptions(value: unknown) {
   const allowed = new Set<string>(HMS_MEDICINE_FREQUENCY_OPTIONS);
-  if (!Array.isArray(value)) return [...HMS_MEDICINE_FREQUENCY_OPTIONS];
+  // Frequency shortcuts are opt-in for new or previously unconfigured HMS layouts.
+  if (!Array.isArray(value)) return [];
 
   return Array.from(
     new Set(

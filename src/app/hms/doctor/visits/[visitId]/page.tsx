@@ -30,7 +30,6 @@ import VoiceInputMic, {
   stopActiveVoiceInput,
 } from "@/components/emr/VoiceInputMic";
 import { getPrintableComplaints } from "@/lib/emr/complaintFormatting";
-import { HMS_MEDICINE_FREQUENCY_OPTIONS } from "@/lib/emr/types";
 import type {
   EmrComplaintPayload,
   EmrClinicalHistoryPayload,
@@ -2532,9 +2531,7 @@ export default function DoctorAppointmentPadPage() {
     [allergyWarnings, warnings]
   );
   const voiceInputEnabled = layoutSettings?.voice_input_enabled === true;
-  const medicineFrequencyOptions = layoutSettings?.medicine_frequency_options ?? [
-    ...HMS_MEDICINE_FREQUENCY_OPTIONS,
-  ];
+  const medicineFrequencyOptions = layoutSettings?.medicine_frequency_options ?? [];
 
   const isDuplicateMedicineInDraft = useCallback(
     (rowIndex: number, medicine: EmrMedicinePayload) => {
