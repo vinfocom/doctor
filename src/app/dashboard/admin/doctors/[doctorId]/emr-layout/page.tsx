@@ -13,6 +13,8 @@ export default function AdminDoctorEmrLayoutPage() {
       doctorId={Number.isInteger(doctorId) && doctorId > 0 ? doctorId : undefined}
       title="Doctor Prescription Layout Settings"
       subtitle="Review or override EMR pad and print/PDF layout settings for this doctor."
+      showVoiceInputToggle
+      requireClinicDoctorForVoiceToggle
     />
   );
 }

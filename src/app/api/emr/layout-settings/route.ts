@@ -33,6 +33,7 @@ async function resolveLayoutScope(req: NextRequest) {
       where: { user_id: session.userId },
       select: {
         doctor_id: true,
+        num_clinics: true,
         clinics: {
           select: {
             clinic_id: true,
@@ -56,6 +57,7 @@ async function resolveLayoutScope(req: NextRequest) {
       doctorId: doctor.doctor_id,
       clinicId,
       role: session.role,
+      isClinicDoctor: Number(doctor.num_clinics ?? 0) > 0,
     };
   }
 
@@ -68,6 +70,7 @@ async function resolveLayoutScope(req: NextRequest) {
       where: { doctor_id: queryDoctorId },
       select: {
         doctor_id: true,
+        num_clinics: true,
         clinics: {
           select: {
             clinic_id: true,
@@ -91,6 +94,7 @@ async function resolveLayoutScope(req: NextRequest) {
       doctorId: doctor.doctor_id,
       clinicId,
       role: session.role,
+      isClinicDoctor: Number(doctor.num_clinics ?? 0) > 0,
     };
   }
 
@@ -103,6 +107,7 @@ async function buildScopeMeta(doctorId: number) {
     select: {
       doctor_id: true,
       doctor_name: true,
+      num_clinics: true,
       clinics: {
         select: {
           clinic_id: true,
@@ -118,6 +123,7 @@ async function buildScopeMeta(doctorId: number) {
       ? {
           doctor_id: doctor.doctor_id,
           doctor_name: doctor.doctor_name,
+          num_clinics: doctor.num_clinics ?? 0,
         }
       : null,
     clinics:
@@ -137,10 +143,13 @@ export async function GET(req: NextRequest) {
       doctorId: scope.doctorId,
       clinicId: scope.clinicId,
     });
+    const scopedSettings = scope.isClinicDoctor
+      ? settings
+      : { ...settings, voice_input_enabled: false };
 
     return NextResponse.json(
       {
-        settings,
+        settings: scopedSettings,
         defaults: getDefaultPrescriptionLayoutSettings({
           doctorId: scope.doctorId,
           clinicId: scope.clinicId,
@@ -184,6 +193,7 @@ export async function PUT(req: NextRequest) {
       doctor_signature_url?: string | null;
       header_height?: string | null;
       footer_height?: string | null;
+      voice_input_enabled?: boolean;
       custom_fields?: EmrLayoutCustomField[];
     };
 
@@ -208,6 +218,7 @@ export async function PUT(req: NextRequest) {
       doctorSignatureUrl: body.doctor_signature_url ?? null,
       headerHeight: body.header_height ?? null,
       footerHeight: body.footer_height ?? null,
+      voiceInputEnabled: scope.isClinicDoctor && body.voice_input_enabled === true,
       customFields: body.custom_fields,
     });
 

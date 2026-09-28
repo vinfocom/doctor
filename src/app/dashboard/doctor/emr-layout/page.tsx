@@ -29,6 +29,8 @@ export default async function DoctorEmrLayoutPage() {
       role="DOCTOR"
       title="Prescription Layout Settings"
       subtitle="Control section order, visibility, branding, margins, and print/PDF preview for your EMR prescription pad."
+      showVoiceInputToggle
+      requireClinicDoctorForVoiceToggle
     />
   );
 }

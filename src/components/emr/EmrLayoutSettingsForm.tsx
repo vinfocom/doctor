@@ -31,6 +31,7 @@ type ScopeClinic = {
 type ScopeDoctor = {
   doctor_id: number;
   doctor_name: string | null;
+  num_clinics?: number | null;
 } | null;
 
 type LayoutSettingsResponse = {
@@ -53,6 +54,7 @@ type Props = {
   theme?: "legacy" | "hms";
   hideClinicSelector?: boolean;
   showVoiceInputToggle?: boolean;
+  requireClinicDoctorForVoiceToggle?: boolean;
   showMedicineFrequencyOptionsToggle?: boolean;
   headerAddon?: React.ReactNode;
   extraSavePayload?: Record<string, unknown>;
@@ -927,6 +929,7 @@ export default function EmrLayoutSettingsForm({
   theme = "legacy",
   hideClinicSelector = false,
   showVoiceInputToggle = false,
+  requireClinicDoctorForVoiceToggle = false,
   showMedicineFrequencyOptionsToggle = false,
   headerAddon,
   extraSavePayload,
@@ -946,6 +949,9 @@ export default function EmrLayoutSettingsForm({
   const uploadPath = uploadPathOverride || (role === "DOCTOR" ? "/api/doctors/upload" : "/api/upload");
   const uploadType = uploadTypeOverride ?? (role === "DOCTOR" ? "document" : undefined);
   const isHmsTheme = theme === "hms";
+  const canShowVoiceInputToggle =
+    showVoiceInputToggle &&
+    (!requireClinicDoctorForVoiceToggle || Number(scopeDoctor?.num_clinics ?? 0) > 0);
 
   const fetchSettings = useCallback(async (clinicId?: number | null) => {
     setLoading(true);
@@ -1262,7 +1268,7 @@ export default function EmrLayoutSettingsForm({
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-6">
-          {showVoiceInputToggle ? (
+          {canShowVoiceInputToggle ? (
             <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -1270,7 +1276,7 @@ export default function EmrLayoutSettingsForm({
                     Voice Input
                   </h2>
                   <p className="mt-1 text-sm text-gray-600">
-                    Show mic buttons in the HMS doctor EMR writing fields.
+                    Show mic buttons in the doctor EMR writing fields.
                   </p>
                 </div>
                 <label className="inline-flex cursor-pointer items-center gap-3 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900">
@@ -1292,7 +1298,7 @@ export default function EmrLayoutSettingsForm({
                         ? "border-black bg-black"
                         : "border-gray-300 bg-white"
                     }`}
-                    aria-label="Toggle HMS EMR voice input"
+                    aria-label="Toggle EMR voice input"
                   >
                     <span
                       className={`absolute top-0.5 h-5 w-5 rounded-full border border-black bg-white transition ${

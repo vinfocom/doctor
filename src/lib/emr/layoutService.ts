@@ -28,6 +28,7 @@ type LayoutRow = {
   doctor_signature_url: string | null;
   header_height: string | null;
   footer_height: string | null;
+  voice_input_enabled: boolean | number | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -437,7 +438,7 @@ async function mapLayoutRow(row: LayoutRow): Promise<EmrLayoutSettings> {
     doctor_signature_url: row.doctor_signature_url,
     header_height: row.header_height,
     footer_height: row.footer_height,
-    voice_input_enabled: false,
+    voice_input_enabled: toBoolean(row.voice_input_enabled),
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
     custom_fields: customFields.length > 0 ? customFields : jsonCustomFields,
@@ -578,6 +579,7 @@ export async function savePrescriptionLayoutSettings(input: {
   doctorSignatureUrl?: string | null;
   headerHeight?: string | null;
   footerHeight?: string | null;
+  voiceInputEnabled?: boolean;
   customFields?: EmrLayoutCustomField[];
 }) {
   const normalizedSectionOrder = normalizeSectionOrder(input.sectionOrderJson);
@@ -637,6 +639,7 @@ export async function savePrescriptionLayoutSettings(input: {
           doctor_signature_url = ${input.doctorSignatureUrl ?? null},
           header_height = ${normalizedHeaderHeight},
           footer_height = ${normalizedFooterHeight},
+          voice_input_enabled = ${input.voiceInputEnabled === true ? 1 : 0},
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ${existing.id}
       `
@@ -662,6 +665,7 @@ export async function savePrescriptionLayoutSettings(input: {
           doctor_signature_url,
           header_height,
           footer_height,
+          voice_input_enabled,
           created_at,
           updated_at
         )
@@ -683,6 +687,7 @@ export async function savePrescriptionLayoutSettings(input: {
           ${input.doctorSignatureUrl ?? null},
           ${normalizedHeaderHeight},
           ${normalizedFooterHeight},
+          ${input.voiceInputEnabled === true ? 1 : 0},
           CURRENT_TIMESTAMP,
           CURRENT_TIMESTAMP
         )
