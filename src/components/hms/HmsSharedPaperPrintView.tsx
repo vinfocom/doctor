@@ -65,6 +65,7 @@ type HmsSharedPaperPrintViewProps = {
         };
     } | null;
     showDoctorToken?: boolean;
+    autoFocusPrint?: boolean;
     backHref: string;
     documentTitlePrefix?: "Rx" | "OPD Slip";
 };
@@ -222,10 +223,12 @@ export default function HmsSharedPaperPrintView({
     pageMargins: configuredPageMargins,
     headerConfig,
     showDoctorToken = false,
+    autoFocusPrint = false,
     backHref,
     documentTitlePrefix = "Rx",
 }: HmsSharedPaperPrintViewProps) {
     const contentRef = useRef<HTMLDivElement | null>(null);
+    const printButtonRef = useRef<HTMLButtonElement | null>(null);
     const [, setReportedHeight] = useState<number | null>(null);
     const [savingHeight, setSavingHeight] = useState(false);
     const [heightError, setHeightError] = useState("");
@@ -307,6 +310,24 @@ export default function HmsSharedPaperPrintView({
             window.removeEventListener("beforeprint", reportHeight);
         };
     }, [reportHeight]);
+
+    useEffect(() => {
+        if (!autoFocusPrint) return;
+
+        printButtonRef.current?.focus();
+
+        const handlePreviewEnter = (event: KeyboardEvent) => {
+            if (event.key !== "Enter" || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+            const target = event.target;
+            if (target instanceof HTMLElement && target.closest("button, a, input, select, textarea, [contenteditable='true']")) return;
+
+            event.preventDefault();
+            printButtonRef.current?.click();
+        };
+
+        window.addEventListener("keydown", handlePreviewEnter);
+        return () => window.removeEventListener("keydown", handlePreviewEnter);
+    }, [autoFocusPrint]);
 
     const handlePrint = async () => {
         await reportHeight();
@@ -444,6 +465,7 @@ export default function HmsSharedPaperPrintView({
                     </Link>
                     <button
                         type="button"
+                        ref={printButtonRef}
                         onClick={handlePrint}
                         disabled={savingHeight}
                         className="inline-flex items-center gap-2 rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-60"

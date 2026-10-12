@@ -13,6 +13,7 @@ type PageProps = {
     searchParams?: Promise<{
         printType?: string;
         prescriptionId?: string;
+        keyboardPrint?: string;
     }>;
 };
 
@@ -115,6 +116,7 @@ export default async function HmsStaffVisitPrintPage({ params, searchParams }: P
             showDoctorToken={showDoctorToken}
             backHref="/hms/staff"
             documentTitlePrefix="OPD Slip"
+            autoFocusPrint={resolvedSearchParams.keyboardPrint === "1"}
         />
     );
 }

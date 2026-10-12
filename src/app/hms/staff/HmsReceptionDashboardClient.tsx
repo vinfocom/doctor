@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, ChevronUp, Loader2, Pencil, Plus, Printer, RefreshCw, Search, UserRound, XCircle } from "lucide-react";
 import { HmsStatusAlert } from "@/components/hms/HmsStatusAlert";
@@ -274,6 +274,13 @@ function doctorOptionLabel(doctor: DoctorQueue) {
     return `${room} - ${doctorNameWithPrefix(doctor.doctor_name)} - ${countedDoctorVisits(doctor)}/${capacity}`;
 }
 
+function doctorOptionSearchLabel(doctor: DoctorQueue) {
+    return String(doctor.doctor_name || "").replace(/^dr\.?\s*/i, "").trim();
+}
+
+const REGISTRATION_KEYBOARD_STEPS = ["opd-type", "doctor", "patient-name", "patient-age", "patient-sex", "save"];
+const REGISTRATION_SEX_KEYS: Record<string, string> = { m: "MALE", f: "FEMALE", o: "OTHER" };
+
 function opdSlipWindowName(visit: Partial<Pick<Visit, "patient">> | null | undefined) {
     const name = String(visit?.patient?.full_name || "Patient").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "Patient";
     return `OPD-Slip-${name}`;
@@ -348,14 +355,26 @@ export default function HmsReceptionDashboardClient({
     const [checkingFollowup, setCheckingFollowup] = useState(false);
     const [followupEligibility, setFollowupEligibility] = useState<FollowupEligibility | null>(null);
     const [submittingRegistration, setSubmittingRegistration] = useState(false);
+    const submittingRegistrationRef = useRef(false);
+    submittingRegistrationRef.current = submittingRegistration;
     const [actingVisitId, setActingVisitId] = useState<number | null>(null);
     const [cancelVisit, setCancelVisit] = useState<Visit | null>(null);
     const [createdVisit, setCreatedVisit] = useState<Visit | null>(null);
     const [editingVisit, setEditingVisit] = useState<Visit | null>(null);
+    const registrationFormRef = useRef<HTMLFormElement | null>(null);
+    const printSlipRef = useRef<HTMLAnchorElement | null>(null);
+    const focusPrintSlipAfterSave = useRef(false);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const clearError = useCallback(() => setError(""), []);
     const clearSuccess = useCallback(() => setSuccess(""), []);
+
+    useEffect(() => {
+        if (!createdVisit || !focusPrintSlipAfterSave.current) return;
+        focusPrintSlipAfterSave.current = false;
+        const frame = window.requestAnimationFrame(() => printSlipRef.current?.focus());
+        return () => window.cancelAnimationFrame(frame);
+    }, [createdVisit]);
     const [patientDate, setPatientDate] = useState(todayYmd());
     const [patientPage, setPatientPage] = useState(1);
     const [patientPagination, setPatientPagination] = useState<PaginationState>({
@@ -746,6 +765,7 @@ export default function HmsReceptionDashboardClient({
     };
 
     const resetRegistrationForm = () => {
+        focusPrintSlipAfterSave.current = false;
         setPatientSearch("");
         setPatients([]);
         setTempTokenSearch("");
@@ -780,7 +800,33 @@ export default function HmsReceptionDashboardClient({
         setEditingVisit(null);
         setError("");
         setSuccess("");
+        window.requestAnimationFrame(() => registrationFormRef.current?.querySelector<HTMLElement>("[data-registration-keyboard-step='opd-type']")?.focus());
     };
+
+    const resetRegistrationFormRef = useRef(resetRegistrationForm);
+    resetRegistrationFormRef.current = resetRegistrationForm;
+
+    useEffect(() => {
+        if (mode !== "registration") return;
+
+        const handlePageShortcut = (event: KeyboardEvent) => {
+            if (
+                !event.altKey ||
+                event.ctrlKey ||
+                event.metaKey ||
+                event.shiftKey ||
+                event.key.toLowerCase() !== "r" ||
+                event.repeat ||
+                event.isComposing
+            ) return;
+
+            event.preventDefault();
+            if (!submittingRegistrationRef.current) resetRegistrationFormRef.current();
+        };
+
+        window.addEventListener("keydown", handlePageShortcut, true);
+        return () => window.removeEventListener("keydown", handlePageShortcut, true);
+    }, [mode]);
 
     const openEditVisit = (visit: Visit) => {
         if (visit.status !== "WAITING") return;
@@ -1235,6 +1281,7 @@ export default function HmsReceptionDashboardClient({
                     room_no: selectedDoctorForVisit?.room_no || null,
                 },
             };
+            focusPrintSlipAfterSave.current = !editingVisit;
             setCreatedVisit(visitWithDetails);
             setSuccess(editingVisit
                 ? `OPD ${visitWithDetails.visit_number || visitWithDetails.visit_id} updated. Fee ${formatCurrency(visitWithDetails.fee_charged)}.`
@@ -1350,15 +1397,54 @@ export default function HmsReceptionDashboardClient({
 
             {mode === "registration" && (
                 <>
-                <form onSubmit={saveRegistration} className="rounded-lg border border-black bg-white">
+                <form
+                    ref={registrationFormRef}
+                    onSubmit={saveRegistration}
+                    data-registration-keyboard-flow={canCreateNewPatient || editingVisit ? "patient-entry" : undefined}
+                    onKeyDown={(event) => {
+                        if (
+                            (event.ctrlKey || event.metaKey) &&
+                            event.key.toLowerCase() === "s" &&
+                            !event.repeat &&
+                            !event.nativeEvent.isComposing
+                        ) {
+                            event.preventDefault();
+                            if (!submittingRegistration) event.currentTarget.requestSubmit();
+                            return;
+                        }
+
+                        if ((event.key === "Tab" || event.key === "Enter") && event.currentTarget.dataset.registrationKeyboardFlow === "patient-entry") {
+                            const currentStep = (event.target as HTMLElement).closest<HTMLElement>("[data-registration-keyboard-step]")?.dataset.registrationKeyboardStep;
+                            const form = event.currentTarget;
+                            const steps = REGISTRATION_KEYBOARD_STEPS.map((step) =>
+                                form.querySelector<HTMLElement>(`[data-registration-keyboard-step="${step}"]`)
+                            );
+                            if (!currentStep || steps.some((step) => !step || (step instanceof HTMLButtonElement && step.disabled))) return;
+
+                            const currentIndex = REGISTRATION_KEYBOARD_STEPS.indexOf(currentStep);
+                            if (currentIndex < 0) return;
+                            if (currentStep === "save" && event.key === "Enter") {
+                                event.preventDefault();
+                                return;
+                            }
+                            const direction = event.key === "Tab" && event.shiftKey ? -1 : 1;
+                            const nextStep = steps[currentIndex + direction];
+                            if (!nextStep) return;
+
+                            event.preventDefault();
+                            nextStep.focus();
+                        }
+                    }}
+                    className="rounded-lg border border-black bg-white"
+                >
                     <div className="flex items-center justify-between gap-3 border-b border-black px-4 py-3">
                         <h2 className="text-sm font-semibold text-black">OPD Registration</h2>
                         <button
                             type="button"
                             onClick={resetRegistrationForm}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-black text-black hover:bg-black hover:text-white"
-                            title="Reset form"
-                            aria-label="Reset registration form"
+                            title="Reset form (Alt+R)"
+                            aria-label="Reset registration form (Alt+R)"
                         >
                             <RefreshCw size={15} />
                         </button>
@@ -1542,7 +1628,7 @@ export default function HmsReceptionDashboardClient({
                                                 Exact UHID was not found in this hospital. Create a new UHID only if the patient cannot be matched.
                                             </div>
                                         )}
-                                        <Field label="Name" value={patientForm.full_name} error={patientErrors.full_name} onChange={(value) => updatePatientForm("full_name", value)} required />
+                                        <Field label="Name" value={patientForm.full_name} error={patientErrors.full_name} onChange={(value) => updatePatientForm("full_name", value)} required registrationStep="patient-name" />
                                         <Field label="Mobile No." value={patientForm.phone} error={patientErrors.phone} onChange={(value) => updatePatientForm("phone", value)} />
                                         <Field
                                             label="Age"
@@ -1550,8 +1636,9 @@ export default function HmsReceptionDashboardClient({
                                             error={patientErrors.age}
                                             onChange={(value) => updatePatientForm("age", value)}
                                             required
+                                            registrationStep="patient-age"
                                         />
-                                        <Select label="Sex" value={patientForm.gender} error={patientErrors.gender} onChange={(value) => updatePatientForm("gender", value)} options={["MALE", "FEMALE", "OTHER"]} required />
+                                        <Select label="Sex" value={patientForm.gender} error={patientErrors.gender} onChange={(value) => updatePatientForm("gender", value)} options={["MALE", "FEMALE", "OTHER"]} required registrationStep="patient-sex" />
                                         <Field label="City" value={patientForm.city} error={patientErrors.city} onChange={(value) => updatePatientForm("city", value)} />
                                         <Field label="Location" value={patientForm.location} error={patientErrors.location} onChange={(value) => updatePatientForm("location", value)} />
                                         <div className="md:col-span-2">
@@ -1590,6 +1677,7 @@ export default function HmsReceptionDashboardClient({
                             <div className="grid gap-3">
                                 <Select
                                     label="OPD Type"
+                                    registrationStep="opd-type"
                                     value={visitForm.visit_type}
                                     error={visitErrors.visit_type}
                                     onChange={(value) => {
@@ -1642,6 +1730,7 @@ export default function HmsReceptionDashboardClient({
                                 )}
                                 <Select
                                     label="Room / Doctor"
+                                    registrationStep="doctor"
                                     value={visitForm.doctor_id}
                                     error={visitErrors.doctor_id}
                                     onChange={(value) => {
@@ -1656,6 +1745,7 @@ export default function HmsReceptionDashboardClient({
                                     options={doctors.map((doctor) => ({
                                         value: String(doctor.doctor_id),
                                         label: doctorOptionLabel(doctor),
+                                        searchLabel: doctorOptionSearchLabel(doctor),
                                     }))}
                                     required
                                 />
@@ -1715,14 +1805,14 @@ export default function HmsReceptionDashboardClient({
                             </div>
 
                             {editingVisit && <p className="mt-4 border border-black px-3 py-2 text-xs font-semibold text-black">Editing waiting visit {editingVisit.visit_number || editingVisit.visit_id}</p>}
-                            <button type="submit" disabled={submittingRegistration} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:opacity-60">
+                            <button type="submit" data-registration-keyboard-step="save" aria-keyshortcuts="Control+S Meta+S" disabled={submittingRegistration} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:opacity-60">
                                 {submittingRegistration ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
                                 {editingVisit ? "Update Waiting Visit" : selectedPatient ? "Save OPD for selected patient" : "Save OPD Registration"}
                             </button>
                             {editingVisit && <button type="button" onClick={cancelEditVisit} disabled={submittingRegistration} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-black px-4 py-2.5 text-sm font-semibold text-black hover:bg-black hover:text-white disabled:opacity-60">Cancel Edit</button>}
 
                             {createdVisit && (
-                                <a href={`/hms/staff/visits/${createdVisit.visit_id}/print?printType=HEADER`} target={opdSlipWindowName(createdVisit)} rel="noopener,noreferrer" className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-black px-4 py-2.5 text-sm font-semibold text-black hover:bg-black hover:text-white">
+                                <a ref={printSlipRef} href={`/hms/staff/visits/${createdVisit.visit_id}/print?printType=HEADER&keyboardPrint=1`} target={opdSlipWindowName(createdVisit)} rel="noopener,noreferrer" className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-black px-4 py-2.5 text-sm font-semibold text-black hover:bg-black hover:text-white">
                                     <Printer size={16} />
                                     Print Slip
                                 </a>
@@ -1870,6 +1960,7 @@ function Field({
     onClear,
     onEnter,
     inputMode,
+    registrationStep,
 }: {
     label: string;
     value: string;
@@ -1881,6 +1972,7 @@ function Field({
     onClear?: () => void;
     onEnter?: () => void;
     inputMode?: "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search";
+    registrationStep?: string;
 }) {
     return (
         <div>
@@ -1889,9 +1981,11 @@ function Field({
                 <input
                     type={type}
                     inputMode={inputMode}
+                    data-registration-keyboard-step={registrationStep}
                     value={value}
                     onChange={(event) => onChange(event.target.value)}
                     onKeyDown={(event) => {
+                        if (registrationStep) return;
                         if (onEnter && event.key === "Enter") {
                             event.preventDefault();
                             onEnter();
@@ -1912,11 +2006,45 @@ function Field({
     );
 }
 
-function Select({ label, value, error, onChange, options, required = false, placeholder = "Select" }: { label: string; value: string; error?: string; onChange: (value: string) => void; options: Array<string | { value: string; label: string }>; required?: boolean; placeholder?: string }) {
+function Select({ label, value, error, onChange, options, required = false, placeholder = "Select", registrationStep }: { label: string; value: string; error?: string; onChange: (value: string) => void; options: Array<string | { value: string; label: string; searchLabel?: string }>; required?: boolean; placeholder?: string; registrationStep?: string }) {
+    const doctorTypeAhead = useRef({ query: "", lastInputAt: 0 });
+
     return (
         <div>
             <label className="mb-1 block text-xs font-medium text-black">{label}{required && <span className="text-red-600"> *</span>}</label>
-            <select value={value} onChange={(event) => onChange(event.target.value)} onKeyDown={focusNextOnEnter} className={`w-full rounded-lg border px-3 py-2 text-sm text-black outline-none focus:border-black focus:ring-2 focus:ring-black/10 ${error ? "border-red-600" : "border-black"}`}>
+            <select data-registration-keyboard-step={registrationStep} value={value} onChange={(event) => onChange(event.target.value)} onKeyDown={(event) => {
+                if (registrationStep === "patient-sex") {
+                    const selectedSex = !event.ctrlKey && !event.metaKey && !event.altKey
+                        ? REGISTRATION_SEX_KEYS[event.key.toLowerCase()]
+                        : undefined;
+                    if (selectedSex) {
+                        event.preventDefault();
+                        onChange(selectedSex);
+                        return;
+                    }
+                }
+                if (registrationStep === "doctor" && !event.ctrlKey && !event.metaKey && !event.altKey && event.key.length === 1) {
+                    event.preventDefault();
+                    const now = Date.now();
+                    const typed = now - doctorTypeAhead.current.lastInputAt < 900
+                        ? `${doctorTypeAhead.current.query}${event.key}`
+                        : event.key;
+                    const doctorOptions = options.filter((option): option is { value: string; label: string; searchLabel?: string } => typeof option !== "string");
+                    const normalizedQuery = typed.trim().toLocaleLowerCase();
+                    let match = doctorOptions.find((option) => String(option.searchLabel || option.label).toLocaleLowerCase().startsWith(normalizedQuery));
+                    if (!match) {
+                        const singleKey = event.key.toLocaleLowerCase();
+                        match = doctorOptions.find((option) => String(option.searchLabel || option.label).toLocaleLowerCase().startsWith(singleKey));
+                        doctorTypeAhead.current.query = event.key;
+                    } else {
+                        doctorTypeAhead.current.query = typed;
+                    }
+                    doctorTypeAhead.current.lastInputAt = now;
+                    if (match) onChange(match.value);
+                    return;
+                }
+                if (!registrationStep) focusNextOnEnter(event);
+            }} className={`w-full rounded-lg border px-3 py-2 text-sm text-black outline-none focus:border-black focus:ring-2 focus:ring-black/10 ${error ? "border-red-600" : "border-black"}`}>
             <option value="">{placeholder}</option>
                 {options.map((option) => {
                     const optionValue = typeof option === "string" ? option : option.value;
