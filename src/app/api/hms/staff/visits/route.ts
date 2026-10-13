@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getHmsSessionFromRequest, getHmsStaffAssignedDoctorIds, getHmsStaffProfile } from "@/lib/hms-auth";
 import { isHmsFeatureEnabled } from "@/lib/hms-feature-flags";
-import { allocateHmsSequence, extractIdFormatConfig, resolveHmsId, type HmsIdFormatConfig } from "@/lib/hms-id-format";
+import { allocateHmsSequence, extractIdFormatConfig, getHmsIdSearchTemplate, resolveHmsId, type HmsIdFormatConfig } from "@/lib/hms-id-format";
 
 const ACTIVE_QUEUE_STATUSES = ["WAITING", "IN_CONSULT"] as const;
 const TERMINAL_STATUSES = ["COMPLETED", "CANCELLED"] as const;
@@ -855,6 +855,10 @@ export async function GET(req: Request) {
 
         return NextResponse.json({
             date: visitDate,
+            searchIdFormats: {
+                uhid: getHmsIdSearchTemplate({ idFormat: policies.idFormat, hospitalCode: hospital.hospitalCode, formatKey: "uhid" }),
+                opd: getHmsIdSearchTemplate({ idFormat: policies.idFormat, hospitalCode: hospital.hospitalCode, formatKey: "opd" }),
+            },
             activeStatuses: ACTIVE_QUEUE_STATUSES,
             terminalStatuses: TERMINAL_STATUSES,
             feePolicy: {

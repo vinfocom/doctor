@@ -27,6 +27,7 @@ type PatientRow = {
     hospital_group_code: string | null;
     last_visit_date?: Date | string | null;
     last_visit_number?: string | null;
+    last_doctor_id?: number | null;
     last_doctor_room_no?: string | null;
     created_at?: Date | string | null;
 };
@@ -94,6 +95,7 @@ function serializePatient(row: PatientRow) {
                 : row.last_visit_date.toISOString().slice(0, 10)
             : null,
         last_visit_number: row.last_visit_number || null,
+        last_doctor_id: row.last_doctor_id === null || row.last_doctor_id === undefined ? null : Number(row.last_doctor_id),
         last_doctor_room_no: row.last_doctor_room_no || null,
         created_at: row.created_at,
     };
@@ -125,6 +127,95 @@ export async function GET(req: Request) {
 
         const { searchParams } = new URL(req.url);
         const query = normalizeText(searchParams.get("q"));
+        const lookupType = normalizeText(searchParams.get("lookup_type")).toUpperCase();
+        const identifier = normalizeText(searchParams.get("identifier"));
+
+        if (lookupType === "PATIENT") {
+            if (!query || query.length > 100) return NextResponse.json({ patients: [] });
+            const genderFilter = normalizeGender(searchParams.get("gender")) || "";
+            const phonePrefix = query.replace(/\D/g, "");
+            const literalPrefix = query.replace(/[\\%_]/g, "\\$&");
+            const phoneClause = phonePrefix ? "OR phone LIKE ?" : "";
+            const searchValues = phonePrefix ? [`${literalPrefix}%`, `${literalPrefix}%`, `${phonePrefix}%`, genderFilter, genderFilter] : [`${literalPrefix}%`, `${literalPrefix}%`, genderFilter, genderFilter];
+            const rows = await prisma.$queryRawUnsafe<PatientRow[]>(
+                `
+                SELECT
+                    patient_id, uhid, full_name, phone, age, gender, city, location, address, hospital_group_code,
+                    (SELECT v.visit_date FROM visits v WHERE v.patient_id = patients.patient_id AND v.hospital_id = ? ORDER BY v.visit_date DESC, v.visit_id DESC LIMIT 1) AS last_visit_date,
+                    (SELECT v.visit_number FROM visits v WHERE v.patient_id = patients.patient_id AND v.hospital_id = ? ORDER BY v.visit_date DESC, v.visit_id DESC LIMIT 1) AS last_visit_number,
+                    (SELECT v.doctor_id FROM visits v WHERE v.patient_id = patients.patient_id AND v.hospital_id = ? ORDER BY v.visit_date DESC, v.visit_id DESC LIMIT 1) AS last_doctor_id,
+                    (SELECT hd.room_no FROM visits v LEFT JOIN hospital_doctors hd ON hd.hospital_id = v.hospital_id AND hd.doctor_id = v.doctor_id WHERE v.patient_id = patients.patient_id AND v.hospital_id = ? ORDER BY v.visit_date DESC, v.visit_id DESC LIMIT 1) AS last_doctor_room_no
+                FROM patients
+                WHERE admin_id = ?
+                  AND hospital_group_code = ?
+                  AND (full_name LIKE ? OR uhid LIKE ? ${phoneClause})
+                  AND (? = '' OR UPPER(gender) = ?)
+                ORDER BY patient_id DESC
+                LIMIT 25
+                `,
+                hospital.hospitalId,
+                hospital.hospitalId,
+                hospital.hospitalId,
+                hospital.hospitalId,
+                hospital.adminId,
+                hospital.hospitalCode,
+                ...searchValues
+            );
+            return NextResponse.json({ patients: rows.map(serializePatient) });
+        }
+
+        if (lookupType === "UHID" || lookupType === "OPD") {
+            if (!identifier || identifier.length > 100) {
+                return NextResponse.json({ error: "Enter a valid patient identifier." }, { status: 400 });
+            }
+
+            const rows = lookupType === "UHID"
+                ? await prisma.$queryRawUnsafe<PatientRow[]>(
+                    `
+                    SELECT patient_id, uhid, full_name, phone, age, gender, city, location, address,
+                           hospital_group_code, NULL AS last_visit_date, NULL AS last_visit_number,
+                           (SELECT v.doctor_id FROM visits v WHERE v.patient_id = patients.patient_id AND v.hospital_id = ? ORDER BY v.visit_date DESC, v.visit_id DESC LIMIT 1) AS last_doctor_id,
+                           NULL AS last_doctor_room_no
+                    FROM patients
+                    WHERE admin_id = ? AND hospital_group_code = ? AND uhid = ?
+                    LIMIT 25
+                    `,
+                    hospital.hospitalId,
+                    hospital.adminId,
+                    hospital.hospitalCode,
+                    identifier
+                )
+                : await prisma.$queryRawUnsafe<PatientRow[]>(
+                    `
+                    SELECT p.patient_id, p.uhid, p.full_name, p.phone, p.age, p.gender, p.city, p.location, p.address,
+                           p.hospital_group_code, v.visit_date AS last_visit_date, v.doctor_id AS last_doctor_id,
+                           v.visit_number AS last_visit_number, hd.room_no AS last_doctor_room_no
+                    FROM visits v
+                    INNER JOIN patients p
+                      ON p.patient_id = v.patient_id
+                     AND p.admin_id = ?
+                     AND p.hospital_group_code = ?
+                    LEFT JOIN hospital_doctors hd
+                      ON hd.hospital_id = v.hospital_id
+                     AND hd.doctor_id = v.doctor_id
+                    WHERE v.hospital_id = ?
+                      AND v.admin_id = ?
+                      AND v.hospital_group_code = ?
+                      AND v.visit_number = ?
+                    ORDER BY v.visit_date DESC, v.visit_id DESC
+                    LIMIT 25
+                    `,
+                    hospital.adminId,
+                    hospital.hospitalCode,
+                    hospital.hospitalId,
+                    hospital.adminId,
+                    hospital.hospitalCode,
+                    identifier
+                );
+
+            return NextResponse.json({ patients: rows.map(serializePatient) });
+        }
+
         const exactUhid = normalizeText(searchParams.get("exact_uhid"));
         const rawAge = normalizeText(searchParams.get("age"));
         const gender = normalizeGender(searchParams.get("gender")) || "";

@@ -474,6 +474,8 @@ model patients {
   @@index([admin_id], map: "patients_admin_id_fkey")
   @@index([doctor_id], map: "patients_doctor_id_fkey")
   @@index([admin_id, phone, profile_type], map: "idx_patients_admin_phone_profile_type")
+  @@index([admin_id, hospital_group_code, full_name], map: "idx_hms_patients_name_search")
+  @@index([admin_id, hospital_group_code, phone], map: "idx_hms_patients_phone_search")
   @@index([uhid], map: "idx_patients_uhid")
   @@unique([hospital_group_code, uhid], map: "uq_patients_hospital_group_uhid")
 }

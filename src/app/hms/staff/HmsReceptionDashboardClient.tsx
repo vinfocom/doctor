@@ -7,6 +7,8 @@ import { HmsStatusAlert } from "@/components/hms/HmsStatusAlert";
 import { useHmsAutoDismissMessage } from "@/components/hms/useHmsAutoDismissMessage";
 
 type StaffViewMode = "registration" | "patients" | "visits";
+type OldOpdSearchMode = "PATIENT" | "UHID" | "OPD";
+type IdSearchTemplate = { prefix: string; suffix: string; padTo: number; roomNumberRequired: boolean } | null;
 
 type Patient = {
     patient_id: number;
@@ -20,6 +22,7 @@ type Patient = {
     address: string | null;
     last_visit_date?: string | null;
     last_visit_number?: string | null;
+    last_doctor_id?: number | null;
     last_doctor_room_no?: string | null;
 };
 
@@ -111,6 +114,7 @@ type DoctorQueue = {
 type VisitsResponse = {
     visits: Visit[];
     doctorQueues: DoctorQueue[];
+    searchIdFormats?: { uhid: IdSearchTemplate; opd: IdSearchTemplate };
     feePolicy?: {
         registrationFee: number;
         consultationFee: number;
@@ -326,6 +330,10 @@ export default function HmsReceptionDashboardClient({
     const [selectedTempToken, setSelectedTempToken] = useState<TempToken | null>(null);
     const [tempTokenPanelCollapsed, setTempTokenPanelCollapsed] = useState(true);
     const [patientSearch, setPatientSearch] = useState("");
+    const [oldOpdSearch, setOldOpdSearch] = useState("");
+    const [oldOpdSearchMode, setOldOpdSearchMode] = useState<OldOpdSearchMode>("OPD");
+    const [oldOpdSearchSubmitted, setOldOpdSearchSubmitted] = useState(false);
+    const oldOpdSearchRequestRef = useRef(0);
     const [loadingTempTokens, setLoadingTempTokens] = useState(false);
     const [patientForm, setPatientForm] = useState(emptyPatientForm);
     const [visitForm, setVisitForm] = useState<VisitForm>({
@@ -419,6 +427,10 @@ export default function HmsReceptionDashboardClient({
     useHmsAutoDismissMessage(success, clearSuccess, 5000);
 
     const loadPatients = useCallback(async () => {
+        if (mode === "registration" && visitForm.visit_type === "OPD_OLD") {
+            return;
+        }
+
         const tempTokenSearchHint = showTempTokenPanel && requiresExistingPatient && selectedTempToken?.patient_name
             ? selectedTempToken.patient_name.trim()
             : "";
@@ -466,7 +478,7 @@ export default function HmsReceptionDashboardClient({
         } finally {
             setLoadingPatients(false);
         }
-    }, [mode, patientDate, patientPage, patientSearch, requiresExistingPatient, selectedTempToken, showTempTokenPanel]);
+    }, [mode, patientDate, patientPage, patientSearch, requiresExistingPatient, selectedTempToken, showTempTokenPanel, visitForm.visit_type]);
 
     const loadVisits = useCallback(async () => {
         setLoadingVisits(true);
@@ -558,6 +570,10 @@ export default function HmsReceptionDashboardClient({
 
         const tokenName = normalizeText(selectedTempToken.patient_name);
         if (requiresExistingPatient) {
+            if (visitForm.visit_type === "OPD_OLD" && tokenName && !oldOpdSearch.trim()) {
+                setOldOpdSearchMode("PATIENT");
+                setOldOpdSearch(tokenName);
+            }
             if (tokenName && !patientSearch.trim()) {
                 setPatientSearch(tokenName);
             }
@@ -567,7 +583,7 @@ export default function HmsReceptionDashboardClient({
         if (tokenName && patientSearch.trim() === tokenName) {
             setPatientSearch("");
         }
-    }, [patientSearch, requiresExistingPatient, selectedTempToken, showTempTokenPanel]);
+    }, [oldOpdSearch, patientSearch, requiresExistingPatient, selectedTempToken, showTempTokenPanel, visitForm.visit_type]);
 
     useEffect(() => {
         if (!showTempTokenPanel || !tempTokenRegistrationIdParam) return;
@@ -740,7 +756,13 @@ export default function HmsReceptionDashboardClient({
     }, [estimatedFee, feeManuallyEdited]);
 
     const updatePatientForm = (field: keyof PatientForm, value: string) => {
-        const nextValue = field === "phone" ? value.replace(/\D/g, "").slice(0, 10) : value;
+        const nextValue = field === "phone"
+            ? value.replace(/\D/g, "").slice(0, 10)
+            : field === "age"
+                ? value.replace(/\D/g, "")
+                : field === "full_name"
+                    ? value.replace(/[^\p{L}\s]/gu, "")
+                    : value;
         setPatientForm((prev) => ({ ...prev, [field]: nextValue }));
         setPatientErrors((prev) => ({ ...prev, [field]: undefined }));
         setSuccess("");
@@ -766,7 +788,12 @@ export default function HmsReceptionDashboardClient({
 
     const resetRegistrationForm = () => {
         focusPrintSlipAfterSave.current = false;
+        oldOpdSearchRequestRef.current += 1;
+        setLoadingPatients(false);
         setPatientSearch("");
+        setOldOpdSearch("");
+        setOldOpdSearchMode("OPD");
+        setOldOpdSearchSubmitted(false);
         setPatients([]);
         setTempTokenSearch("");
         setTempTokens([]);
@@ -878,7 +905,18 @@ export default function HmsReceptionDashboardClient({
         }
 
         setSelectedPatient(patient);
-        setVisitForm((prev) => ({ ...prev, patient_id: String(patient.patient_id), override_reason: "" }));
+        if (visitForm.visit_type === "OPD_OLD") {
+            setOldOpdSearchSubmitted(false);
+        }
+        const previousDoctor = visitForm.visit_type === "OPD_OLD"
+            ? doctors.find((doctor) => doctor.doctor_id === patient.last_doctor_id)
+            : null;
+        setVisitForm((prev) => ({
+            ...prev,
+            patient_id: String(patient.patient_id),
+            doctor_id: visitForm.visit_type === "OPD_OLD" ? (previousDoctor ? String(previousDoctor.doctor_id) : "") : prev.doctor_id,
+            override_reason: "",
+        }));
         setPatientForm({
             full_name: patient.full_name || "",
             age: patient.age === null || patient.age === undefined ? "" : String(patient.age),
@@ -892,6 +930,9 @@ export default function HmsReceptionDashboardClient({
         setDuplicateWarningDismissed(true);
         setPatientErrors({});
         setVisitErrors((prev) => ({ ...prev, patient_id: undefined, override_reason: undefined }));
+        if (visitForm.visit_type === "OPD_OLD") {
+            window.requestAnimationFrame(() => registrationFormRef.current?.querySelector<HTMLElement>("[data-registration-keyboard-step='patient-name']")?.focus());
+        }
     };
 
     const selectTempToken = (tempToken: TempToken) => {
@@ -986,10 +1027,68 @@ export default function HmsReceptionDashboardClient({
         }
     };
 
+    const searchOldOpdPatient = async (mode: OldOpdSearchMode, value: string) => {
+        const requestId = ++oldOpdSearchRequestRef.current;
+        const searchText = value.trim() || (mode === "PATIENT" && showTempTokenPanel ? selectedTempToken?.patient_name?.trim() || "" : "");
+        if (!searchText) {
+            setPatients([]);
+            setOldOpdSearchSubmitted(false);
+            setLoadingPatients(false);
+            return;
+        }
+
+        const params = new URLSearchParams();
+        if (mode === "PATIENT") {
+            params.set("lookup_type", "PATIENT");
+            params.set("q", searchText);
+            if (showTempTokenPanel && selectedTempToken?.gender) {
+                const tokenGender = normalizeFormGender(selectedTempToken.gender);
+                if (tokenGender) params.set("gender", tokenGender);
+            }
+        } else {
+            const template = mode === "UHID" ? visitsData?.searchIdFormats?.uhid : visitsData?.searchIdFormats?.opd;
+            const doctorRoom = doctors.find((queue) => String(queue.doctor_id) === visitForm.doctor_id)?.room_no || "";
+            const prefix = (template?.prefix || "").replace("{{ROOM}}", doctorRoom);
+            const isFullIdentifier = /[^0-9]/.test(searchText) || (prefix && searchText.toUpperCase().startsWith(prefix.toUpperCase()));
+            if (template?.roomNumberRequired && !doctorRoom && !isFullIdentifier) {
+                setError("Select the doctor room first, or enter the full OPD number.");
+                setLoadingPatients(false);
+                return;
+            }
+            const identifier = isFullIdentifier
+                ? searchText
+                : `${prefix}${searchText.padStart(template?.padTo || 1, "0")}${template?.suffix || ""}`;
+            params.set("lookup_type", mode);
+            params.set("identifier", identifier);
+        }
+
+        setLoadingPatients(true);
+        setError("");
+        setOldOpdSearchSubmitted(true);
+        try {
+            const response = await fetch(`/api/hms/staff/patients?${params.toString()}`, { cache: "no-store" });
+            const data = await response.json().catch(() => ({}));
+            if (requestId !== oldOpdSearchRequestRef.current) return;
+            if (!response.ok) {
+                setPatients([]);
+                setError(data.error || "Unable to search patients.");
+                return;
+            }
+            setPatients(Array.isArray(data.patients) ? data.patients as Patient[] : []);
+        } catch {
+            if (requestId !== oldOpdSearchRequestRef.current) return;
+            setPatients([]);
+            setError("Unable to search patients. Check your connection and try again.");
+        } finally {
+            if (requestId === oldOpdSearchRequestRef.current) setLoadingPatients(false);
+        }
+    };
+
     const validatePatientIfNeeded = () => {
         const nextErrors: Partial<Record<keyof PatientForm, string>> = {};
-        if (selectedPatient && !editingVisit) return nextErrors;
-        if (requiresExistingPatient && !showOverride) return nextErrors;
+        const editingOldOpdPatient = Boolean(selectedPatient && !editingVisit && visitForm.visit_type === "OPD_OLD");
+        if (selectedPatient && !editingVisit && !editingOldOpdPatient) return nextErrors;
+        if (requiresExistingPatient && !showOverride && !editingOldOpdPatient) return nextErrors;
 
         const age = Number(patientForm.age);
         if (!patientForm.full_name.trim()) nextErrors.full_name = "Patient name is required.";
@@ -1051,15 +1150,15 @@ export default function HmsReceptionDashboardClient({
         return data.patient as Patient;
     };
 
-    const updateSelectedPatientContact = async (patient: Patient) => {
+    const updateSelectedPatientContact = async (patient: Patient, includeDemographics = false) => {
         const response = await fetch("/api/hms/staff/patients", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 patient_id: patient.patient_id,
-                full_name: patient.full_name || patientForm.full_name.trim(),
-                age: patient.age ?? Number(patientForm.age),
-                gender: patient.gender || patientForm.gender,
+                full_name: includeDemographics ? patientForm.full_name.trim() : patient.full_name || patientForm.full_name.trim(),
+                age: includeDemographics ? Number(patientForm.age) : patient.age ?? Number(patientForm.age),
+                gender: includeDemographics ? patientForm.gender : patient.gender || patientForm.gender,
                 phone: patientForm.phone.trim() || null,
                 city: patientForm.city.trim() || null,
                 location: patientForm.location.trim() || null,
@@ -1255,7 +1354,7 @@ export default function HmsReceptionDashboardClient({
             const patient = editingVisit
                 ? selectedPatient
                 : selectedPatient
-                ? await updateSelectedPatientContact(selectedPatient)
+                ? await updateSelectedPatientContact(selectedPatient, visitForm.visit_type === "OPD_OLD")
                 : canCreateNewPatient
                     ? await createPatientRecord()
                     : null;
@@ -1551,26 +1650,57 @@ export default function HmsReceptionDashboardClient({
 
                             {!editingVisit && (
                                 <>
-                                    <PatientSearch
-                                        patients={registrationPatientResults}
-                                        loading={loadingPatients}
-                                        search={patientSearch}
-                                        selectedPatientId={visitForm.patient_id}
-                                        onSearchChange={(value) => {
-                                            setPatientSearch(value);
-                                            setPatients([]);
-                                            setPatientPagination({
-                                                page: 1,
-                                                page_size: PATIENT_PAGE_SIZE,
-                                                total: 0,
-                                                total_pages: 1,
-                                            });
-                                        }}
-                                        onSearch={() => void loadPatients()}
-                                        onSelect={selectPatient}
-                                        onClearSelected={clearSelectedPatient}
-                                        compact
-                                    />
+                                    {visitForm.visit_type === "OPD_OLD" ? (
+                                        <OldOpdPatientSearch
+                                            patients={patients}
+                                            loading={loadingPatients}
+                                            search={oldOpdSearch}
+                                            searchMode={oldOpdSearchMode}
+                                            submitted={oldOpdSearchSubmitted}
+                                            selectedPatientId={visitForm.patient_id}
+                                            formats={visitsData?.searchIdFormats}
+                                            roomNumber={doctors.find((queue) => String(queue.doctor_id) === visitForm.doctor_id)?.room_no || ""}
+                                            onSearchChange={(value) => {
+                                                oldOpdSearchRequestRef.current += 1;
+                                                setLoadingPatients(false);
+                                                setOldOpdSearch(value);
+                                                setPatients([]);
+                                                setOldOpdSearchSubmitted(false);
+                                            }}
+                                            onModeChange={(value) => {
+                                                oldOpdSearchRequestRef.current += 1;
+                                                setLoadingPatients(false);
+                                                setOldOpdSearchMode(value);
+                                                setOldOpdSearch("");
+                                                setPatients([]);
+                                                setOldOpdSearchSubmitted(false);
+                                            }}
+                                            onSearch={(searchMode, value) => void searchOldOpdPatient(searchMode, value)}
+                                            onSelect={selectPatient}
+                                            onClearSelected={clearSelectedPatient}
+                                        />
+                                    ) : (
+                                        <PatientSearch
+                                            patients={registrationPatientResults}
+                                            loading={loadingPatients}
+                                            search={patientSearch}
+                                            selectedPatientId={visitForm.patient_id}
+                                            onSearchChange={(value) => {
+                                                setPatientSearch(value);
+                                                setPatients([]);
+                                                setPatientPagination({
+                                                    page: 1,
+                                                    page_size: PATIENT_PAGE_SIZE,
+                                                    total: 0,
+                                                    total_pages: 1,
+                                                });
+                                            }}
+                                            onSearch={() => void loadPatients()}
+                                            onSelect={selectPatient}
+                                            onClearSelected={clearSelectedPatient}
+                                            compact
+                                        />
+                                    )}
 
                                     {likelyDuplicateWarning && (
                                         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -1590,7 +1720,7 @@ export default function HmsReceptionDashboardClient({
                                         {editingVisit ? "Edit Patient Details" : selectedPatient ? "Selected Patient" : canCreateNewPatient ? "New Patient Details" : "Patient Selection Required"}
                                     </h3>
                                 </div>
-                                        {selectedPatient && !editingVisit ? (
+                                        {selectedPatient && !editingVisit && visitForm.visit_type !== "OPD_OLD" ? (
                                             <div className="space-y-3">
                                         <div className="rounded-lg border border-black bg-white px-3 py-3 text-sm">
                                             <div className="grid gap-2 md:grid-cols-4">
@@ -1621,8 +1751,13 @@ export default function HmsReceptionDashboardClient({
                                             </div>
                                         </div>
                                     </div>
-                                        ) : canCreateNewPatient || editingVisit ? (
+                                        ) : canCreateNewPatient || editingVisit || (selectedPatient && visitForm.visit_type === "OPD_OLD") ? (
                                             <div className="grid gap-3 md:grid-cols-2">
+                                        {selectedPatient && !editingVisit && visitForm.visit_type === "OPD_OLD" && (
+                                            <div className="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                                                UHID <span className="ml-1 font-semibold text-black">{selectedPatient.uhid || "-"}</span>
+                                            </div>
+                                        )}
                                         {showOverride && !editingVisit && (
                                             <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                                                 Exact UHID was not found in this hospital. Create a new UHID only if the patient cannot be matched.
@@ -1635,6 +1770,7 @@ export default function HmsReceptionDashboardClient({
                                             value={patientForm.age}
                                             error={patientErrors.age}
                                             onChange={(value) => updatePatientForm("age", value)}
+                                            inputMode="numeric"
                                             required
                                             registrationStep="patient-age"
                                         />
@@ -1660,13 +1796,15 @@ export default function HmsReceptionDashboardClient({
                                 ) : (
                                     <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                                         <p className="text-sm font-medium text-amber-900">Select an existing patient from the search results before saving this OPD type.</p>
-                                        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-                                            <Field label="Exact UHID Lookup" value={exactUhid} error={visitErrors.patient_id} onChange={setExactUhid} clearable onClear={() => setExactUhid("")} onEnter={() => void lookupExactUhid()} />
-                                            <button type="button" onClick={() => void lookupExactUhid()} disabled={loadingPatients} className="mt-6 inline-flex items-center justify-center gap-2 rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-60">
-                                                {loadingPatients && <Loader2 size={15} className="animate-spin" />}
-                                                Lookup UHID
-                                            </button>
-                                        </div>
+                                        {visitForm.visit_type === "OPD_OLD"
+                                            ? <p className="text-xs text-amber-800">Search by patient name/phone, configured UHID, or OPD number above.</p>
+                                            : <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                                                <Field label="Exact UHID Lookup" value={exactUhid} error={visitErrors.patient_id} onChange={setExactUhid} clearable onClear={() => setExactUhid("")} onEnter={() => void lookupExactUhid()} />
+                                                <button type="button" onClick={() => void lookupExactUhid()} disabled={loadingPatients} className="mt-6 inline-flex items-center justify-center gap-2 rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-60">
+                                                    {loadingPatients && <Loader2 size={15} className="animate-spin" />}
+                                                    Lookup UHID
+                                                </button>
+                                            </div>}
                                     </div>
                                 )}
                             </div>
@@ -1681,7 +1819,11 @@ export default function HmsReceptionDashboardClient({
                                     value={visitForm.visit_type}
                                     error={visitErrors.visit_type}
                                     onChange={(value) => {
+                                        oldOpdSearchRequestRef.current += 1;
+                                        setLoadingPatients(false);
                                         updateVisitForm("visit_type", value);
+                                        setPatients([]);
+                                        setOldOpdSearchSubmitted(false);
                                         if (value !== "REFERRAL") {
                                             updateVisitForm("referred_by_doctor_id", "");
                                             updateVisitForm("referring_prescription_id", "");
@@ -2086,6 +2228,192 @@ function PaginationControls({ page, totalPages, total, onPageChange }: { page: n
     );
 }
 
+function OldOpdPatientSearch({
+    patients,
+    loading,
+    search,
+    searchMode,
+    submitted,
+    selectedPatientId,
+    formats,
+    roomNumber,
+    onSearchChange,
+    onModeChange,
+    onSearch,
+    onSelect,
+    onClearSelected,
+}: {
+    patients: Patient[];
+    loading: boolean;
+    search: string;
+    searchMode: OldOpdSearchMode;
+    submitted: boolean;
+    selectedPatientId: string;
+    formats?: VisitsResponse["searchIdFormats"];
+    roomNumber: string;
+    onSearchChange: (value: string) => void;
+    onModeChange: (value: OldOpdSearchMode) => void;
+    onSearch: (mode: OldOpdSearchMode, value: string) => void;
+    onSelect: (patient: Patient) => void;
+    onClearSelected: () => void;
+}) {
+    const resultsRef = useRef<HTMLDivElement | null>(null);
+    const searchInputRef = useRef<HTMLInputElement | null>(null);
+    const [highlightedPatientSelection, setHighlightedPatientSelection] = useState<{ patients: Patient[]; index: number } | null>(null);
+    const highlightedPatientIndex = highlightedPatientSelection?.patients === patients ? highlightedPatientSelection.index : -1;
+    const template = searchMode === "UHID" ? formats?.uhid : searchMode === "OPD" ? formats?.opd : null;
+    const prefix = (template?.prefix || "").replace("{{ROOM}}", roomNumber || "ROOM");
+    const showPrefix = searchMode !== "PATIENT" && Boolean(prefix) && !/[^0-9]/.test(search);
+    const placeholder = searchMode === "PATIENT"
+        ? "Patient name or phone"
+        : template
+            ? "Serial number, or enter full ID"
+            : "Enter full identifier";
+
+    useEffect(() => {
+        searchInputRef.current?.focus();
+    }, [searchMode]);
+
+    useEffect(() => {
+        if (highlightedPatientIndex < 0) return;
+        const patient = patients[highlightedPatientIndex];
+        if (!patient) return;
+        const row = resultsRef.current?.querySelector<HTMLElement>(`[data-patient-id="${patient.patient_id}"]`);
+        const scrollContainer = row?.closest("table")?.parentElement;
+        if (!row || !scrollContainer) return;
+
+        const rowTop = row.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top + scrollContainer.scrollTop;
+        const rowBottom = rowTop + row.offsetHeight;
+        const visibleTop = scrollContainer.scrollTop;
+        const visibleBottom = visibleTop + scrollContainer.clientHeight;
+        if (rowTop < visibleTop || rowBottom > visibleBottom) {
+            scrollContainer.scrollTop = rowTop - (scrollContainer.clientHeight - row.offsetHeight) / 2;
+        }
+    }, [highlightedPatientIndex, patients]);
+
+    return (
+        <div className="rounded-lg border border-black bg-white">
+            <div className="space-y-3 border-b border-black p-3">
+                <fieldset>
+                    <legend className="mb-2 text-xs font-semibold text-black">Find existing patient</legend>
+                    <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Old OPD patient search type">
+                        {([
+                            ["PATIENT", "Name / Phone"],
+                            ["UHID", "UHID"],
+                            ["OPD", "OPD No."],
+                        ] as const).map(([value, label]) => (
+                            <label key={value} className={`inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm ${searchMode === value ? "border-black bg-black font-semibold text-white" : "border-black bg-white text-black hover:bg-gray-50"}`}>
+                                <input
+                                    type="radio"
+                                    name="old-opd-search-mode"
+                                    value={value}
+                                    checked={searchMode === value}
+                                    onChange={() => {
+                                        setHighlightedPatientSelection(null);
+                                        onModeChange(value);
+                                    }}
+                                    className="sr-only"
+                                />
+                                {label}
+                            </label>
+                        ))}
+                    </div>
+                </fieldset>
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <div className="flex min-w-0 items-center rounded-lg border border-black focus-within:ring-2 focus-within:ring-black/10">
+                        {showPrefix && (
+                            <span className="max-w-[55%] shrink-0 truncate border-r border-gray-300 px-2.5 py-2 text-xs font-semibold text-gray-700" title={`${prefix}${template?.suffix || ""}`}>
+                                {prefix}
+                            </span>
+                        )}
+                        <input
+                            ref={searchInputRef}
+                            value={search}
+                            onChange={(event) => {
+                                    setHighlightedPatientSelection(null);
+                                onSearchChange(event.target.value);
+                            }}
+                            onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    if (submitted && searchMode === "PATIENT") {
+                                        if (!loading && highlightedPatientIndex >= 0) {
+                                            const patient = patients[highlightedPatientIndex];
+                                            if (patient) onSelect(patient);
+                                        }
+                                    } else if (submitted && !loading && searchMode !== "PATIENT" && patients.length === 1) {
+                                        onSelect(patients[0]);
+                                    } else if (submitted && !loading && searchMode !== "PATIENT" && patients.length > 1) {
+                                        resultsRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+                                    } else {
+                                        onSearch(searchMode, search);
+                                    }
+                                } else if ((event.key === "ArrowDown" || event.key === "ArrowUp") && submitted && !loading && patients.length > 0 && searchMode === "PATIENT") {
+                                    event.preventDefault();
+                                    setHighlightedPatientSelection((current) => {
+                                        const currentIndex = current?.patients === patients ? current.index : -1;
+                                        if (event.key === "ArrowDown") return { patients, index: currentIndex < 0 ? 0 : Math.min(currentIndex + 1, patients.length - 1) };
+                                        return { patients, index: currentIndex < 0 ? patients.length - 1 : Math.max(currentIndex - 1, 0) };
+                                    });
+                                } else if (event.key === "ArrowDown" && submitted && patients.length > 0) {
+                                    event.preventDefault();
+                                    resultsRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+                                }
+                            }}
+                            className="min-w-0 flex-1 rounded-lg px-3 py-2 text-sm text-black outline-none"
+                            placeholder={placeholder}
+                            aria-label={searchMode === "PATIENT" ? "Search patient name or phone" : `Search by ${searchMode === "UHID" ? "UHID" : "OPD number"}`}
+                        />
+                        {search && (
+                            <button type="button" onClick={() => onSearchChange("")} className="mr-1 rounded-full p-1 text-gray-600 hover:bg-gray-100" aria-label="Clear search">
+                                <XCircle size={15} />
+                            </button>
+                        )}
+                    </div>
+                    <button type="button" onClick={() => onSearch(searchMode, search)} disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                        <Search size={15} />
+                        Search
+                    </button>
+                </div>
+                {searchMode !== "PATIENT" && (
+                    <p className="text-xs text-gray-600">Enter the serial after the shown prefix, or enter a full UHID/OPD number to search an earlier year.</p>
+                )}
+            </div>
+            {selectedPatientId && (
+                <div className="border-b border-black bg-white px-3 py-2 text-xs text-black">
+                    Existing patient selected.
+                    <button type="button" onClick={onClearSelected} className="ml-2 font-semibold underline">Clear selection</button>
+                </div>
+            )}
+            {submitted && (
+                <div
+                    ref={resultsRef}
+                    onKeyDown={(event) => {
+                        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+                        const target = event.target as HTMLElement;
+                        if (!target.matches("button")) return;
+                        const buttons = Array.from(resultsRef.current?.querySelectorAll<HTMLButtonElement>("button") || []);
+                        const index = buttons.indexOf(target as HTMLButtonElement);
+                        const nextIndex = Math.max(0, Math.min(buttons.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)));
+                        if (nextIndex !== index) {
+                            event.preventDefault();
+                            buttons[nextIndex]?.focus();
+                        }
+                    }}
+                >
+                    <PatientTable
+                        patients={patients}
+                        loading={loading}
+                        onSelect={onSelect}
+                        compact
+                        highlightedPatientId={searchMode === "PATIENT" && highlightedPatientIndex >= 0 ? patients[highlightedPatientIndex]?.patient_id : undefined}
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
+
 function PatientSearch({
     patients,
     loading,
@@ -2154,7 +2482,7 @@ function PatientSearch({
     );
 }
 
-function PatientTable({ patients, loading, onSelect, onEdit, fullHeight = false, compact = false, selectable = true }: { patients: Patient[]; loading: boolean; onSelect: (patient: Patient) => void; onEdit?: (patient: Patient) => void; fullHeight?: boolean; compact?: boolean; selectable?: boolean }) {
+function PatientTable({ patients, loading, onSelect, onEdit, fullHeight = false, compact = false, selectable = true, highlightedPatientId }: { patients: Patient[]; loading: boolean; onSelect: (patient: Patient) => void; onEdit?: (patient: Patient) => void; fullHeight?: boolean; compact?: boolean; selectable?: boolean; highlightedPatientId?: number }) {
     if (loading) {
         return <div className="flex min-h-32 items-center gap-2 px-4 py-5 text-sm text-black"><Loader2 size={16} className="animate-spin" />Loading patients</div>;
     }
@@ -2179,7 +2507,12 @@ function PatientTable({ patients, loading, onSelect, onEdit, fullHeight = false,
                 </thead>
                 <tbody>
                     {patients.map((patient) => (
-                        <tr key={patient.patient_id} className="border-t border-black">
+                        <tr
+                            key={patient.patient_id}
+                            data-patient-id={patient.patient_id}
+                            className={`border-t border-black ${highlightedPatientId === patient.patient_id ? "bg-gray-200 text-black [&>td]:!text-black" : ""}`}
+                            aria-selected={highlightedPatientId === patient.patient_id}
+                        >
                             <td className="px-4 py-2 font-semibold text-black">{patient.uhid || "-"}</td>
                             <td className="px-4 py-2 text-black">{patientLabel(patient)}</td>
                             <td className="px-4 py-2 text-black">{patient.phone || "-"}</td>

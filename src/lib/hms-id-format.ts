@@ -34,6 +34,13 @@ export type HmsIdFormatConfig = {
     sequence_reset?: SequenceResetConfig;
 };
 
+export type HmsIdSearchTemplate = {
+    prefix: string;
+    suffix: string;
+    padTo: number;
+    roomNumberRequired: boolean;
+};
+
 type InsertIdRow = {
     value: bigint | number;
 };
@@ -149,6 +156,49 @@ function getResetMode(input: {
     }
 
     throw new Error(`Sequence reset is not configured for ${input.formatKey}.`);
+}
+
+/** Builds a display/search template without allocating or advancing a sequence. */
+export function getHmsIdSearchTemplate(input: {
+    idFormat: HmsIdFormatConfig | null;
+    hospitalCode: string;
+    formatKey: "uhid" | "opd";
+    now?: Date;
+    roomNumber?: string | null;
+}): HmsIdSearchTemplate | null {
+    const segments = input.idFormat?.[input.formatKey];
+    if (!Array.isArray(segments) || segments.length === 0) return null;
+    if (segments.some((segment) => !segment || typeof segment !== "object" || !["static", "separator", "hospital_code", "calendar_year", "financial_year", "date", "room_number", "sequence"].includes(segment.type))) {
+        return null;
+    }
+
+    try {
+        const now = input.now || new Date();
+        const sequenceIndex = segments.findIndex((segment) => segment.type === "sequence");
+        if (sequenceIndex < 0) return null;
+
+        const formatSegment = (segment: IdFormatSegment) => {
+            if (segment.type === "static" || segment.type === "separator") return segment.value;
+            if (segment.type === "hospital_code") return input.hospitalCode;
+            if (segment.type === "calendar_year") return segment.format === "YY" ? getCalendarYearShort(now) : getCalendarYear(now);
+            if (segment.type === "financial_year") {
+                const financialYear = getFinancialYearParts(now);
+                return segment.format === "YY-YY" ? financialYear.short : financialYear.full;
+            }
+            if (segment.type === "date") return getDateSegment(now, segment.format);
+            if (segment.type === "room_number") return String(input.roomNumber || "{{ROOM}}").trim();
+            return "";
+        };
+
+        return {
+            prefix: segments.slice(0, sequenceIndex).map(formatSegment).join(""),
+            suffix: segments.slice(sequenceIndex + 1).map(formatSegment).join(""),
+            padTo: Math.max(1, Number(segments[sequenceIndex].type === "sequence" ? segments[sequenceIndex].pad_to : 1) || 1),
+            roomNumberRequired: segments.some((segment) => segment.type === "room_number"),
+        };
+    } catch {
+        return null;
+    }
 }
 
 async function allocateSequence(input: {
