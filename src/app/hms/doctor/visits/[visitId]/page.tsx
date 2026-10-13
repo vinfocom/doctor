@@ -1386,6 +1386,7 @@ function AddMasterItemModal({
   onClose: () => void;
   onCreated: (item: EmrMasterItem) => void;
 }) {
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(initialName);
   const [type, setType] = useState(MEDICINE_TYPE_OPTIONS[0]);
   const [strengthValue, setStrengthValue] = useState("");
@@ -1421,6 +1422,17 @@ function AddMasterItemModal({
       spellSuggestion: null,
     });
     setDismissedSuggestionSignature("");
+  }, [initialName, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => {
+      const input = nameInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [initialName, open]);
 
   useEffect(() => {
@@ -1525,6 +1537,7 @@ function AddMasterItemModal({
           <label className="space-y-1">
             <span className="text-xs font-medium text-gray-500">Name</span>
                 <input
+                  ref={nameInputRef}
                   type="text"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
@@ -2751,6 +2764,24 @@ export default function DoctorAppointmentPadPage() {
     },
     []
   );
+
+  const focusMedicineNameField = useCallback((rowIndex: number) => {
+    window.requestAnimationFrame(() => {
+      const input = medicineNameInputRefs.current[rowIndex];
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  }, []);
+
+  const focusComplaintNameField = useCallback((rowIndex: number) => {
+    window.requestAnimationFrame(() => {
+      const input = complaintNameInputRefs.current[rowIndex];
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  }, []);
 
   const handleComplaintVoiceComplete = useCallback(async (rowIndex: number, transcript: string) => {
     if (!transcript.trim()) return;
@@ -4462,6 +4493,7 @@ export default function DoctorAppointmentPadPage() {
                 setComplaintSuggestions([]);
                 setComplaintSuggestionLoading(false);
                 setActiveComplaintSuggestionIndex(null);
+                const newRowIndex = editorState?.complaints.length ?? 0;
                 setEditorState((current) =>
                   current
                     ? {
@@ -4470,6 +4502,7 @@ export default function DoctorAppointmentPadPage() {
                       }
                     : current
                 );
+                focusComplaintNameField(newRowIndex);
               }}
               className="mt-4 inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
             >
@@ -4488,12 +4521,13 @@ export default function DoctorAppointmentPadPage() {
               onCreated={(item) => {
                 invalidateVoiceFuzzyMasterCache("complaints");
                 if (complaintAddModalIndex === null) return;
+                const targetComplaintRowIndex = complaintAddModalIndex;
                 setEditorState((current) =>
                   current
                     ? {
                         ...current,
                         complaints: current.complaints.map((row, rowIndex) =>
-                          rowIndex === complaintAddModalIndex
+                          rowIndex === targetComplaintRowIndex
                             ? applyComplaintSuggestionToRow(row, item)
                             : row
                         ),
@@ -4501,6 +4535,7 @@ export default function DoctorAppointmentPadPage() {
                     : current
                 );
                 setComplaintAddModalIndex(null);
+                focusComplaintNameField(targetComplaintRowIndex);
               }}
             />
           </SectionCard>
@@ -5029,6 +5064,7 @@ export default function DoctorAppointmentPadPage() {
               onClick={() => {
                 stopVoiceWithoutCommitting();
                 setActiveMedicineSuggestionIndex(null);
+                const newRowIndex = editorState?.medicines.length ?? 0;
                 setEditorState((current) =>
                   current
                     ? {
@@ -5037,6 +5073,7 @@ export default function DoctorAppointmentPadPage() {
                       }
                     : current
                 );
+                focusMedicineNameField(newRowIndex);
               }}
               className="mt-4 inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
             >
@@ -5953,12 +5990,13 @@ export default function DoctorAppointmentPadPage() {
                     onCreated={(item) => {
                       invalidateVoiceFuzzyMasterCache("medicines");
                       if (medicineAddModalIndex === null) return;
+                      const targetMedicineRowIndex = medicineAddModalIndex;
                             setEditorState((current) =>
                               current
                                 ? {
                                     ...current,
                                     medicines: current.medicines.map((row, rowIndex) =>
-                                      rowIndex === medicineAddModalIndex
+                                      rowIndex === targetMedicineRowIndex
                                         ? applyMedicineSuggestionToRow(row, item)
                                         : row
                                     ),
@@ -5966,6 +6004,7 @@ export default function DoctorAppointmentPadPage() {
                                 : current
                       );
                       setMedicineAddModalIndex(null);
+                      focusMedicineNameField(targetMedicineRowIndex);
                     }}
                   />
                 </>
