@@ -1052,6 +1052,8 @@ function useFloatingPanelStyle(anchorElement: HTMLElement | null, open: boolean,
 
   // Autosave can change content above the anchor without a scroll/resize event.
   // Re-measure after committed renders so the portaled panel stays attached.
+  // This layout-phase state sync is intentional to avoid a visible one-frame drift.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     if (!open) return;
 
@@ -1240,10 +1242,6 @@ function FreeWriteSuggestionInput({
   });
 
   useEffect(() => {
-    setHighlightedIndex(-1);
-  }, [open]);
-
-  useEffect(() => {
     if (!open) return;
     optionRefs.current = [];
   }, [open, suggestions.length]);
@@ -1275,7 +1273,10 @@ function FreeWriteSuggestionInput({
         }}
         onBlur={() => {
           commitValue();
-          window.setTimeout(() => setOpen(false), 150);
+          window.setTimeout(() => {
+            setOpen(false);
+            setHighlightedIndex(-1);
+          }, 150);
         }}
         onChange={(event) => {
           setShowAllOptions(false);
@@ -1302,12 +1303,14 @@ function FreeWriteSuggestionInput({
             if (open && highlightedIndex >= 0 && filteredSuggestions[highlightedIndex]) {
               onChange(filteredSuggestions[highlightedIndex]);
               setOpen(false);
+              setHighlightedIndex(-1);
               setShowAllOptions(false);
               onAdvance?.();
               return;
             }
             commitValue();
             setOpen(false);
+            setHighlightedIndex(-1);
             setShowAllOptions(false);
             onAdvance?.();
           }
@@ -1321,11 +1324,11 @@ function FreeWriteSuggestionInput({
         type="button"
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => {
+          setHighlightedIndex(-1);
           setOpen((current) => {
             const nextOpen = !current;
             if (nextOpen) {
               setShowAllOptions(true);
-              setHighlightedIndex(-1);
             }
             return nextOpen;
           });
@@ -1357,6 +1360,7 @@ function FreeWriteSuggestionInput({
                   onClick={() => {
                     onChange(suggestion);
                     setOpen(false);
+                    setHighlightedIndex(-1);
                     setShowAllOptions(false);
                     onAdvance?.();
                   }}
