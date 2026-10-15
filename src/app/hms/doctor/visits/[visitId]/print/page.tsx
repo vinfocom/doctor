@@ -125,7 +125,9 @@ export default async function HmsDoctorVisitPrintPage({ params, searchParams }: 
                 visit_date: serializeDate(context.visit.visit_date) || "",
                 visit_type: context.visit.visit_type,
                 status: context.visit.status,
-                fee_charged: context.visit.fee_charged,
+                fee_charged: context.visit.fee_charged === null || context.visit.fee_charged === undefined
+                    ? null
+                    : String(context.visit.fee_charged),
                 fee_waived_reason: context.visit.fee_waived_reason,
                 fee_waiver_reason_source: context.visit.fee_waiver_reason_source,
                 patient_name: context.visit.patient_name,
