@@ -2332,6 +2332,8 @@ export default function DoctorAppointmentPadPage() {
   const [showLabConfirm, setShowLabConfirm] = useState(false);
   const [finalPrintPrescriptionId, setFinalPrintPrescriptionId] = useState<number | null>(null);
   const [finalPrintIncludesInvestigation, setFinalPrintIncludesInvestigation] = useState(false);
+  const finalizedPrintButtonRef = useRef<HTMLButtonElement | null>(null);
+  const printChoiceDialogRef = useRef<HTMLDivElement | null>(null);
   const [historyGroups, setHistoryGroups] = useState<HistoryGroup[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
@@ -2515,6 +2517,17 @@ export default function DoctorAppointmentPadPage() {
 
   const isReadOnly = contextData?.draft?.status === "final";
   const hasActiveDraft = Boolean(contextData?.draft && editorState);
+  useEffect(() => {
+    if (!isReadOnly || finalPrintPrescriptionId !== null) return;
+    finalizedPrintButtonRef.current?.focus();
+  }, [finalPrintPrescriptionId, isReadOnly, contextData?.draft?.id]);
+
+  useEffect(() => {
+    if (finalPrintPrescriptionId !== null) {
+      printChoiceDialogRef.current?.focus();
+    }
+  }, [finalPrintPrescriptionId]);
+
   const patientAllergies = useMemo(
     () => contextData?.context.patient?.allergies ?? [],
     [contextData?.context.patient?.allergies]
@@ -3670,12 +3683,14 @@ export default function DoctorAppointmentPadPage() {
       prescriptionId: number;
       resetSheet?: boolean;
       includeInvestigation?: boolean;
+      keyboardPrint?: boolean;
     }) => {
       const query = new URLSearchParams();
       if (input.printType) query.set("printType", input.printType);
       query.set("prescriptionId", String(input.prescriptionId));
       if (input.resetSheet) query.set("resetSheet", "1");
       if (input.includeInvestigation !== undefined) query.set("includeInvestigation", input.includeInvestigation ? "1" : "0");
+      if (input.keyboardPrint) query.set("keyboardPrint", "1");
       const printWindowName = `Rx-${patientTitleName.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "Patient"}`;
       window.open(
         `/hms/doctor/visits/${appointmentId}/print?${query.toString()}`,
@@ -5579,6 +5594,12 @@ export default function DoctorAppointmentPadPage() {
                 </button>
                 <button
                   type="button"
+                  ref={finalizedPrintButtonRef}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+                    event.preventDefault();
+                    event.currentTarget.click();
+                  }}
                   onClick={() => {
                     setFinalPrintIncludesInvestigation(false);
                     setFinalPrintPrescriptionId(activeDraft.id);
@@ -6115,8 +6136,27 @@ export default function DoctorAppointmentPadPage() {
       ) : null}
       {finalPrintPrescriptionId ? (
         <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/45 px-4">
-          <div className="w-full max-w-xl rounded-2xl border border-black bg-white p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-black">Print prescription</h3>
+          <div
+            ref={printChoiceDialogRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="finalized-prescription-print-title"
+            onKeyDownCapture={(event) => {
+              if ((event.key === "Enter" || event.key === " ") && event.target instanceof HTMLElement && event.target.closest("button")) {
+                event.preventDefault();
+                event.stopPropagation();
+              }
+            }}
+            onKeyUpCapture={(event) => {
+              if ((event.key === "Enter" || event.key === " ") && event.target instanceof HTMLElement && event.target.closest("button")) {
+                event.preventDefault();
+                event.stopPropagation();
+              }
+            }}
+            className="w-full max-w-xl rounded-2xl border border-black bg-white p-6 shadow-2xl"
+          >
+            <h3 id="finalized-prescription-print-title" className="text-lg font-bold text-black">Print prescription</h3>
             <p className="mt-2 text-sm text-black">
               Choose how the paper in the printer should be treated for this print.
             </p>
@@ -6160,6 +6200,7 @@ export default function DoctorAppointmentPadPage() {
                   openSharedPaperPrint({
                     prescriptionId: finalPrintPrescriptionId,
                     resetSheet: true,
+                    keyboardPrint: true,
                   });
                   setFinalPrintPrescriptionId(null);
                   setFinalPrintIncludesInvestigation(false);
@@ -6176,6 +6217,7 @@ export default function DoctorAppointmentPadPage() {
                     openSharedPaperPrint({
                       prescriptionId: finalPrintPrescriptionId,
                       includeInvestigation: finalPrintIncludesInvestigation,
+                      keyboardPrint: true,
                     });
                     setFinalPrintPrescriptionId(null);
                     setFinalPrintIncludesInvestigation(false);

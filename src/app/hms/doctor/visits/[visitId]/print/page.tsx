@@ -16,6 +16,7 @@ type PageProps = {
         prescriptionId?: string;
         resetSheet?: string;
         includeInvestigation?: string;
+        keyboardPrint?: string;
     }>;
 };
 
@@ -154,6 +155,7 @@ export default async function HmsDoctorVisitPrintPage({ params, searchParams }: 
             pageMargins={resolvedEmrLayoutSettings.page_margin_json}
             headerConfig={resolvedLayout?.header_config_json || null}
             showDoctorToken={showDoctorToken}
+            autoFocusPrint={resolvedSearchParams.keyboardPrint === "1"}
             backHref="/hms/doctor"
         />
     );
