@@ -305,6 +305,7 @@ model doctors {
   user                   users?                    @relation(fields: [user_id], references: [user_id])
   patients               patients[]
   prescriptions          prescription_records[] @relation("prescription_record_doctor")
+  archive_records        patient_archive_records[]
   emr_settings           doctor_emr_settings?
   emr_prescriptions      prescriptions[] @relation("emr_prescription_doctor")
   emr_referred_to_prescriptions prescriptions[] @relation("emr_prescription_referred_to_doctor")
@@ -462,6 +463,7 @@ model patients {
   chat_messages           chat_messages[]
   password_otps           patient_password_otps[]
   prescriptions           prescription_records[] @relation("prescription_record_patient")
+  archive_records         patient_archive_records[]
   uploaded_prescriptions  prescription_records[] @relation("prescription_uploaded_by_patient")
   emr_prescriptions       prescriptions[] @relation("emr_prescription_patient")
   emr_prescription_audit_logs prescription_audit_logs[] @relation("emr_prescription_audit_patient")
@@ -761,6 +763,44 @@ model prescription_pages {
 
   @@unique([prescription_id, page_number], map: "uq_prescription_page_number")
   @@index([prescription_id], map: "idx_prescription_pages_prescription")
+}
+
+model patient_archive_records {
+  record_id          String                              @id @db.Char(36)
+  owner_patient_id   Int
+  category           String                              @db.VarChar(24)
+  title              String?                             @db.VarChar(100)
+  for_label          String                              @db.VarChar(50)
+  relationship_label String?                             @db.VarChar(50)
+  doctor_id          Int?
+  doctor_name        String?                             @db.VarChar(255)
+  note               String?                             @db.VarChar(500)
+  created_at         DateTime                            @default(now()) @db.Timestamp(0)
+  owner              patients                            @relation(fields: [owner_patient_id], references: [patient_id], onDelete: Cascade)
+  doctor             doctors?                            @relation(fields: [doctor_id], references: [doctor_id], onDelete: SetNull)
+  pages              patient_archive_record_pages[]
+
+  @@index([owner_patient_id, created_at], map: "idx_patient_archive_owner_created")
+  @@index([doctor_id], map: "idx_patient_archive_doctor")
+}
+
+model patient_archive_record_pages {
+  page_id             Int                     @id @default(autoincrement())
+  record_id           String                  @db.Char(36)
+  page_number         Int
+  storage_key         String                  @db.VarChar(1000)
+  file_url            String                  @db.VarChar(1000)
+  original_file_name  String?                 @db.VarChar(255)
+  mime_type           String?                 @db.VarChar(100)
+  file_size_bytes     Int?
+  latitude            Decimal?                @db.Decimal(10, 7)
+  longitude           Decimal?                @db.Decimal(10, 7)
+  location_accuracy_m Decimal?                @db.Decimal(8, 2)
+  created_at          DateTime                @default(now()) @db.Timestamp(0)
+  record              patient_archive_records @relation(fields: [record_id], references: [record_id], onDelete: Cascade)
+
+  @@unique([record_id, page_number], map: "uq_patient_archive_page_number")
+  @@index([record_id], map: "idx_patient_archive_pages_record")
 }
 
 model doctor_emr_settings {
