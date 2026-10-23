@@ -79,10 +79,13 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   let recordId: string | null = null;
+  let ownerPatientId: number | null = null;
+  let recordInserted = false;
   const uploadedKeys: string[] = [];
   try {
     const owner = await getOwner(req);
     if (!owner) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    ownerPatientId = owner.patientId;
     if (!(req.headers.get("content-type") || "").includes("multipart/form-data")) {
       return NextResponse.json({ error: "Image upload must use multipart form data." }, { status: 415 });
     }
@@ -129,6 +132,7 @@ export async function POST(req: Request) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
       recordId, owner.patientId, category, title || null, forLabel, relationshipLabel, doctorId, doctorName, note
     );
+    recordInserted = true;
 
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index];
@@ -146,7 +150,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ record_id: recordId }, { status: 201 });
   } catch (error) {
     await Promise.allSettled(uploadedKeys.map((key) => deleteObjectFromS3(key)));
-    if (recordId) await prisma.$executeRawUnsafe("DELETE FROM patient_archive_records WHERE record_id = ?", recordId).catch(() => undefined);
+    if (recordId && ownerPatientId !== null && recordInserted) {
+      await prisma.$executeRawUnsafe("DELETE FROM patient_archive_records WHERE record_id = ? AND owner_patient_id = ?", recordId, ownerPatientId).catch(() => undefined);
+    }
     console.error("Create patient archive record error:", error);
     return NextResponse.json({ error: "Upload failed. Your saved draft can be retried." }, { status: 500 });
   }
