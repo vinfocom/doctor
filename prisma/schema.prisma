@@ -472,6 +472,9 @@ model patients {
   doctor                  doctors?                           @relation(fields: [doctor_id], references: [doctor_id])
   visits                  visits[]
   hospital_registrations  hospital_registrations[]
+  wellness_test_results  wellness_test_results[]
+  wellness_content_exposures wellness_content_exposures[]
+  wellness_activity_completions wellness_activity_completions[]
 
   @@index([admin_id], map: "patients_admin_id_fkey")
   @@index([doctor_id], map: "patients_doctor_id_fkey")
@@ -480,6 +483,51 @@ model patients {
   @@index([admin_id, hospital_group_code, phone], map: "idx_hms_patients_phone_search")
   @@index([uhid], map: "idx_patients_uhid")
   @@unique([hospital_group_code, uhid], map: "uq_patients_hospital_group_uhid")
+}
+
+model wellness_test_results {
+  result_id      BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  patient_id     Int
+  test_type      String   @db.VarChar(50)
+  completed_at   DateTime @default(now()) @db.DateTime(3)
+  method_version String?  @db.VarChar(100)
+  result_value   Decimal? @db.Decimal(12, 4)
+  result_unit    String?  @db.VarChar(40)
+  result_summary String   @db.VarChar(500)
+  result_details Json?
+  patient        patients @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_wellness_test_patient")
+
+  @@index([patient_id, completed_at], map: "idx_wellness_test_patient_date")
+  @@index([patient_id, test_type, completed_at], map: "idx_wellness_test_patient_type_date")
+  @@map("wellness_test_results")
+}
+
+model wellness_content_exposures {
+  exposure_id BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  patient_id  Int
+  content_type String  @db.VarChar(30)
+  content_id  String   @db.VarChar(120)
+  shown_at    DateTime @default(now()) @db.DateTime(3)
+  patient     patients @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_wellness_exposure_patient")
+
+  @@index([patient_id, content_type, content_id, shown_at], map: "idx_wellness_exposure_patient_content_date")
+  @@index([shown_at], map: "idx_wellness_exposure_shown_at")
+  @@map("wellness_content_exposures")
+}
+
+model wellness_activity_completions {
+  completion_id       BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  patient_id          Int
+  activity_type       String   @db.VarChar(30)
+  activity_id         String   @db.VarChar(120)
+  completed_at        DateTime @default(now()) @db.DateTime(3)
+  completion_date_local DateTime @db.Date
+  timezone            String   @db.VarChar(64)
+  patient             patients @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade, onUpdate: Cascade, map: "fk_wellness_completion_patient")
+
+  @@index([patient_id, completion_date_local], map: "idx_wellness_completion_patient_date")
+  @@index([patient_id, completed_at], map: "idx_wellness_completion_patient_time")
+  @@map("wellness_activity_completions")
 }
 
 model visits {
