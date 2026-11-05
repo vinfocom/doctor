@@ -6,20 +6,53 @@ import { sendExpoPushNotification } from "@/lib/expoPush";
 type TargetMode = "TOMORROW" | "TODAY" | "CUSTOM";
 
 function getTodayISTYMD() {
-    const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${nowIST.getUTCFullYear()}-${pad(nowIST.getUTCMonth() + 1)}-${pad(nowIST.getUTCDate())}`;
+    return dateInIST(new Date())!;
 }
 
-function toISTYMD(value: Date | string | null | undefined) {
+function toCalendarDateYMD(value: Date | string | null | undefined) {
     if (!value) return null;
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
     const date = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(date.getTime())) return null;
     return date.toISOString().slice(0, 10);
 }
 
+function dateInIST(value: Date | string | null | undefined) {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).formatToParts(date);
+    const part = (type: string) => parts.find((item) => item.type === type)?.value || "";
+    return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function addCalendarDays(value: string, days: number) {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+}
+
+function campaignTargetDate(campaign: {
+    target_mode?: string | null;
+    target_date?: Date | string | null;
+    created_at?: Date | string | null;
+}) {
+    const mode = String(campaign.target_mode || "").toUpperCase();
+    if (mode === "TODAY" || mode === "TOMORROW") {
+        const sentOn = dateInIST(campaign.created_at);
+        if (sentOn) return addCalendarDays(sentOn, mode === "TOMORROW" ? 1 : 0);
+    }
+    return toCalendarDateYMD(campaign.target_date);
+}
+
 function isAnnouncementActive(targetDate: Date | string | null | undefined) {
-    const appointmentDate = toISTYMD(targetDate);
+    const appointmentDate = toCalendarDateYMD(targetDate);
     if (!appointmentDate) return true;
     return appointmentDate >= getTodayISTYMD();
 }
@@ -44,23 +77,13 @@ async function getDoctorTargetPatients(userId: number, targetMode: TargetMode = 
     });
     if (!doctor) return null;
 
-    // Compute "today" in IST (UTC+5:30) as a YYYY-MM-DD string so the comparison
-    // works correctly regardless of server timezone.
-    const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000); // shift to IST
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const todayIST = `${nowIST.getUTCFullYear()}-${pad(nowIST.getUTCMonth() + 1)}-${pad(nowIST.getUTCDate())}`;
-
-    const addDays = (ymd: string, days: number) => {
-        const d = new Date(`${ymd}T00:00:00Z`);
-        d.setUTCDate(d.getUTCDate() + days);
-        return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-    };
+    const todayIST = getTodayISTYMD();
 
     let filterDate: string; // YYYY-MM-DD to match
     if (targetMode === "TODAY") {
         filterDate = todayIST;
     } else if (targetMode === "TOMORROW") {
-        filterDate = addDays(todayIST, 1);
+        filterDate = addCalendarDays(todayIST, 1)!;
     } else {
         // CUSTOM
         if (!targetDate || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
@@ -117,19 +140,19 @@ async function getDoctorAnnouncementDates(userId: number) {
     });
     if (!doctor) return null;
 
-    const rows = await prisma.$queryRaw<Array<{ appointment_date: Date | null }>>`
-        SELECT DISTINCT a.appointment_date
+    const rows = await prisma.$queryRaw<Array<{ appointment_date: string | null }>>`
+        SELECT DISTINCT DATE_FORMAT(DATE(CONVERT_TZ(a.appointment_date, '+00:00', '+05:30')), '%Y-%m-%d') AS appointment_date
         FROM appointment a
         WHERE
             a.doctor_id = ${doctor.doctor_id}
             AND a.status = 'BOOKED'
             AND a.patient_id IS NOT NULL
             AND DATE(CONVERT_TZ(a.appointment_date, '+00:00', '+05:30')) >= DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+05:30'))
-        ORDER BY a.appointment_date ASC
+        ORDER BY appointment_date ASC
     `;
 
     return rows
-        .map((row) => (row.appointment_date ? new Date(row.appointment_date).toISOString().slice(0, 10) : null))
+        .map((row) => row.appointment_date)
         .filter((value): value is string => Boolean(value));
 }
 
@@ -145,7 +168,9 @@ async function createAnnouncementCampaign(params: {
             doctor_id: params.doctorId,
             message: params.message,
             target_mode: params.targetMode,
-            target_date: params.targetDate ? new Date(`${params.targetDate}T00:00:00`) : null,
+            // target_date is a SQL DATE; construct it in UTC so the calendar day
+            // does not shift when the server runs in a non-UTC timezone.
+            target_date: params.targetDate ? new Date(`${params.targetDate}T00:00:00.000Z`) : null,
             recipients: {
                 createMany: {
                     data: params.recipientIds.map((patientId) => ({ patient_id: patientId })),
@@ -297,6 +322,7 @@ export async function GET(req: Request) {
                                 doctor_id: true,
                                 message: true,
                                 created_at: true,
+                                target_mode: true,
                                 target_date: true,
                                 doctor: { select: { doctor_name: true } },
                             },
@@ -356,8 +382,9 @@ export async function GET(req: Request) {
             }
 
             const announcements = received
-                .filter((row: any) => isAnnouncementActive(row?.campaign?.target_date))
-                .map((row: any) => ({
+                .map((row) => ({ row, targetDate: campaignTargetDate(row?.campaign) }))
+                .filter(({ targetDate }) => isAnnouncementActive(targetDate))
+                .map(({ row, targetDate }) => ({
                     message_id: row.campaign_id,
                     campaign_id: row.campaign_id,
                     doctor_id: row.campaign.doctor_id,
@@ -365,11 +392,67 @@ export async function GET(req: Request) {
                     content: row.campaign.message,
                     created_at: row.campaign.created_at,
                     received_at: row.created_at,
-                    appointment_date: toISTYMD(row.campaign.target_date),
+                    appointment_date: targetDate,
                 }));
 
+            // Some sends are written to chat_messages by older app versions or
+            // the mobile fallback path without a matching campaign recipient.
+            // Read those rows even when campaign tables exist so a delivered
+            // announcement is still visible in the patient's announcement list.
+            const chatAnnouncements = await prisma.chat_messages.findMany({
+                where: {
+                    patient_id: patientId,
+                    sender: "DOCTOR",
+                    content: { startsWith: "Announcement:" },
+                },
+                orderBy: { created_at: "desc" },
+                take: limit,
+                select: {
+                    message_id: true,
+                    doctor_id: true,
+                    content: true,
+                    created_at: true,
+                },
+            });
+            const campaignKeys = new Set(received.map((row) => {
+                const campaign = row?.campaign;
+                const sentMinute = campaign?.created_at
+                    ? new Date(campaign.created_at).toISOString().slice(0, 16)
+                    : "";
+                return `${campaign?.doctor_id}|${String(campaign?.message || "").trim()}|${sentMinute}`;
+            }));
+            const unmatchedChatAnnouncements = chatAnnouncements.filter((message) => {
+                const sentMinute = new Date(message.created_at).toISOString().slice(0, 16);
+                const content = String(message.content || "").replace(/^Announcement:\s*/, "").trim();
+                return !campaignKeys.has(`${message.doctor_id}|${content}|${sentMinute}`);
+            });
+            const chatDoctorIds = Array.from(new Set(
+                unmatchedChatAnnouncements
+                    .map((message) => message.doctor_id)
+                    .filter((id): id is number => typeof id === "number")
+            ));
+            const chatDoctors = chatDoctorIds.length
+                ? await prisma.doctors.findMany({
+                    where: { doctor_id: { in: chatDoctorIds } },
+                    select: { doctor_id: true, doctor_name: true },
+                })
+                : [];
+            const chatDoctorNames = new Map(chatDoctors.map((doctor) => [doctor.doctor_id, doctor.doctor_name || "Doctor"]));
+            const supplementalAnnouncements = unmatchedChatAnnouncements.map((message) => ({
+                message_id: message.message_id,
+                campaign_id: null,
+                doctor_id: message.doctor_id,
+                doctor_name: chatDoctorNames.get(message.doctor_id) || "Doctor",
+                content: String(message.content || "").replace(/^Announcement:\s*/, ""),
+                created_at: message.created_at,
+                received_at: message.created_at,
+                appointment_date: null,
+            }));
+
             return NextResponse.json({
-                announcements,
+                announcements: [...announcements, ...supplementalAnnouncements]
+                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                    .slice(0, limit),
             });
         }
 
@@ -530,7 +613,7 @@ export async function POST(req: Request) {
                 message,
                 recipientIds,
                 targetMode: "CUSTOM",
-                targetDate: toISTYMD(anchor.target_date) || undefined,
+                targetDate: toCalendarDateYMD(anchor.target_date) || undefined,
             });
             const contentForChat = await mirrorCampaignToChatMessages({
                 doctorId: doctor.doctor_id,
