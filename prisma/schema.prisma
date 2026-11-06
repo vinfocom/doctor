@@ -1503,6 +1503,20 @@ model clinic_staff_doctor_access {
   @@index([doctor_id], map: "idx_staff_doctor_access_doctor")
 }
 
+model account_deletion_requests {
+  request_id      Int       @id @default(autoincrement())
+  user_id         Int
+  role            String    @db.VarChar(32)
+  phone           String?   @db.VarChar(255)
+  requested_at    DateTime  @default(now()) @db.DateTime(0)
+  status          String    @default("pending") @db.VarChar(20)
+  reason          String?   @db.Text
+  email_status    String    @default("pending") @db.VarChar(20)
+  email_sent_at   DateTime? @db.DateTime(0)
+
+  @@index([user_id, status, requested_at], map: "idx_account_deletion_user_status")
+}
+
 model live_queue_side_ads {
   ad_id        Int                       @id @default(autoincrement())
   doctor_id    Int
