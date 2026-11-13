@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { Mic, Square } from "lucide-react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 
@@ -93,8 +93,15 @@ export default function VoiceInputMic({
   const baseValueRef = useRef("");
   const lastAppliedValueRef = useRef("");
   const lastTranscriptRef = useRef("");
+  const onChangeRef = useRef(onChange);
+  const onVoiceCompleteRef = useRef(onVoiceComplete);
   const rootRef = useRef<HTMLSpanElement | null>(null);
   const silenceTimerRef = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    onChangeRef.current = onChange;
+    onVoiceCompleteRef.current = onVoiceComplete;
+  }, [onChange, onVoiceComplete]);
 
   const clearSilenceTimer = useCallback(() => {
     if (silenceTimerRef.current === null) return;
@@ -115,10 +122,10 @@ export default function VoiceInputMic({
         notifyActiveVoiceInput(null);
       }
       if (shouldComplete && completedTranscript) {
-        onVoiceComplete?.(completedTranscript);
+        onVoiceCompleteRef.current?.(completedTranscript);
       }
     },
-    [clearSilenceTimer, fieldId, onVoiceComplete, resetTranscript]
+    [clearSilenceTimer, fieldId, resetTranscript]
   );
 
   const startSilenceTimer = useCallback(() => {
@@ -161,10 +168,10 @@ export default function VoiceInputMic({
       lastTranscriptRef.current = spokenValue;
       const nextValue = appendSpeechValue(baseValueRef.current, spokenValue);
       lastAppliedValueRef.current = nextValue;
-      onChange(nextValue);
+      onChangeRef.current(nextValue);
     }
     startSilenceTimer();
-  }, [isActive, onChange, startSilenceTimer, transcript]);
+  }, [isActive, startSilenceTimer, transcript]);
 
   useEffect(() => {
     if (!isActive) return;

@@ -1045,18 +1045,17 @@ function getFloatingPanelStyle(anchorElement: HTMLElement | null, width?: number
   };
 }
 
-function useFloatingPanelStyle(anchorElement: HTMLElement | null, open: boolean, width?: number) {
+function useFloatingPanelStyle(
+  anchorElement: HTMLElement | null,
+  open: boolean,
+  width?: number,
+  layoutKey?: unknown
+) {
   const [style, setStyle] = useState<CSSProperties>(() =>
     getFloatingPanelStyle(anchorElement, width)
   );
 
-  // Autosave can change content above the anchor without a scroll/resize event.
-  // Re-measure after committed renders so the portaled panel stays attached.
-  // This layout-phase state sync is intentional to avoid a visible one-frame drift.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useLayoutEffect(() => {
-    if (!open) return;
-
+  const updateStyle = useCallback(() => {
     setStyle((current) => {
       const next = getFloatingPanelStyle(anchorElement, width);
       if (
@@ -1069,24 +1068,25 @@ function useFloatingPanelStyle(anchorElement: HTMLElement | null, open: boolean,
       }
       return next;
     });
-  });
+  }, [anchorElement, width]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(updateStyle);
+    return () => window.cancelAnimationFrame(frame);
+  }, [layoutKey, open, updateStyle]);
 
   useEffect(() => {
     if (!open) return;
 
-    const updatePosition = () => {
-      setStyle(getFloatingPanelStyle(anchorElement, width));
-    };
-
-    updatePosition();
-    window.addEventListener("scroll", updatePosition, true);
-    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updateStyle, true);
+    window.addEventListener("resize", updateStyle);
 
     return () => {
-      window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updateStyle, true);
+      window.removeEventListener("resize", updateStyle);
     };
-  }, [anchorElement, open, width]);
+  }, [open, updateStyle]);
 
   useEffect(() => {
     if (open) return;
@@ -1140,7 +1140,12 @@ function SuggestionDropdown({
   onHighlight?: (index: number) => void;
 }) {
   const showAdd = Boolean(onAdd) && typedValue.trim().length >= 1;
-  const panelStyle = useFloatingPanelStyle(anchorElement, true);
+  const panelStyle = useFloatingPanelStyle(
+    anchorElement,
+    true,
+    undefined,
+    `${typedValue}:${suggestions.length}:${loading}`
+  );
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   useEffect(() => {
@@ -1234,7 +1239,12 @@ function FreeWriteSuggestionInput({
   const [showAllOptions, setShowAllOptions] = useState(false);
   const [anchorElement, setAnchorElement] = useState<HTMLDivElement | null>(null);
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const panelStyle = useFloatingPanelStyle(anchorElement, open);
+  const panelStyle = useFloatingPanelStyle(
+    anchorElement,
+    open,
+    undefined,
+    `${value}:${suggestions.length}:${showAllOptions}`
+  );
   const normalizedValue = value.trim().toLowerCase();
   const filteredSuggestions = suggestions.filter((suggestion) => {
     if (showAllOptions || !normalizedValue) return true;
@@ -2416,13 +2426,17 @@ export default function DoctorAppointmentPadPage() {
       : complaintDurationAnchorRefs.current[activeComplaintDurationSuggestionIndex];
   const activeComplaintDurationPanelStyle = useFloatingPanelStyle(
     activeComplaintDurationAnchor,
-    activeComplaintDurationSuggestionIndex !== null
+    activeComplaintDurationSuggestionIndex !== null,
+    undefined,
+    editorState
   );
   const activeDurationAnchor =
     activeDurationSuggestionIndex === null ? null : durationAnchorRefs.current[activeDurationSuggestionIndex];
   const activeDurationPanelStyle = useFloatingPanelStyle(
     activeDurationAnchor,
-    activeDurationSuggestionIndex !== null
+    activeDurationSuggestionIndex !== null,
+    undefined,
+    editorState
   );
 
   const dirtyRef = useRef(false);
